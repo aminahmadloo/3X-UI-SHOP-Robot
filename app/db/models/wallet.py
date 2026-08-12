@@ -34,8 +34,7 @@ class Wallet(Base):
 
         wallet = cls(user_tg_id=user_tg_id, balance=0)
         session.add(wallet)
-        await session.commit()
-        await session.refresh(wallet)
+        await session.flush()
         logger.info(f"Wallet created for user {user_tg_id}.")
         return wallet
 
