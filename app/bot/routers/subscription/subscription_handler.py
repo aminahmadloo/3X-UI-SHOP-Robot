@@ -63,11 +63,15 @@ async def callback_subscription(
     if user.server_id:
         client_data = await services.vpn.get_client_data(user)
         if not client_data:
-            await services.notification.show_popup(
-                callback=callback,
-                text=_("subscription:popup:error_fetching_data"),
+            # A user can keep a historical server_id after the 3X-UI client
+            # has been removed (for example after a test/reset). This is not a
+            # fatal error for the subscription page: treat it as no active
+            # subscription so the user can start a new purchase. Real API
+            # failures are already logged by VPNService.get_client_data().
+            logger.warning(
+                f"No active 3X-UI client data for user {user.tg_id}; "
+                "showing subscription page as inactive."
             )
-            return
 
     callback_data = SubscriptionData(state=NavSubscription.PROCESS, user_id=user.tg_id)
     await show_subscription(callback=callback, client_data=client_data, callback_data=callback_data)
