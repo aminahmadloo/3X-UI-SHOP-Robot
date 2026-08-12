@@ -34,54 +34,57 @@ def main_menu_keyboard(
             )
         )
 
-    # Main customer actions.
-    # Order: 1) Buy Service, 2) Custom Service, 3) Account, 4) My Services, 5) Wallet.
+    # Main menu layout:
+    # 1. Buy Service
+    # 2. Custom Service
+    # 3. My Services + Wallet
+    # 4. Account + Referral
+    # 5. Support + Language
+    # 6. Admin (admin only)
     builder.row(
         InlineKeyboardButton(
             text="🛒 خرید سرویس",
             callback_data=NavSubscription.MAIN,
         )
     )
+
     builder.row(
         InlineKeyboardButton(
             text="⚙️ خرید سرویس با مشخصات دلخواه",
             callback_data=NavMain.CUSTOM_SERVICE,
         )
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="👤 حساب کاربری",
-            callback_data=NavProfile.MAIN,
-        )
-    )
+
     builder.row(
         InlineKeyboardButton(
             text="📦 سرویس های من",
             callback_data=NavMain.MY_SERVICES,
-        )
-    )
-    builder.row(
+        ),
         InlineKeyboardButton(
             text="💰 کیف پول",
             callback_data=NavMain.WALLET,
-        )
+        ),
     )
 
-    # Keep the remaining menu buttons in their existing place/order.
     builder.row(
-        *(
-            [
-                InlineKeyboardButton(
-                    text=_("main_menu:button:referral"),
-                    callback_data=NavReferral.MAIN,
-                )
-            ]
-            if is_referral_available
-            else []
+        InlineKeyboardButton(
+            text="👤 حساب کاربری",
+            callback_data=NavProfile.MAIN,
         ),
+        InlineKeyboardButton(
+            text=_("main_menu:button:referral"),
+            callback_data=NavReferral.MAIN,
+        ),
+    )
+
+    builder.row(
         InlineKeyboardButton(
             text=_("main_menu:button:support"),
             callback_data=NavSupport.MAIN,
+        ),
+        InlineKeyboardButton(
+            text="🌐 تغییر زبان",
+            callback_data=NavMain.LANGUAGE,
         ),
     )
 
@@ -92,12 +95,5 @@ def main_menu_keyboard(
                 callback_data=NavAdminTools.MAIN,
             )
         )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="🌐 تغییر زبان",
-            callback_data=NavMain.LANGUAGE,
-        )
-    )
 
     return builder.as_markup()
