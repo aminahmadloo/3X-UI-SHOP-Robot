@@ -1,14 +1,16 @@
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from aiogram.utils.i18n import gettext as _
+from babel.dates import format_datetime
 
 from app.bot.models import ClientData
 from app.bot.services import ServicesContainer
-from app.bot.utils.constants import PREVIOUS_CALLBACK_KEY
+from app.bot.utils.constants import PREVIOUS_CALLBACK_KEY, TransactionStatus
 from app.bot.utils.navigation import NavProfile
 from app.db.models import User
 
@@ -22,8 +24,24 @@ async def prepare_message(user: User, client_data: ClientData | None) -> str:
     profile = _("profile:message:main").format(name=user.first_name, id=user.tg_id)
 
     if not client_data:
-        subscription = _("profile:message:subscription_none")
-        return profile + subscription
+        purchased_services_count = sum(
+            1
+            for transaction in user.transactions
+            if transaction.status == TransactionStatus.COMPLETED
+        )
+        tehran_now = datetime.now(timezone(timedelta(hours=3, minutes=30)))
+        current_datetime = format_datetime(
+            tehran_now,
+            "EEEE d MMMM yyyy — HH:mm:ss",
+            locale="fa_IR",
+        )
+        return (
+            f"{profile}\n\n"
+            f"💰 موجودی کیف پول: 0 تومان\n"
+            f"🛍️ تعداد سرویس‌های خریداری‌شده: {purchased_services_count}\n\n"
+            f"شما هنوز هیچ سرویسی خریداری نکرده‌اید.\n\n"
+            f"📅 {current_datetime}"
+        )
 
     subscription = _("profile:message:subscription").format(devices=client_data.max_devices)
 
@@ -57,9 +75,6 @@ async def callback_profile(
     if user.server_id:
         client_data = await services.vpn.get_client_data(user)
         if client_data is None:
-            # A stale server assignment or a missing 3X-UI client must not
-            # prevent the profile page from opening. Treat it as having no
-            # active subscription and let the user purchase a new one.
             logger.warning(
                 f"No active VPN client data for user {user.tg_id}; showing profile without subscription."
             )
