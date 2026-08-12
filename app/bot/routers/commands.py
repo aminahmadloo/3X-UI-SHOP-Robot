@@ -5,6 +5,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from aiogram.utils.i18n import gettext as _
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ClientData, ServicesContainer, SubscriptionData
 from app.bot.routers.download.keyboard import platforms_keyboard
@@ -15,7 +16,7 @@ from app.bot.routers.referral.keyboard import referral_keyboard
 from app.bot.routers.subscription.keyboard import subscription_keyboard
 from app.bot.routers.support.keyboard import support_keyboard
 from app.bot.utils.constants import PREVIOUS_CALLBACK_KEY
-from app.bot.utils.navigation import NavDownload, NavMain, NavSubscription
+from app.bot.utils.navigation import NavMain, NavSubscription
 from app.config import Config
 from app.db.models import User
 
@@ -103,7 +104,7 @@ async def command_download(message: Message, state: FSMContext) -> None:
 async def command_referral(
     message: Message,
     user: User,
-    session,
+    session: AsyncSession,
     config: Config,
 ) -> None:
     bot_username = (await message.bot.get_me()).username
