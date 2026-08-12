@@ -42,6 +42,7 @@ class NavSubscription(str, Enum):
     DURATION = "duration"
     PROMOCODE = "promocode"
     GET_TRIAL = "get_trial"
+
     PAY = "pay"
     PAY_YOOKASSA = f"{PAY}_yookassa"
     PAY_TELEGRAM_STARS = f"{PAY}_telegram_stars"
@@ -66,19 +67,21 @@ class NavAdminTools(str, Enum):
     SYNC_SERVERS = "sync_servers"
     STATISTICS = "statistics"
     USER_EDITOR = "user_editor"
+
     INVITE_EDITOR = "invite_editor"
     CREATE_INVITE = "create_invite"
     DELETE_INVITE = "delete_invite"
-    EDIT_INVITE = "edit_invite"
     LIST_INVITES = "list_invites"
     SHOW_INVITE_PAGE = "show_invite_page"
     SHOW_INVITE_DETAILS = "show_invite_details"
     TOGGLE_INVITE_STATUS = "toggle_invite_status"
     CONFIRM_DELETE_INVITE = "confirm_delete_invite"
+
     PROMOCODE_EDITOR = "promocode_editor"
     CREATE_PROMOCODE = "create_promocode"
     DELETE_PROMOCODE = "delete_promocode"
     EDIT_PROMOCODE = "edit_promocode"
+
     NOTIFICATION = "notification"
     SEND_NOTIFICATION_USER = "send_notification_user"
     SEND_NOTIFICATION_ALL = "send_notification_all"
@@ -86,8 +89,11 @@ class NavAdminTools(str, Enum):
     LAST_NOTIFICATION = "last_notification"
     EDIT_NOTIFICATION = "edit_notification"
     DELETE_NOTIFICATION = "delete_notification"
+
     CREATE_BACKUP = "create_backup"
+
     MAINTENANCE_MODE = "maintenance_mode"
     MAINTENANCE_MODE_ENABLE = "maintenance_mode_enable"
     MAINTENANCE_MODE_DISABLE = "maintenance_mode_disable"
+
     RESTART_BOT = "restart_bot"
