@@ -10,6 +10,8 @@ class NavMain(str, Enum):
     CUSTOM_SERVICE = "custom_service"
     MY_SERVICES = "my_services"
     WALLET = "wallet"
+    WALLET_TOPUP = "wallet:topup"
+    WALLET_CUSTOM = "wallet:custom"
 
 
 class NavProfile(str, Enum):
@@ -74,6 +76,7 @@ class NavAdminTools(str, Enum):
     INVITE_EDITOR = "invite_editor"
     CREATE_INVITE = "create_invite"
     DELETE_INVITE = "delete_invite"
+    EDIT_INVITE = "edit_invite"
     LIST_INVITES = "list_invites"
     SHOW_INVITE_PAGE = "show_invite_page"
     SHOW_INVITE_DETAILS = "show_invite_details"
