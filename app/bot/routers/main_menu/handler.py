@@ -5,7 +5,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.redis import RedisStorage
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.i18n import I18n, gettext as _
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -115,26 +115,14 @@ async def show_language_menu(callback: CallbackQuery) -> None:
     await callback.answer()
     await callback.message.edit_text(
         "🌐 انتخاب زبان / Choose language / Выберите язык",
-        reply_markup=__import__("aiogram.types", fromlist=["InlineKeyboardMarkup"]).InlineKeyboardMarkup(
+        reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    __import__("aiogram.types", fromlist=["InlineKeyboardButton"]).InlineKeyboardButton(
-                        text="🇮🇷 فارسی", callback_data="language:fa"
-                    ),
-                    __import__("aiogram.types", fromlist=["InlineKeyboardButton"]).InlineKeyboardButton(
-                        text="🇬🇧 English", callback_data="language:en"
-                    ),
+                    InlineKeyboardButton(text="🇮🇷 فارسی", callback_data="language:fa"),
+                    InlineKeyboardButton(text="🇬🇧 English", callback_data="language:en"),
                 ],
-                [
-                    __import__("aiogram.types", fromlist=["InlineKeyboardButton"]).InlineKeyboardButton(
-                        text="🇷🇺 Русский", callback_data="language:ru"
-                    )
-                ],
-                [
-                    __import__("aiogram.types", fromlist=["InlineKeyboardButton"]).InlineKeyboardButton(
-                        text="🔙 بازگشت", callback_data=NavMain.MAIN_MENU
-                    )
-                ],
+                [InlineKeyboardButton(text="🇷🇺 Русский", callback_data="language:ru")],
+                [InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavMain.MAIN_MENU)],
             ]
         ),
     )
@@ -154,9 +142,8 @@ async def change_language(
     await User.update(session=session, tg_id=user.tg_id, language_code=language)
     user.language_code = language
 
-    # Telegram's command menu follows Telegram's app language when language-
-    # specific global scopes are configured. We intentionally use a chat scope
-    # so the bot's own language choice wins.
+    # Use a chat-specific command scope so the bot's selected language wins
+    # over Telegram's own app language.
     await set_user_commands(callback.bot, user.tg_id, language)
 
     await callback.answer(
