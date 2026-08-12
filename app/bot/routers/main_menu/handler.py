@@ -15,9 +15,10 @@ from app.bot.utils.commands import set_user_commands
 from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY
 from app.bot.utils.navigation import NavMain
 from app.config import Config
-from app.db.models import Invite, Referral, User
+from app.db.models import Invite, Referral, User, WalletTopupAmount
 
 from .keyboard import main_menu_keyboard
+from .wallet_keyboard import wallet_keyboard
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -202,8 +203,40 @@ async def callback_my_services(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data == NavMain.WALLET)
-async def callback_wallet(callback: CallbackQuery) -> None:
-    await callback.answer("💰 کیف پول به‌زودی فعال می‌شود.", show_alert=True)
+async def callback_wallet(
+    callback: CallbackQuery,
+    user: User,
+    services: ServicesContainer,
+    session: AsyncSession,
+) -> None:
+    logger.info(f"User {user.tg_id} opened wallet page.")
+    await callback.answer()
+
+    balance = await services.wallet.get_balance(user.tg_id)
+    amounts = await WalletTopupAmount.get_all(session)
+
+    if amounts:
+        amount_lines = _("wallet:message:topup_options")
+    else:
+        amount_lines = _("wallet:message:no_topup_amounts")
+
+    text = _("wallet:message:main").format(
+        balance=f"{balance:,}",
+        topup_options=amount_lines,
+    )
+    await callback.message.edit_text(
+        text=text,
+        reply_markup=wallet_keyboard(amounts),
+    )
+
+
+@router.callback_query(F.data.regexp(r"^wallet:topup:\d+$"))
+async def callback_wallet_topup(callback: CallbackQuery) -> None:
+    logger.info(f"User selected wallet top-up amount: {callback.data}")
+    await callback.answer(
+        _("wallet:popup:payment_unavailable"),
+        show_alert=True,
+    )
 
 
 @router.callback_query(F.data == NavMain.MAIN_MENU)
