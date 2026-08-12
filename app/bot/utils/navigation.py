@@ -7,6 +7,8 @@ class NavMain(str, Enum):
     CLOSE_NOTIFICATION = "close_notification"
     REDIRECT_TO_DOWNLOAD = "redirect_to_download"
     LANGUAGE = "language"
+    CUSTOM_SERVICE = "custom_service"
+    WALLET = "wallet"
 
 
 class NavProfile(str, Enum):
