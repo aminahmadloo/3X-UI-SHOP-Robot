@@ -4,6 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.utils.navigation import (
     NavAdminTools,
+    NavMain,
     NavProfile,
     NavReferral,
     NavSubscription,
@@ -67,5 +68,12 @@ def main_menu_keyboard(
                 callback_data=NavAdminTools.MAIN,
             )
         )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🌐 تغییر زبان",
+            callback_data=NavMain.LANGUAGE,
+        )
+    )
 
     return builder.as_markup()
