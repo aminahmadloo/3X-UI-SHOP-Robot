@@ -35,7 +35,7 @@ def main_menu_keyboard(
         )
 
     # Main customer actions.
-    # Order: 1) Buy Service, 2) Custom Service, 3) My Services, 4) Wallet.
+    # Order: 1) Buy Service, 2) Custom Service, 3) Account, 4) My Services, 5) Wallet.
     builder.row(
         InlineKeyboardButton(
             text="🛒 خرید سرویس",
@@ -50,8 +50,14 @@ def main_menu_keyboard(
     )
     builder.row(
         InlineKeyboardButton(
-            text="📦 سرویس های من",
+            text="👤 حساب کاربری",
             callback_data=NavProfile.MAIN,
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="📦 سرویس های من",
+            callback_data=NavMain.MY_SERVICES,
         )
     )
     builder.row(
