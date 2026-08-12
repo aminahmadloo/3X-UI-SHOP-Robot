@@ -1,7 +1,5 @@
 import logging
-from typing import Any
 
-from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import Wallet, WalletTransaction
@@ -19,7 +17,9 @@ class WalletService:
         async with self.session_factory() as session:
             return await Wallet.get_balance(session, user_tg_id)
 
-    async def get_recent_transactions(self, user_tg_id: int, limit: int = 10) -> list[WalletTransaction]:
+    async def get_recent_transactions(
+        self, user_tg_id: int, limit: int = 10
+    ) -> list[WalletTransaction]:
         async with self.session_factory() as session:
             return await WalletTransaction.get_recent(session, user_tg_id, limit)
 
