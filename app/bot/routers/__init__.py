@@ -13,6 +13,7 @@ from . import (
     referral,
     subscription,
     support,
+    wallet,
 )
 from .admin_tools.wallet_amounts_handler import router as wallet_amounts_router
 
@@ -23,6 +24,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         misc.error_handler.router,
         misc.notification_handler.router,
         commands.router,
+        wallet.handler.router,
         main_menu.handler.router,
         profile.handler.router,
         referral.handler.router,

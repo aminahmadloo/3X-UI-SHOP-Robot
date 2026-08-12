@@ -12,6 +12,7 @@ from .referral import ReferralService
 from .server_pool import ServerPoolService
 from .subscription import SubscriptionService
 from .vpn import VPNService
+from .wallet import WalletService
 
 
 async def initialize(
@@ -27,6 +28,7 @@ async def initialize(
     subscription = SubscriptionService(config=config, session_factory=session, vpn_service=vpn)
     payment_stats = PaymentStatsService(session_factory=session)
     invite_stats = InviteStatsService(session_factory=session, payment_stats_service=payment_stats)
+    wallet = WalletService(session_factory=session)
 
     return ServicesContainer(
         server_pool=server_pool,
@@ -37,4 +39,5 @@ async def initialize(
         subscription=subscription,
         payment_stats=payment_stats,
         invite_stats=invite_stats,
+        wallet=wallet,
     )
