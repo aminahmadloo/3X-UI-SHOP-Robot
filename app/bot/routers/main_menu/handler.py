@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import CallbackQuery, Message
-from aiogram.utils.i18n import gettext as _
+from aiogram.utils.i18n import I18n, gettext as _
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
@@ -32,9 +32,7 @@ async def process_invite_attribution(session: AsyncSession, user: User, invite_h
 
         user.source_invite_name = invite.name
         await session.commit()
-
         await Invite.increment_clicks(session=session, invite_id=invite.id)
-
         logger.info(f"User {user.tg_id} attributed to invite {invite.name}")
         return True
     except Exception as exception:
@@ -67,6 +65,24 @@ async def process_creating_referral(session: AsyncSession, user: User, referrer_
         return False
 
 
+async def render_main_menu(
+    message: Message,
+    user: User,
+    services: ServicesContainer,
+    config: Config,
+) -> None:
+    is_admin = await IsAdmin()(user_id=user.tg_id)
+    await message.answer(
+        text=_("main_menu:message:main").format(name=user.first_name),
+        reply_markup=main_menu_keyboard(
+            is_admin,
+            is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
+            is_trial_available=await services.subscription.is_trial_available(user),
+            is_referred_trial_available=await services.referral.is_referred_trial_available(user),
+        ),
+    )
+
+
 @router.message(Command(NavMain.START))
 async def command_main_menu(
     message: Message,
@@ -84,7 +100,6 @@ async def command_main_menu(
     if previous_message_id:
         try:
             await message.bot.delete_message(chat_id=user.tg_id, message_id=previous_message_id)
-            logger.debug(f"Main message for user {user.tg_id} deleted.")
         except Exception as exception:
             logger.error(f"Failed to delete main message for user {user.tg_id}: {exception}")
         finally:
@@ -109,6 +124,44 @@ async def command_main_menu(
         ),
     )
     await state.update_data({MAIN_MESSAGE_ID_KEY: main_menu.message_id})
+
+
+@router.callback_query(F.data == NavMain.LANGUAGE)
+async def show_language_menu(callback: CallbackQuery) -> None:
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "🌐 انتخاب زبان / Choose language / Выберите язык",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🇮🇷 فارسی", callback_data="language:fa"),
+                    InlineKeyboardButton(text="🇬🇧 English", callback_data="language:en"),
+                ],
+                [InlineKeyboardButton(text="🇷🇺 Русский", callback_data="language:ru")],
+                [InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavMain.MAIN_MENU)],
+            ]
+        ),
+    )
+
+
+@router.callback_query(F.data.regexp(r"^language:(fa|en|ru)$"))
+async def change_language(callback: CallbackQuery, user: User, session: AsyncSession) -> None:
+    language = callback.data.split(":", 1)[1]
+    await User.update(session=session, tg_id=user.tg_id, language_code=language)
+    user.language_code = language
+
+    i18n = I18n.get_current()
+    i18n.context.set_locale(language)
+    await callback.answer("زبان تغییر کرد" if language == "fa" else "Language changed")
+
+    services = callback.bot.get("services") if hasattr(callback.bot, "get") else None
+    if services is None:
+        # Services are available in dispatcher data, so this handler intentionally
+        # only updates the current menu. The next /start uses the persisted locale.
+        await callback.message.edit_text("زبان با موفقیت تغییر کرد. /start")
+        return
 
 
 @router.callback_query(F.data == NavMain.MAIN_MENU)
