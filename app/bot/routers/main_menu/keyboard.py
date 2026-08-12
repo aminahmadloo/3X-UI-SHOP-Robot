@@ -34,16 +34,30 @@ def main_menu_keyboard(
             )
         )
 
+    # Main customer actions.
     builder.row(
         InlineKeyboardButton(
-            text=_("main_menu:button:profile"),
-            callback_data=NavProfile.MAIN,
-        ),
-        InlineKeyboardButton(
-            text=_("main_menu:button:subscription"),
+            text="🛒 خرید سرویس",
             callback_data=NavSubscription.MAIN,
         ),
+        InlineKeyboardButton(
+            text="📦 سرویس های من",
+            callback_data=NavProfile.MAIN,
+        ),
     )
+    builder.row(
+        InlineKeyboardButton(
+            text="⚙️ خرید سرویس با مشخصات دلخواه",
+            callback_data=NavMain.CUSTOM_SERVICE,
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="💰 کیف پول",
+            callback_data=NavMain.WALLET,
+        ),
+    )
+
     builder.row(
         *(
             [
