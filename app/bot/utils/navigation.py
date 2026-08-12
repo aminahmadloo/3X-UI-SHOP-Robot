@@ -76,7 +76,6 @@ class NavAdminTools(str, Enum):
     INVITE_EDITOR = "invite_editor"
     CREATE_INVITE = "create_invite"
     DELETE_INVITE = "delete_invite"
-    EDIT_INVITE = "edit_invite"
     LIST_INVITES = "list_invites"
     SHOW_INVITE_PAGE = "show_invite_page"
     SHOW_INVITE_DETAILS = "show_invite_details"
