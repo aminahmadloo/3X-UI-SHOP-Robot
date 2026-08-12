@@ -142,8 +142,6 @@ async def change_language(
     await User.update(session=session, tg_id=user.tg_id, language_code=language)
     user.language_code = language
 
-    # Use a chat-specific command scope so the bot's selected language wins
-    # over Telegram's own app language.
     await set_user_commands(callback.bot, user.tg_id, language)
 
     await callback.answer(
@@ -157,8 +155,6 @@ async def change_language(
     await state.update_data({MAIN_MESSAGE_ID_KEY: callback.message.message_id})
     is_admin = await IsAdmin()(user_id=user.tg_id)
 
-    # The current update entered the middleware with the old locale. Switch
-    # the active I18n locale explicitly for the rest of this handler.
     with I18n.get_current().use_locale(language):
         await callback.message.edit_text(
             text=_("main_menu:message:main").format(name=user.first_name),
@@ -179,11 +175,6 @@ async def callback_custom_service(callback: CallbackQuery) -> None:
 @router.callback_query(F.data == NavMain.MY_SERVICES)
 async def callback_my_services(callback: CallbackQuery) -> None:
     await callback.answer("📦 بخش سرویس های من به‌زودی فعال می‌شود.", show_alert=True)
-
-
-@router.callback_query(F.data == NavMain.WALLET)
-async def callback_wallet(callback: CallbackQuery) -> None:
-    await callback.answer("💰 کیف پول به‌زودی فعال می‌شود.", show_alert=True)
 
 
 @router.callback_query(F.data == NavMain.MAIN_MENU)
