@@ -13,6 +13,7 @@ from . import (
     referral,
     subscription,
     support,
+    wallet,
 )
 
 
@@ -23,6 +24,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         misc.notification_handler.router,
         commands.router,
         main_menu.handler.router,
+        wallet.router,
         profile.handler.router,
         referral.handler.router,
         support.handler.router,
