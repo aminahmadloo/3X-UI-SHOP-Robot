@@ -7,6 +7,7 @@ from aiogram.types import TelegramObject
 from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.bot.utils.constants import DEFAULT_LANGUAGE
 from app.db.models import User
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,6 @@ class DBSessionMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        session: AsyncSession
         async with self.session() as session:
             tg_user: TelegramUser | None = event.event.from_user
 
@@ -39,9 +39,9 @@ class DBSessionMiddleware(BaseMiddleware):
                         vpn_id=str(uuid.uuid4()),
                         first_name=tg_user.first_name,
                         username=tg_user.username,
-                        language_code=tg_user.language_code,
+                        language_code=DEFAULT_LANGUAGE,
                     )
-                    logger.info(f"New user {user.tg_id} created.")
+                    logger.info(f"New user {user.tg_id} created with language {DEFAULT_LANGUAGE}.")
 
                 data["user"] = user
                 data["session"] = session
