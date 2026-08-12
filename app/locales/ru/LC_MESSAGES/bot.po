@@ -749,23 +749,23 @@ msgstr "🎁 ПОПРОБОВАТЬ БЕСПЛАТНО"
 
 #: app/bot/routers/main_menu/keyboard.py:38
 msgid "main_menu:button:profile"
-msgstr "👤 Профиль"
+msgstr "👤 حساب کاربری"
 
 #: app/bot/routers/main_menu/keyboard.py:42
 msgid "main_menu:button:subscription"
-msgstr "💳 Подписка"
+msgstr "🛒 خرید اشتراک"
 
 #: app/bot/routers/main_menu/keyboard.py:50
 msgid "main_menu:button:referral"
-msgstr "👥 Пригласить"
+msgstr "👥 دعوت دوستان"
 
 #: app/bot/routers/main_menu/keyboard.py:58
 msgid "main_menu:button:support"
-msgstr "🆘 Помощь"
+msgstr "🆘 پشتیبانی"
 
 #: app/bot/routers/main_menu/keyboard.py:66
 msgid "main_menu:button:admin_tools"
-msgstr "🛠 Административные инструменты"
+msgstr "🛠 مدیریت"
 
 #: app/bot/routers/misc/keyboard.py:10
 msgid "misc:button:close_notification"
@@ -1253,3 +1253,21 @@ msgstr[0] "1 месяц"
 msgstr[1] "{} месяца"
 msgstr[2] "{} месяцев"
 
+
+msgid "language:message:main"
+msgstr "🌐 <b>Выбор языка</b>\n\nВыберите предпочитаемый язык:"
+
+msgid "language:button:fa"
+msgstr "🇮🇷 فارسی"
+
+msgid "language:button:en"
+msgstr "🇬🇧 English"
+
+msgid "language:button:ru"
+msgstr "🇷🇺 Русский"
+
+msgid "language:popup:changed"
+msgstr "✅ Язык успешно изменён."
+
+msgid "language:button:menu"
+msgstr "🌐 Язык"

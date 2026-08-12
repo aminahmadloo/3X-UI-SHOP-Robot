@@ -8,11 +8,11 @@ msgstr ""
 "Project-Id-Version: bot 0.1\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
 "POT-Creation-Date: 2025-08-20 09:36+0500\n"
-"PO-Revision-Date: 2024-12-05 10:24+0500\n"
+"PO-Revision-Date: 2026-08-12 00:00+0000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
-"Language: en\n"
-"Language-Team: en <LL@li.org>\n"
-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"Language: fa\n"
+"Language-Team: fa <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -20,7 +20,7 @@ msgstr ""
 
 #: app/bot/middlewares/maintenance.py:45
 msgid "maintenance:ntf:try_later"
-msgstr "🚧 <i>The bot is in maintenance mode. Please try again later.</i>"
+msgstr "🚧 <i>ربات در حالت تعمیر و نگهداری است. لطفاً بعداً دوباره تلاش کنید.</i>"
 
 #: app/bot/payment_gateways/_gateway.py:91
 msgid "payment:event:payment_succeeded"
@@ -72,70 +72,70 @@ msgstr "YooMoney"
 
 #: app/bot/routers/admin_tools/admin_tools_handler.py:23
 msgid "admin_tools:message:main"
-msgstr "🛠 <b>Admin tools:</b>"
+msgstr "🛠 <b>ابزارهای مدیریت:</b>"
 
 #: app/bot/routers/admin_tools/backup_handler.py:34
 msgid "backup:popup:success"
-msgstr "✅ Backup sent successfully."
+msgstr "✅ فایل پشتیبان با موفقیت ارسال شد."
 
 #: app/bot/routers/admin_tools/backup_handler.py:38
 msgid "backup:popup:not_found"
-msgstr "❌ Database file not found."
+msgstr "❌ فایل پایگاه داده پیدا نشد."
 
 #: app/bot/routers/admin_tools/backup_handler.py:41
 msgid "backup:popup:failed"
-msgstr "❌ Failed to send backup."
+msgstr "❌ ارسال پشتیبان ناموفق بود."
 
 #: app/bot/routers/admin_tools/backup_handler.py:44
 msgid "backup:popup:error"
-msgstr "❌ An error occurred during backup."
+msgstr "❌ هنگام تهیه پشتیبان خطایی رخ داد."
 
 #: app/bot/routers/admin_tools/invites_handler.py:38
 msgid "invite_editor:message:main"
 msgstr ""
-"📊 <b>Invite Link Management</b>\n"
+"📊 <b>مدیریت لینک‌های دعوت</b>\n"
 "\n"
-"Here you can create and manage invite links to track user sources."
+"در این بخش می‌توانید لینک‌های دعوت ایجاد و مدیریت کنید و منابع ورود کاربران را پیگیری کنید."
 
 #: app/bot/routers/admin_tools/invites_handler.py:50
 msgid "invite_editor:message:enter_name"
 msgstr ""
-"<b>Enter a name for the invite link.</b>\n"
-"<i>This name will be used to generate a unique tracking code.</i>"
+"<b>نامی برای لینک دعوت وارد کنید.</b>\n"
+"<i>از این نام برای ایجاد کد رهگیری اختصاصی استفاده می‌شود.</i>"
 
 #: app/bot/routers/admin_tools/invites_handler.py:77
 msgid "invite_editor:message:created_success"
 msgstr ""
-"✅ <b>Invite link created successfully!</b>\n"
+"✅ <b>لینک دعوت با موفقیت ایجاد شد!</b>\n"
 "\n"
-"<b>Name:</b> {name}\n"
+"<b>نام:</b> {name}\n"
 "\n"
-"<b>Link:</b> <code>{link}</code>\n"
+"<b>لینک:</b> <code>{link}</code>\n"
 "\n"
-"<i>Share this link to track users coming from this source.</i>"
+"<i>این لینک را برای پیگیری کاربرانی که از این منبع وارد می‌شوند به اشتراک بگذارید.</i>"
 
 #: app/bot/routers/admin_tools/invites_handler.py:88
 msgid "invite_editor:ntf:create_failed"
-msgstr "❌ Failed to create invite link. Please try a different name."
+msgstr "❌ ایجاد لینک دعوت ناموفق بود. لطفاً نام دیگری امتحان کنید."
 
 #: app/bot/routers/admin_tools/invites_handler.py:103
 #: app/bot/routers/admin_tools/invites_handler.py:121
 msgid "invite_editor:message:list"
 msgstr ""
-"📊 <b>Invite Links</b>\n"
+"📊 <b>لینک‌های دعوت</b>\n"
 "\n"
-"<i>Select a link to see details:</i>"
+"<i>برای مشاهده جزئیات، یک لینک را انتخاب کنید:</i>"
 
 #: app/bot/routers/admin_tools/invites_handler.py:108
 msgid "invite_editor:message:no_invites"
-msgstr "<i>There are no invite links yet. Create your first invite link!</i>"
+msgstr "<i>هنوز هیچ لینک دعوتی وجود ندارد. اولین لینک دعوت خود را ایجاد کنید!</i>"
 
 #: app/bot/routers/admin_tools/invites_handler.py:140
 #: app/bot/routers/admin_tools/invites_handler.py:211
 #: app/bot/routers/admin_tools/invites_handler.py:253
 #: app/bot/routers/admin_tools/invites_handler.py:280
 msgid "invite_editor:popup:not_found"
-msgstr "❌ Invite link not found"
+msgstr "❌ لینک دعوت پیدا نشد"
 
 #: app/bot/routers/admin_tools/invites_handler.py:150
 #: app/bot/routers/admin_tools/invites_handler.py:223
@@ -149,218 +149,217 @@ msgstr "🔴"
 
 #: app/bot/routers/admin_tools/invites_handler.py:167
 msgid "invite_editor:popup:failed_get_stats"
-msgstr "❌ Failed get stats"
+msgstr "❌ دریافت آمار ناموفق بود"
 
 #: app/bot/routers/admin_tools/invites_handler.py:178
 msgid "invite_editor:revenue:none"
-msgstr "no data"
+msgstr "بدون داده"
 
 #: app/bot/routers/admin_tools/invites_handler.py:181
 msgid "invite_editor:message:details"
 msgstr ""
-"📊 <b>Invite Link Details</b>\n"
+"📊 <b>جزئیات لینک دعوت</b>\n"
 "\n"
-"<b>Name:</b> {name}\n"
-"<b>Link:</b> <code>{link}</code>\n"
-"<b>Clicks:</b> {clicks}\n"
-"<b>Created:</b> {created_at}\n"
-"<b>Status:</b> {status}\n"
+"<b>نام:</b> {name}\n"
+"<b>لینک:</b> <code>{link}</code>\n"
+"<b>تعداد کلیک:</b> {clicks}\n"
+"<b>تاریخ ایجاد:</b> {created_at}\n"
+"<b>وضعیت:</b> {status}\n"
 "\n"
-"<b>💵 Revenue:</b>\n"
+"<b>💵 درآمد:</b>\n"
 "{revenue_text}\n"
 "\n"
-"<b>👥 User Statistics:</b>\n"
-"• <b>Total users:</b> {users_count}\n"
-"• <b>Used trial:</b> {trial_users_count}\n"
-"• <b>Made payment:</b> {paid_users_count}\n"
-"• <b>Repeat customers:</b> {repeat_customers_count}"
+"<b>👥 آمار کاربران:</b>\n"
+"• <b>تعداد کل کاربران:</b> {users_count}\n"
+"• <b>استفاده از دوره آزمایشی:</b> {trial_users_count}\n"
+"• <b>پرداخت انجام داده‌اند:</b> {paid_users_count}\n"
+"• <b>مشتریان تکراری:</b> {repeat_customers_count}"
 
 #: app/bot/routers/admin_tools/invites_handler.py:228
 msgid "invite_editor:popup:status_changed"
-msgstr "Invite link status changed: {status}"
+msgstr "وضعیت لینک دعوت تغییر کرد: {status}"
 
 #: app/bot/routers/admin_tools/invites_handler.py:262
 msgid "invite_editor:message:confirm_delete"
-msgstr "Are you sure you want to delete Invite Link <b>{name}</b>?"
+msgstr "آیا مطمئن هستید که می‌خواهید لینک دعوت <b>{name}</b> را حذف کنید؟"
 
 #: app/bot/routers/admin_tools/invites_handler.py:293
 msgid "invite_editor:popup:deleted"
-msgstr "✅ Invite link \"{name}\" deleted"
+msgstr "✅ لینک دعوت \"{name}\" حذف شد"
 
 #: app/bot/routers/admin_tools/keyboard.py:21
 msgid "admin_tools:button:server_management"
-msgstr "🌐 Server management"
+msgstr "🌐 مدیریت سرورها"
 
 #: app/bot/routers/admin_tools/keyboard.py:28
 msgid "admin_tools:button:statistics"
-msgstr "📈 Statistics"
+msgstr "📈 آمار"
 
 #: app/bot/routers/admin_tools/keyboard.py:34
 msgid "admin_tools:button:user_editor"
-msgstr "👤 User editor"
+msgstr "👤 مدیریت کاربران"
 
 #: app/bot/routers/admin_tools/keyboard.py:40
 msgid "admin_tools:button:invite_editor"
-msgstr "🔗 Invite Links"
+msgstr "🔗 لینک‌های دعوت"
 
 #: app/bot/routers/admin_tools/keyboard.py:46
 msgid "admin_tools:button:promocode_editor"
-msgstr "🎟 Promocode editor"
+msgstr "🎟 مدیریت کدهای تخفیف"
 
 #: app/bot/routers/admin_tools/keyboard.py:52
 msgid "admin_tools:button:notification"
-msgstr "📣 Send notification"
+msgstr "📣 ارسال اعلان"
 
 #: app/bot/routers/admin_tools/keyboard.py:58
 msgid "admin_tools:button:create_backup"
-msgstr "💾 Create backup"
+msgstr "💾 ایجاد پشتیبان"
 
 #: app/bot/routers/admin_tools/keyboard.py:64
 msgid "admin_tools:button:maintenance_mode"
-msgstr "🚧 Maintenance mode"
+msgstr "🚧 حالت تعمیر و نگهداری"
 
 #: app/bot/routers/admin_tools/keyboard.py:70
 msgid "admin_tools:button:restart_bot"
-msgstr "🔄 Restart bot"
+msgstr "🔄 راه‌اندازی مجدد ربات"
 
 #: app/bot/routers/admin_tools/keyboard.py:76
 msgid "admin_tools:button:test_button"
-msgstr "🔍 Test button"
+msgstr "🔍 دکمه تست"
 
 #: app/bot/routers/admin_tools/keyboard.py:90
 msgid "promocode_editor:button:create"
-msgstr "🆕 Create"
+msgstr "🆕 ایجاد"
 
 #: app/bot/routers/admin_tools/keyboard.py:96
 msgid "promocode_editor:button:delete"
-msgstr "🗑 Delete"
+msgstr "🗑 حذف"
 
 #: app/bot/routers/admin_tools/keyboard.py:102
 msgid "promocode_editor:button:edit"
-msgstr "✏️ Edit"
+msgstr "✏️ ویرایش"
 
 #: app/bot/routers/admin_tools/keyboard.py:118 app/bot/utils/formatting.py:73
 #, python-brace-format
 msgid "1 day"
 msgid_plural "{} days"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "{} روز"
 
 #: app/bot/routers/admin_tools/keyboard.py:137
 msgid "maintenance_mode:button:disable"
-msgstr "🔴 Disable"
+msgstr "🔴 غیرفعال کردن"
 
 #: app/bot/routers/admin_tools/keyboard.py:144
 msgid "maintenance_mode:button:enable"
-msgstr "🟢 Enable"
+msgstr "🟢 فعال کردن"
 
 #: app/bot/routers/admin_tools/keyboard.py:160
 msgid "server_management:button:sync"
-msgstr "🔄 Sync"
+msgstr "🔄 همگام‌سازی"
 
 #: app/bot/routers/admin_tools/keyboard.py:167
 msgid "server_management:button:add"
-msgstr "🆕 Add"
+msgstr "🆕 افزودن"
 
 #: app/bot/routers/admin_tools/keyboard.py:192
 msgid "server_management:button:ping"
-msgstr "📶 Ping"
+msgstr "📶 پینگ"
 
 #: app/bot/routers/admin_tools/keyboard.py:198
 msgid "server_management:button:delete"
-msgstr "🗑 Delete"
+msgstr "🗑 حذف"
 
 #: app/bot/routers/admin_tools/keyboard.py:213
 msgid "server_management:button:confirm"
-msgstr "✅ Confirm"
+msgstr "✅ تأیید"
 
 #: app/bot/routers/admin_tools/keyboard.py:228
 msgid "notification:button:send_to_user"
-msgstr "📩 Send to user"
+msgstr "📩 ارسال به کاربر"
 
 #: app/bot/routers/admin_tools/keyboard.py:232
 msgid "notification:button:send_to_all"
-msgstr "📣 Send to all"
+msgstr "📣 ارسال به همه"
 
 #: app/bot/routers/admin_tools/keyboard.py:239
 msgid "notification:button:last_notification"
-msgstr "💬 Last notification"
+msgstr "💬 آخرین اعلان"
 
 #: app/bot/routers/admin_tools/keyboard.py:254
 msgid "notification:button:edit"
-msgstr "✏️ Edit"
+msgstr "✏️ ویرایش"
 
 #: app/bot/routers/admin_tools/keyboard.py:261
 msgid "notification:button:delete"
-msgstr "🗑 Delete"
+msgstr "🗑 حذف"
 
 #: app/bot/routers/admin_tools/keyboard.py:275
 msgid "notification:button:confirm"
-msgstr "✅ Confirm and send"
+msgstr "✅ تأیید و ارسال"
 
 #: app/bot/routers/admin_tools/keyboard.py:288
 msgid "invite_editor:button:create_invite"
-msgstr "➕ Create New Invite Link"
+msgstr "➕ ایجاد لینک دعوت جدید"
 
 #: app/bot/routers/admin_tools/keyboard.py:295
 msgid "invite_editor:button:list_invites"
-msgstr "📋 List Invite Links"
+msgstr "📋 فهرست لینک‌های دعوت"
 
 #: app/bot/routers/admin_tools/keyboard.py:326
 msgid "invite_editor:button:previous_page"
-msgstr "◀️ Previous page"
+msgstr "◀️ صفحه قبل"
 
 #: app/bot/routers/admin_tools/keyboard.py:334
 msgid "invite_editor:button:next_page"
-msgstr "▶️ Next page"
+msgstr "▶️ صفحه بعد"
 
 #: app/bot/routers/admin_tools/keyboard.py:353
 msgid "invite_editor:button:disable"
-msgstr "🔴 Disable"
+msgstr "🔴 غیرفعال کردن"
 
 #: app/bot/routers/admin_tools/keyboard.py:360
 msgid "invite_editor:button:enable"
-msgstr "🟢 Enable"
+msgstr "🟢 فعال کردن"
 
 #: app/bot/routers/admin_tools/keyboard.py:367
 msgid "invite_editor:button:delete"
-msgstr "🗑️ Delete"
+msgstr "🗑️ حذف"
 
 #: app/bot/routers/admin_tools/keyboard.py:382
 msgid "invite_editor:button:confirm_delete"
-msgstr "✅ Confirm deletion"
+msgstr "✅ تأیید حذف"
 
 #: app/bot/routers/admin_tools/maintenance_handler.py:24
 #: app/bot/routers/admin_tools/maintenance_handler.py:45
 msgid "maintenance:status:enabled"
-msgstr "enabled"
+msgstr "فعال"
 
 #: app/bot/routers/admin_tools/maintenance_handler.py:26
 #: app/bot/routers/admin_tools/maintenance_handler.py:65
 msgid "maintenance:status:disabled"
-msgstr "disabled"
+msgstr "غیرفعال"
 
 #: app/bot/routers/admin_tools/maintenance_handler.py:29
 #: app/bot/routers/admin_tools/maintenance_handler.py:45
 #: app/bot/routers/admin_tools/maintenance_handler.py:65
 msgid "maintenance:message:main"
-msgstr "🚧 <b>Maintenance mode:</b> {status}"
+msgstr "🚧 <b>حالت تعمیر و نگهداری:</b> {status}"
 
 #: app/bot/routers/admin_tools/maintenance_handler.py:50
 msgid "maintenance:popup:enabled"
 msgstr ""
-"🟢 Maintenance mode enabled.\n"
-"The bot is temporarily unavailable for users."
+"🟢 حالت تعمیر و نگهداری فعال شد.\n"
+"ربات موقتاً برای کاربران در دسترس نیست."
 
 #: app/bot/routers/admin_tools/maintenance_handler.py:70
 msgid "maintenance:popup:disabled"
 msgstr ""
-"🔴 Maintenance mode disabled.\n"
-"The bot is available for users."
+"🔴 حالت تعمیر و نگهداری غیرفعال شد.\n"
+"ربات برای کاربران در دسترس است."
 
 #: app/bot/routers/admin_tools/notification_handler.py:45
 msgid "notification:message:main"
-msgstr "<b>📣 Send notification:</b>"
+msgstr "<b>📣 ارسال اعلان:</b>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:70
 msgid "notification:message:send_to_user"
@@ -378,11 +377,11 @@ msgstr ""
 
 #: app/bot/routers/admin_tools/notification_handler.py:109
 msgid "notification:ntf:user_not_found"
-msgstr "<i>❌ User not found.</i>"
+msgstr "<i>❌ کاربر پیدا نشد.</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:115
 msgid "notification:ntf:invalid_user_id"
-msgstr "<i>❌ Invalid user id.</i>"
+msgstr "<i>❌ شناسه کاربر نامعتبر است.</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:136
 #: app/bot/routers/admin_tools/notification_handler.py:220
@@ -401,15 +400,15 @@ msgstr ""
 #: app/bot/routers/admin_tools/notification_handler.py:350
 #: app/bot/routers/admin_tools/notification_handler.py:375
 msgid "notification:ntf:invalid_message_text"
-msgstr "<i>❌ Invalid message text.</i>"
+msgstr "<i>❌ متن پیام نامعتبر است.</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:180
 msgid "notification:ntf:sent_success"
-msgstr "<i>✅ Notification sent successfully.</i>"
+msgstr "<i>✅ اعلان با موفقیت ارسال شد.</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:186
 msgid "notification:ntf:failed_to_send_message"
-msgstr "<i>❌ Failed to send notification.</i>"
+msgstr "<i>❌ ارسال اعلان ناموفق بود.</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:199
 msgid "notification:message:send_to_all"
@@ -420,7 +419,7 @@ msgstr ""
 
 #: app/bot/routers/admin_tools/notification_handler.py:260
 msgid "notification:ntf:sending_to_all"
-msgstr "<i>📣 Sending {count} notifications...</i>"
+msgstr "<i>📣 در حال ارسال {count} اعلان...</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:280
 msgid "notification:ntf:sent_success_all"
@@ -441,7 +440,7 @@ msgstr ""
 
 #: app/bot/routers/admin_tools/notification_handler.py:309
 msgid "notification:ntf:last_notification_not_found"
-msgstr "<i>❌ Last notification not found.</i>"
+msgstr "<i>❌ آخرین اعلان پیدا نشد.</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:322
 msgid "notification:message:edit_notification"
@@ -452,11 +451,11 @@ msgstr ""
 
 #: app/bot/routers/admin_tools/notification_handler.py:386
 msgid "notification:ntf:editing_notification"
-msgstr "<i>💬 Editing {count} notifications...</i>"
+msgstr "<i>💬 در حال ویرایش {count} اعلان...</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:420
 msgid "notification:ntf:edited_failed"
-msgstr "<i>❌ Failed to edit notification.</i>"
+msgstr "<i>❌ ویرایش اعلان ناموفق بود.</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:428
 msgid "notification:ntf:edited_success_all"
@@ -468,16 +467,16 @@ msgstr ""
 
 #: app/bot/routers/admin_tools/notification_handler.py:437
 msgid "notification:ntf:edited_success"
-msgstr "<i>✅ Notification edited successfully.</i>"
+msgstr "<i>✅ اعلان با موفقیت ویرایش شد.</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:443
 msgid "notification:ntf:no_messages_to_edit"
-msgstr "<i>❌ No messages to edit.</i>"
+msgstr "<i>❌ پیامی برای ویرایش وجود ندارد.</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:485
 #: app/bot/routers/admin_tools/notification_handler.py:508
 msgid "notification:ntf:deleted_failed"
-msgstr "<i>❌ Failed to delete notification.</i>"
+msgstr "<i>❌ حذف اعلان ناموفق بود.</i>"
 
 #: app/bot/routers/admin_tools/notification_handler.py:493
 msgid "notification:ntf:deleted_success_all"
@@ -489,11 +488,11 @@ msgstr ""
 
 #: app/bot/routers/admin_tools/notification_handler.py:502
 msgid "notification:ntf:deleted_success"
-msgstr "<i>✅ Notification deleted successfully.</i>"
+msgstr "<i>✅ اعلان با موفقیت حذف شد.</i>"
 
 #: app/bot/routers/admin_tools/promocode_handler.py:41
 msgid "promocode_editor:message:main"
-msgstr "🎟️ <b>Promocode editor:</b>"
+msgstr "🎟️ <b>مدیریت کدهای تخفیف:</b>"
 
 #: app/bot/routers/admin_tools/promocode_handler.py:60
 msgid "promocode_editor:message:create"
@@ -511,7 +510,7 @@ msgstr ""
 
 #: app/bot/routers/admin_tools/promocode_handler.py:88
 msgid "promocode_editor:ntf:create_failed"
-msgstr "❌ <i>Failed to create promocode.</i>"
+msgstr "❌ <i>ایجاد کد تخفیف ناموفق بود.</i>"
 
 #: app/bot/routers/admin_tools/promocode_handler.py:102
 msgid "promocode_editor:message:delete"
@@ -526,7 +525,7 @@ msgstr "✅ <i>Promocode {promocode} deleted successfully.</i>"
 
 #: app/bot/routers/admin_tools/promocode_handler.py:128
 msgid "promocode_editor:ntf:delete_failed"
-msgstr "❌ <i>Promocode not found.</i>"
+msgstr "❌ <i>کد تخفیف پیدا نشد.</i>"
 
 #: app/bot/routers/admin_tools/promocode_handler.py:142
 msgid "promocode_editor:message:edit"
@@ -547,7 +546,7 @@ msgstr ""
 
 #: app/bot/routers/admin_tools/promocode_handler.py:175
 msgid "promocode_editor:ntf:edit_failed"
-msgstr "❌ <i>Promocode not found or already activated.</i>"
+msgstr "❌ <i>کد تخفیف پیدا نشد یا قبلاً فعال شده است.</i>"
 
 #: app/bot/routers/admin_tools/promocode_handler.py:198
 msgid "promocode_editor:ntf:edited_success"
@@ -558,21 +557,22 @@ msgstr ""
 
 #: app/bot/routers/admin_tools/restart_handler.py:28
 msgid "restart_bot:popup:process"
-msgstr "🔄 Bot restarting..."
+msgstr "🔄 ربات در حال راه‌اندازی مجدد است..."
+ 
 
 #: app/bot/routers/admin_tools/server_handler.py:47
 msgid "server_management:message:main"
 msgstr ""
-"🌐 <b>Server management:</b>\n"
+"🌐 <b>مدیریت سرورها:</b>\n"
 "\n"
 
 #: app/bot/routers/admin_tools/server_handler.py:56
 msgid "server_management:message:empty"
-msgstr "<i>The list of servers is empty.</i>"
+msgstr "<i>فهرست سرورها خالی است.</i>"
 
 #: app/bot/routers/admin_tools/server_handler.py:79
 msgid "server_management:popup:synced"
-msgstr "Servers synced."
+msgstr "سرورها با موفقیت همگام‌سازی شدند."
 
 #: app/bot/routers/admin_tools/server_handler.py:89
 msgid "server_management:message:add"
@@ -594,39 +594,39 @@ msgstr "- max clients: {server_max_clients}\n"
 
 #: app/bot/routers/admin_tools/server_handler.py:99
 msgid "server_management:message:enter_name"
-msgstr "<i>Enter the server name</i>"
+msgstr "<i>نام سرور را وارد کنید.</i>"
 
 #: app/bot/routers/admin_tools/server_handler.py:103
 msgid "server_management:message:enter_host"
-msgstr "<i>Enter the server host (URL to panel)</i>"
+msgstr "<i>آدرس سرور را وارد کنید (URL پنل).</i>"
 
 #: app/bot/routers/admin_tools/server_handler.py:106
 msgid "server_management:message:enter_max_clients"
-msgstr "<i>Enter the maximum number of clients</i>"
+msgstr "<i>حداکثر تعداد کاربران را وارد کنید.</i>"
 
 #: app/bot/routers/admin_tools/server_handler.py:109
 msgid "server_management:message:confirm"
-msgstr "<i>Press confirm to add the server</i>"
+msgstr "<i>برای افزودن سرور، دکمه تأیید را بزنید.</i>"
 
 #: app/bot/routers/admin_tools/server_handler.py:161
 msgid "server_management:ntf:name_exists"
-msgstr "❌ <i>A server with that name already exists. Enter a different name.</i>"
+msgstr "❌ <i>سروری با این نام قبلاً وجود دارد. نام دیگری وارد کنید.</i>"
 
 #: app/bot/routers/admin_tools/server_handler.py:183
 msgid "server_management:ntf:invalid_host"
-msgstr "❌ <i>Enter a valid URL or IP address.</i>"
+msgstr "❌ <i>یک URL یا IP معتبر وارد کنید.</i>"
 
 #: app/bot/routers/admin_tools/server_handler.py:205
 msgid "server_management:ntf:invalid_max_clients"
-msgstr "❌ <i>Enter a valid number.</i>"
+msgstr "❌ <i>یک عدد معتبر وارد کنید.</i>"
 
 #: app/bot/routers/admin_tools/server_handler.py:238
 msgid "server_management:popup:added_success"
-msgstr "✅ Server added successfully."
+msgstr "✅ سرور با موفقیت اضافه شد."
 
 #: app/bot/routers/admin_tools/server_handler.py:244
 msgid "server_management:popup:add_failed"
-msgstr "❌ Failed to add the server."
+msgstr "❌ افزودن سرور ناموفق بود."
 
 #: app/bot/routers/admin_tools/server_handler.py:262
 msgid "server_management:message:status_online"
@@ -642,29 +642,29 @@ msgstr ""
 "️️️️🌐 <b>Server {server_name}:</b>\n"
 "\n"
 "<b>Host:</b> {host}\n"
-"<b>Status:</b> {status}\n"
+"<b>وضعیت:</b> {status}\n"
 "<b>Clients:</b> {clients}/{max_clients}\n"
 
 #: app/bot/routers/admin_tools/server_handler.py:296
 msgid "server_management:popup:ping"
-msgstr "🟢 Ping: {ping} ms."
+msgstr "🟢 پینگ: {ping} میلی‌ثانیه."
 
 #: app/bot/routers/admin_tools/server_handler.py:301
 msgid "server_management:popup:ping_failed"
-msgstr "❌ Failed to ping server {server_name}."
+msgstr "❌ پینگ سرور {server_name} ناموفق بود."
 
 #: app/bot/routers/admin_tools/server_handler.py:322
 msgid "server_management:popup:deleted_success"
-msgstr "✅ Server deleted successfully."
+msgstr "✅ سرور با موفقیت حذف شد."
 
 #: app/bot/routers/admin_tools/server_handler.py:327
 msgid "server_management:popup:delete_failed"
-msgstr "❌ Failed to delete the server."
+msgstr "❌ حذف سرور ناموفق بود."
 
 #: app/bot/routers/admin_tools/statistics_handler.py:18
 #: app/bot/routers/admin_tools/user_handler.py:18
 msgid "global:popup:development"
-msgstr "Under development!"
+msgstr "در حال توسعه!"
 
 #: app/bot/routers/download/handler.py:68
 #: app/bot/routers/download/handler.py:75
@@ -710,143 +710,142 @@ msgstr "📥 Download"
 
 #: app/bot/routers/download/keyboard.py:64
 msgid "download:button:connect"
-msgstr "🔌 Connect"
+msgstr "🔌 اتصال"
 
 #: app/bot/routers/main_menu/handler.py:103
 #: app/bot/routers/main_menu/handler.py:127
 #: app/bot/routers/main_menu/handler.py:158
 msgid "main_menu:message:main"
 msgstr ""
-"Welcome, {name}! 🎉\n"
+"خوش آمدید، {name}! 🎉\n"
 "\n"
-"3X-UI SHOP — your reliable assistant in the world of free internet. We "
-"offer safe and fast connections to any internet services using the XRAY "
-"protocol. Our service works even in China, Iran, and Russia.\n"
+"3X-UI SHOP — دستیار مطمئن شما در دنیای اینترنت آزاد. ما با استفاده از "
+"پروتکل XRAY، اتصال امن و سریع به سرویس‌های اینترنتی مختلف را ارائه می‌دهیم. "
+"سرویس ما حتی در چین، ایران و روسیه نیز کار می‌کند.\n"
 "\n"
-"🚀 HIGH SPEED\n"
-"🔒 SECURITY\n"
-"📱 SUPPORT FOR ALL PLATFORMS\n"
-"♾️ UNLIMITED\n"
-"✅ GUARANTEE AND TRIAL PERIOD\n"
-"👥 REFERRAL SYSTEM\n"
-
+"🚀 سرعت بالا\n"
+"🔒 امنیت\n"
+"📱 پشتیبانی از تمام پلتفرم‌ها\n"
+"♾️ حجم نامحدود\n"
+"✅ ضمانت و دوره آزمایشی\n"
+"👥 سیستم دعوت از دوستان\n"
+"
 #: app/bot/routers/main_menu/keyboard.py:25
 msgid "referral:button:get_referred_trial"
-msgstr "🎁 Claim gift"
+msgstr "🎁 دریافت هدیه"
 
 #: app/bot/routers/main_menu/keyboard.py:32
 msgid "subscription:button:get_trial"
-msgstr "🎁 TRY FOR FREE"
+msgstr "🎁 استفاده رایگان"
 
 #: app/bot/routers/main_menu/keyboard.py:38
 msgid "main_menu:button:profile"
-msgstr "👤 Profile"
+msgstr "👤 پروفایل"
 
 #: app/bot/routers/main_menu/keyboard.py:42
 msgid "main_menu:button:subscription"
-msgstr "💳 Subscription"
+msgstr "💳 خرید اشتراک"
 
 #: app/bot/routers/main_menu/keyboard.py:50
 msgid "main_menu:button:referral"
-msgstr "👥 Referral"
+msgstr "👥 دعوت دوستان"
 
 #: app/bot/routers/main_menu/keyboard.py:58
 msgid "main_menu:button:support"
-msgstr "🆘 Support"
+msgstr "🆘 پشتیبانی"
 
 #: app/bot/routers/main_menu/keyboard.py:66
 msgid "main_menu:button:admin_tools"
-msgstr "🛠 Admin tools"
+msgstr "🛠 مدیریت"
 
 #: app/bot/routers/misc/keyboard.py:10
 msgid "misc:button:close_notification"
-msgstr "🔕 Close"
+msgstr "🔕 بستن اعلان"
 
 #: app/bot/routers/misc/keyboard.py:23
 msgid "misc:button:back"
-msgstr "◀️ Back"
+msgstr "◀️ بازگشت"
 
 #: app/bot/routers/misc/keyboard.py:33
 msgid "misc:button:back_to_main_menu"
-msgstr "◀️ Back to main menu"
+msgstr "◀️ بازگشت به منوی اصلی"
 
 #: app/bot/routers/misc/keyboard.py:43
 msgid "misc:button:cancel"
-msgstr "❌ Cancel"
+msgstr "❌ لغو"
 
 #: app/bot/routers/profile/handler.py:22
 msgid "profile:message:main"
 msgstr ""
-"👤 <b>Your profile:</b>\n"
-"Name: {name}\n"
-"ID: {id}\n"
+"👤 <b>پروفایل شما:</b>\n"
+"نام: {name}\n"
+"شناسه: {id}\n"
 "\n"
 
 #: app/bot/routers/profile/handler.py:25
 msgid "profile:message:subscription_none"
 msgstr ""
-"<i>You don't have a subscription yet. To purchase one, go to the "
-"subscription page by clicking the button below.</i>\n"
+"<i>شما هنوز اشتراکی ندارید. برای خرید اشتراک، از طریق دکمه زیر وارد صفحه "
+"خرید اشتراک شوید.</i>\n"
 
 #: app/bot/routers/profile/handler.py:28
 msgid "profile:message:subscription"
 msgstr ""
-"📅 <b>Subscription:</b>\n"
-"Devices: {devices}\n"
+"📅 <b>اشتراک:</b>\n"
+"تعداد دستگاه‌ها: {devices}\n"
 
 #: app/bot/routers/profile/handler.py:31
 msgid "profile:message:subscription_expiry_time"
 msgstr ""
-"Expires in: {expiry_time}\n"
+"تاریخ انقضا: {expiry_time}\n"
 "\n"
 
 #: app/bot/routers/profile/handler.py:33
 msgid "profile:message:subscription_expired"
 msgstr ""
-"⚠️ <i>Subscription period has expired.</i>\n"
+"⚠️ <i>مدت اشتراک شما به پایان رسیده است.</i>\n"
 "\n"
 
 #: app/bot/routers/profile/handler.py:36
 msgid "profile:message:statistics"
 msgstr ""
-"📊 <b>Statistics:</b>\n"
-"Total: {total}\n"
-"Uploaded: ↑ {up}\n"
-"Downloaded: ↓ {down}"
+"📊 <b>آمار:</b>\n"
+"کل: {total}\n"
+"آپلود: ↑ {up}\n"
+"دانلود: ↓ {down}"
 
 #: app/bot/routers/profile/handler.py:61
 #: app/bot/routers/subscription/subscription_handler.py:68
 msgid "subscription:popup:error_fetching_data"
-msgstr "❌ Error fetching data. Please try again later."
+msgstr "❌ دریافت اطلاعات با خطا مواجه شد. لطفاً بعداً دوباره تلاش کنید."
 
 #: app/bot/routers/profile/handler.py:84
 msgid "profile:message:key"
 msgstr ""
-"🔑 <b>Your key:</b> <i>(Closes after {seconds_text})</i>\n"
+"🔑 <b>کلید شما:</b> <i>(پس از {seconds_text} بسته می‌شود)</i>\n"
 "<pre>{key}</pre>"
 
 #: app/bot/routers/profile/handler.py:85
 msgid "10 seconds"
-msgstr ""
+msgstr "۱۰ ثانیه"
 
 #: app/bot/routers/profile/handler.py:88
 #, python-brace-format
 msgid "1 second"
 msgid_plural "{} seconds"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "{} ثانیه"
 
 #: app/bot/routers/profile/keyboard.py:14
 msgid "profile:button:buy_subscription"
-msgstr "💳 Buy subscription"
+msgstr "💳 خرید اشتراک"
 
 #: app/bot/routers/profile/keyboard.py:28
 msgid "profile:button:show_key"
-msgstr "🔑 Show key"
+msgstr "🔑 نمایش کلید"
 
 #: app/bot/routers/profile/keyboard.py:34
 msgid "profile:button:connect"
-msgstr "🔌 Connect"
+msgstr "🔌 اتصال"
 
 #: app/bot/routers/referral/handler.py:35
 msgid "referral:message:user_summary"
@@ -901,7 +900,7 @@ msgstr ""
 
 #: app/bot/routers/referral/handler.py:142
 msgid "referral:popup:no_available_servers"
-msgstr "❌ No available servers found. Please try again later."
+msgstr "❌ سرور قابل استفاده‌ای پیدا نشد. لطفاً بعداً دوباره تلاش کنید."
 
 #: app/bot/routers/referral/handler.py:151
 msgid "referral:popup:trial_unavailable_for_user"
@@ -928,248 +927,247 @@ msgstr ""
 #: app/bot/routers/referral/keyboard.py:14
 #: app/bot/routers/subscription/keyboard.py:185
 msgid "subscription:button:connect"
-msgstr "🔌 Connect"
+msgstr "🔌 اتصال"
 
 #: app/bot/routers/subscription/keyboard.py:27
 #: app/bot/routers/subscription/keyboard.py:51
 msgid "subscription:button:change"
-msgstr "💳 Change subscription"
+msgstr "💳 تغییر اشتراک"
 
 #: app/bot/routers/subscription/keyboard.py:40
 msgid "subscription:button:buy"
-msgstr "💳 Buy subscription"
+msgstr "💳 خرید اشتراک"
 
 #: app/bot/routers/subscription/keyboard.py:46
 msgid "subscription:button:extend"
-msgstr "💳 Extend subscription"
+msgstr "💳 تمدید اشتراک"
 
 #: app/bot/routers/subscription/keyboard.py:56
 msgid "subscription:button:activate_promocode"
-msgstr "🎟️ Activate promocode"
+msgstr "🎟️ فعال‌سازی کد تخفیف"
 
 #: app/bot/routers/subscription/keyboard.py:111
 msgid "subscription:button:change_devices"
-msgstr "◀️ Change number of devices"
+msgstr "◀️ تغییر تعداد دستگاه‌ها"
 
 #: app/bot/routers/subscription/keyboard.py:122
 msgid "subscription:button:pay"
-msgstr "💳 Pay"
+msgstr "💳 پرداخت"
 
 #: app/bot/routers/subscription/keyboard.py:128
 msgid "subscription:button:change_payment_method"
-msgstr "◀️ Change payment method"
+msgstr "◀️ تغییر روش پرداخت"
 
 #: app/bot/routers/subscription/keyboard.py:158
 msgid "subscription:button:change_duration"
-msgstr "◀️ Change duration"
+msgstr "◀️ تغییر مدت اشتراک"
 
 #: app/bot/routers/subscription/keyboard.py:171
 msgid "subscription:button:download_app"
-msgstr "🔌 Connect"
+msgstr "🔌 اتصال"
 
 #: app/bot/routers/subscription/payment_handler.py:58
 msgid "payment:message:order_extend"
 msgstr ""
-"🛒 <b>Confirmation of extension:</b>\n"
+"🛒 <b>تأیید تمدید اشتراک:</b>\n"
 "\n"
-"Devices: {devices}\n"
-"Extension period: {duration}\n"
-"Price: {price} {currency}\n"
+"تعداد دستگاه‌ها: {devices}\n"
+"مدت تمدید: {duration}\n"
+"قیمت: {price} {currency}\n"
 "\n"
-"<i>The number of devices will remain the same, and the new subscription "
-"duration will be added to the remaining time!</i>"
+"<i>تعداد دستگاه‌ها بدون تغییر باقی می‌ماند و "
+"مدت اشتراک جدید به زمان باقی‌مانده اضافه می‌شود!</i>"
 
 #: app/bot/routers/subscription/payment_handler.py:60
 msgid "payment:message:order_change"
 msgstr ""
-"🛒 <b>Confirmation of change:</b>\n"
+"🛒 <b>تأیید تغییر اشتراک:</b>\n"
 "\n"
-"Devices: {devices}\n"
-"Duration: {duration}\n"
-"Price: {price} {currency}\n"
+"تعداد دستگاه‌ها: {devices}\n"
+"مدت اشتراک: {duration}\n"
+"قیمت: {price} {currency}\n"
 "\n"
-"<i>The number of devices and subscription duration will be changed "
-"without recalculating the previous data!</i>"
+"<i>تعداد دستگاه‌ها و مدت اشتراک "
+"بدون محاسبه مجدد اطلاعات قبلی تغییر خواهند کرد!</i>"
 
 #: app/bot/routers/subscription/payment_handler.py:62
 msgid "payment:message:order"
 msgstr ""
-"🛒 <b>Confirmation of purchase:</b>\n"
+"🛒 <b>تأیید خرید اشتراک:</b>\n"
 "\n"
-"Devices: {devices}\n"
-"Duration: {duration}\n"
-"Price: {price} {currency}\n"
+"تعداد دستگاه‌ها: {devices}\n"
+"مدت اشتراک: {duration}\n"
+"قیمت: {price} {currency}\n"
 "\n"
-"<i>After the payment, a unique key for connecting to the VPN will be "
-"generated for you. The key will be available on your profile page.</i>"
+"<i>پس از پرداخت، یک کلید اختصاصی برای اتصال به VPN "
+"برای شما ایجاد می‌شود. این کلید در صفحه پروفایل شما قابل مشاهده خواهد بود.</i>"
 
 #: app/bot/routers/subscription/payment_handler.py:75
 msgid "payment:popup:error"
-msgstr "❌ An error occurred during creating payment."
+msgstr "❌ هنگام ایجاد پرداخت خطایی رخ داد."
 
 #: app/bot/routers/subscription/promocode_handler.py:31
 msgid "promocode:message:main"
 msgstr ""
-"🎟️ <b>Activate promocode:</b>\n"
+"🎟️ <b>فعال‌سازی کد تخفیف:</b>\n"
 "\n"
-"<i>Send promocode to activation</i>"
+"<i>کد تخفیف را برای فعال‌سازی ارسال کنید</i>"
 
 #: app/bot/routers/subscription/promocode_handler.py:52
 msgid "promocode:ntf:no_available_servers"
-msgstr "❌ <i>No available servers found. Please try again later.</i>"
+msgstr "❌ <i>سرور قابل استفاده‌ای پیدا نشد. لطفاً بعداً دوباره تلاش کنید.</i>"
 
 #: app/bot/routers/subscription/promocode_handler.py:63
 msgid "promocode:message:activated_success"
 msgstr ""
-"✅ <b>Promocode {promocode} was successfully activated!</b>\n"
+"✅ <b>کد تخفیف {promocode} با موفقیت فعال شد!</b>\n"
 "\n"
-"<i>You have received {duration} to your subscription.</i>"
+"<i>{duration} به مدت اشتراک شما اضافه شد.</i>"
 
 #: app/bot/routers/subscription/promocode_handler.py:72
 msgid "promocode:ntf:activate_failed"
-msgstr "❌ <i>Failed to activate promocode, please try again later.</i>"
+msgstr "❌ <i>فعال‌سازی کد تخفیف ناموفق بود، لطفاً بعداً دوباره تلاش کنید.</i>"
 
 #: app/bot/routers/subscription/promocode_handler.py:75
 msgid "promocode:ntf:activate_invalid"
-msgstr "❌ <i>Promocode is invalid or has already been activated.</i>"
+msgstr "❌ <i>کد تخفیف نامعتبر است یا قبلاً استفاده شده است.</i>"
 
 #: app/bot/routers/subscription/subscription_handler.py:34
 msgid "subscription:message:expired"
 msgstr ""
-"⚠️ <b>Subscription period has expired!</b>\n"
+"⚠️ <b>مدت اشتراک شما به پایان رسیده است!</b>\n"
 "\n"
-"<i>Extend your subscription to continue using our service.</i>"
+"<i>برای ادامه استفاده از سرویس، اشتراک خود را تمدید کنید.</i>"
 
 #: app/bot/routers/subscription/subscription_handler.py:36
 msgid "subscription:message:active"
 msgstr ""
-"✅ <b>You already have an active subscription:</b>\n"
+"✅ <b>شما در حال حاضر یک اشتراک فعال دارید:</b>\n"
 "\n"
-"Devices: {devices}\n"
-"Expires on: {expiry_time}"
+"تعداد دستگاه‌ها: {devices}\n"
+"تاریخ انقضا: {expiry_time}"
 
 #: app/bot/routers/subscription/subscription_handler.py:41
 msgid "subscription:message:not_active"
 msgstr ""
-"⚠️ <b>You do not have an active subscription!</b>\n"
+"⚠️ <b>شما اشتراک فعالی ندارید!</b>\n"
 "\n"
-"<i>It seems that you haven't purchased a subscription yet. Buy a "
-"subscription to start using our service.</i>"
+"<i>به نظر می‌رسد هنوز اشتراکی خریداری نکرده‌اید. برای شروع استفاده از سرویس، "
+"یک اشتراک خریداری کنید.</i>"
 
 #: app/bot/routers/subscription/subscription_handler.py:91
 msgid "subscription:popup:error_fetching_plan"
-msgstr "❌ Your plan is no longer supported. You need to change your subscription."
+msgstr "❌ پلن فعلی شما دیگر پشتیبانی نمی‌شود. لطفاً اشتراک خود را تغییر دهید."
 
 #: app/bot/routers/subscription/subscription_handler.py:99
 #: app/bot/routers/subscription/subscription_handler.py:161
 msgid "subscription:message:duration"
-msgstr "⏳ <b>Specify the duration:</b>"
+msgstr "⏳ <b>مدت اشتراک را انتخاب کنید:</b>"
 
 #: app/bot/routers/subscription/subscription_handler.py:119
 #: app/bot/routers/subscription/subscription_handler.py:145
 msgid "subscription:message:devices"
-msgstr "📱 <b>Select the number of devices:</b>"
+msgstr "📱 <b>تعداد دستگاه‌ها را انتخاب کنید:</b>"
 
 #: app/bot/routers/subscription/subscription_handler.py:138
 #: app/bot/routers/subscription/trial_handler.py:35
 msgid "subscription:popup:no_available_servers"
-msgstr "❌ No available servers found. Please try again later."
+msgstr "❌ سرور قابل استفاده‌ای پیدا نشد. لطفاً بعداً دوباره تلاش کنید."
 
 #: app/bot/routers/subscription/subscription_handler.py:181
 msgid "subscription:message:payment_method"
-msgstr "💳 <b>Choose a payment method:</b>"
+msgstr "💳 <b>روش پرداخت را انتخاب کنید:</b>"
 
 #: app/bot/routers/subscription/trial_handler.py:43
 msgid "subscription:popup:trial_unavailable_for_user"
-msgstr "❌ Trial is not available for you now."
+msgstr "❌ در حال حاضر امکان استفاده از دوره آزمایشی برای شما وجود ندارد."
 
 #: app/bot/routers/subscription/trial_handler.py:61
 msgid "subscription:popup:trial_activate_failed"
-msgstr "❌ Failed to activate trial period. Please, try later."
+msgstr "❌ فعال‌سازی دوره آزمایشی ناموفق بود. لطفاً بعداً دوباره تلاش کنید."
 
 #: app/bot/routers/support/handler.py:21
 msgid "support:message:main"
 msgstr ""
-"🆘 <b>Support:</b>\n"
+"🆘 <b>پشتیبانی:</b>\n"
 "\n"
-"For collaboration, improvements to functionality, and any other "
-"inquiries, please contact the operator."
+"برای همکاری، پیشنهادهای مربوط به بهبود خدمات و هرگونه "
+"سؤال یا درخواست دیگری، با پشتیبانی تماس بگیرید."
 
 #: app/bot/routers/support/handler.py:30
 msgid "support:message:how_to_connect"
 msgstr ""
-"ℹ️ <b>How to connect:</b>\n"
+"ℹ️ <b>نحوه اتصال:</b>\n"
 "\n"
-"After subscribing, you will be given an access key that you can use to "
-"connect to our VPN. If you have a key, go to the application download "
-"page and connect the key."
+"پس از خرید اشتراک، یک کلید دسترسی دریافت می‌کنید که می‌توانید از آن برای "
+"اتصال به VPN استفاده کنید. اگر کلید دارید، به صفحه دانلود برنامه "
+"بروید و کلید خود را در برنامه وارد کنید."
 
 #: app/bot/routers/support/handler.py:39
 msgid "support:message:vpn_not_working"
 msgstr ""
-"ℹ️ <b>VPN not working:</b>\n"
+"ℹ️ <b>عدم اتصال VPN:</b>\n"
 "\n"
-"There could be several reasons why VPN is not working. Please check the "
-"following:\n"
+"ممکن است VPN به دلایل مختلفی کار نکند. موارد زیر را بررسی کنید:"
+
 "\n"
-"- Ensure your internet connection is stable.\n"
-"- Make sure your subscription is active.\n"
-"- Try reconnecting or restarting the app.\n"
+"- از پایدار بودن اتصال اینترنت خود مطمئن شوید.\n"
+"- مطمئن شوید اشتراک شما فعال است.\n"
+"- اتصال را مجدداً برقرار کنید یا برنامه را دوباره اجرا کنید.\n"
 "\n"
-"If the issue persists, please contact support."
+"اگر مشکل همچنان ادامه داشت، با پشتیبانی تماس بگیرید."
 
 #: app/bot/routers/support/keyboard.py:10
 msgid "support:button:contact"
-msgstr "👨‍💻 Contact the operator"
+msgstr "👨‍💻 تماس با پشتیبانی"
 
 #: app/bot/routers/support/keyboard.py:18
 msgid "support:button:how_to_connect"
-msgstr "❓ How to connect"
+msgstr "❓ نحوه اتصال"
 
 #: app/bot/routers/support/keyboard.py:24
 msgid "support:button:vpn_not_working"
-msgstr "❓ VPN not working"
+msgstr "❓ VPN متصل نمی‌شود"
 
 #: app/bot/routers/support/keyboard.py:39
 msgid "support:button:buy_subscription"
-msgstr "💳 Buy subscription"
+msgstr "💳 خرید اشتراک"
 
 #: app/bot/routers/support/keyboard.py:45
 msgid "support:button:download_app"
-msgstr "📥 Download app"
+msgstr "📥 دانلود برنامه"
 
 #: app/bot/services/notification.py:171
 msgid "payment:message:purchase_success"
 msgstr ""
-"✅ <b>Payment successful!</b>\n"
+"✅ <b>پرداخت با موفقیت انجام شد!</b>\n"
 "\n"
-"🔑 <b>Your key:</b> <pre>{key}</pre>\n"
-"<i>The key will be saved in your profile.</i>\n"
+"🔑 <b>کلید اتصال شما:</b> <pre>{key}</pre>\n"
+"<i>کلید شما در پروفایل نیز ذخیره شده است.</i>\n"
 "\n"
-"To start using our service, click the `🔌 Connect` button and follow the "
-"instructions."
+"برای شروع استفاده از سرویس، روی دکمه 🔌 اتصال بزنید و مراحل را دنبال کنید.\n"
 
 #: app/bot/services/notification.py:184
 msgid "payment:message:extend_success"
 msgstr ""
-"✅ <b>Payment successful!</b>\n"
+"✅ <b>پرداخت با موفقیت انجام شد!</b>\n"
 "\n"
-"Your subscription has been extended for {duration}."
+"اشتراک شما به مدت {duration} تمدید شد."
 
 #: app/bot/services/notification.py:198
 msgid "payment:message:change_success"
 msgstr ""
-"✅ <b>Payment successful!</b>\n"
+"✅ <b>پرداخت با موفقیت انجام شد!</b>\n"
 "\n"
-"Your subscription has been updated to {device} and {duration}."
+"اشتراک شما به {device} دستگاه و {duration} تغییر یافت."
 
 #: app/bot/tasks/subscription_expiry.py:55
 msgid "task:message:subscription_expiry"
 msgstr ""
-"⚠️ <b>Your subscription will expire soon!</b>\n"
+"⚠️ <b>اشتراک شما به‌زودی منقضی می‌شود!</b>\n"
 "\n"
-"Devices: {devices}\n"
-"Expires in: {expiry_time}"
+"تعداد دستگاه‌ها: {devices}\n"
+"زمان باقی‌مانده: {expiry_time}"
 
 #: app/bot/utils/formatting.py:18 app/bot/utils/formatting.py:20
 #: app/bot/utils/formatting.py:28
@@ -1220,26 +1218,23 @@ msgstr ""
 #, python-brace-format
 msgid "1 device"
 msgid_plural "{} devices"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "{} دستگاه"
 
 #: app/bot/utils/formatting.py:70
 #, python-brace-format
 msgid "1 year"
 msgid_plural "{} years"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "{} سال"
 
 #: app/bot/utils/formatting.py:72
 #, python-brace-format
 msgid "1 month"
 msgid_plural "{} months"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "{} ماه"
 
 
 msgid "language:message:main"
-msgstr "🌐 <b>Select Language</b>\n\nChoose your preferred language:"
+msgstr "🌐 <b>انتخاب زبان</b>\n\nزبان مورد نظر خود را انتخاب کنید:"
 
 msgid "language:button:fa"
 msgstr "🇮🇷 فارسی"
@@ -1251,7 +1246,7 @@ msgid "language:button:ru"
 msgstr "🇷🇺 Русский"
 
 msgid "language:popup:changed"
-msgstr "✅ Language changed successfully."
+msgstr "✅ زبان با موفقیت تغییر کرد."
 
 msgid "language:button:menu"
-msgstr "🌐 Language"
+msgstr "🌐 زبان"

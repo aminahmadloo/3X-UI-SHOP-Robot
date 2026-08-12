@@ -174,3 +174,7 @@ cython_debug/
 plans.json
 
 tmp_test/
+# Local backups
+*.backup
+*.backup.*
+*.bak

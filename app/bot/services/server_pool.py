@@ -16,6 +16,71 @@ class Connection:
     api: AsyncApi
 
 
+
+async def login_xui(api: AsyncApi, server: Server) -> None:
+    import httpx
+
+    base_url = server.host.rstrip("/")
+
+    async with httpx.AsyncClient(
+        verify=False,
+        follow_redirects=True,
+        timeout=20.0,
+    ) as http:
+        csrf_response = await http.get(
+            f"{base_url}/csrf-token",
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        csrf_response.raise_for_status()
+
+        csrf_data = csrf_response.json()
+        csrf_token = csrf_data.get("obj")
+
+        if not csrf_token:
+            raise RuntimeError(
+                f"CSRF token missing: {csrf_data}"
+            )
+
+        data = {
+            "username": api.client.username,
+            "password": api.client.password,
+        }
+
+        if api.client.token:
+            data["loginSecret"] = api.client.token
+
+        login_response = await http.post(
+            f"{base_url}/login",
+            headers={
+                "X-CSRF-Token": csrf_token,
+                "X-Requested-With": "XMLHttpRequest",
+                "Content-Type": "application/json",
+            },
+            json=data,
+        )
+
+        login_response.raise_for_status()
+
+        result = login_response.json()
+
+        if not result.get("success"):
+            raise RuntimeError(
+                f"3X-UI login failed: {result}"
+            )
+
+        cookie = next(
+            (c for c in http.cookies.jar if c.name == "3x-ui"),
+            None,
+        )
+
+        if cookie is None:
+            raise RuntimeError(
+                "3X-UI login succeeded but session cookie was not found"
+            )
+
+        api.session = cookie.value
+        api.cookie_name = cookie.name
+
 class ServerPoolService:
     def __init__(self, config: Config, session: async_sessionmaker) -> None:
         self.config = config
@@ -34,7 +99,7 @@ class ServerPoolService:
                 logger=logging.getLogger(f"xui_{server.name}"),
             )
             try:
-                await api.login()
+                await login_xui(api, server)
                 server.online = True
                 server_conn = Connection(server=server, api=api)
                 self._servers[server.id] = server_conn
