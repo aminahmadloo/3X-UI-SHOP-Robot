@@ -98,15 +98,39 @@ async def command_main_menu(
             await process_invite_attribution(session=session, user=user, invite_hash=command.args)
 
     is_admin = await IsAdmin()(user_id=user.tg_id)
-    main_menu = await message.answer(
-        text=_("main_menu:message:main").format(name=user.first_name),
-        reply_markup=main_menu_keyboard(
-            is_admin,
-            is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
-            is_trial_available=await services.subscription.is_trial_available(user),
-            is_referred_trial_available=await services.referral.is_referred_trial_available(user),
-        ),
+    reply_markup = main_menu_keyboard(
+        is_admin,
+        is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
+        is_trial_available=await services.subscription.is_trial_available(user),
+        is_referred_trial_available=await services.referral.is_referred_trial_available(user),
     )
+
+    if is_new_user:
+        await message.answer(
+            "v2ray 🔐: <b>توجه هرگز کلیک نکنید👇❗️❗️❗️❗️</b>\n\n"
+            "❕❕❕❕❕❕❕❕❕\n"
+            "تبلیغات نمایش داده شده در بالای پیوی ربات هیچگونه ارتباطی با تیم تونل وی پی ان ندارد و توسط تلگرام بدون هیچ نظارتی گذاشته می‌شود که تونل وی پی ان هیچگونه دسترسی جهت حذف آن ندارد.\n\n"
+            "با توجه به این که هیچ نظارتی توسط تلگرام بر روی این تبلیغات وجود ندارد اکثرا کلاه برداری میباشد و ممکن است به جز عدم تحویل محصول به شما اطلاعات کارت شما به سرقت برود خواهشمندیم به هیچ وجه روی این تبلیغات کلیک نکنید عواقب آن بر عهده خود شما میباشد.\n\n"
+            "<b>تاکنون تعدادی از مشتریان کلیک و خریداری کردند و از آنها کلاه برداری شده.</b>"
+        )
+        main_menu = await message.answer(
+            "دسترسی سریع، پایدار و ایمن به اینترنت آزاد، تنها با چند کلیک!\n\n"
+            "🔐 با استفاده از سرویس‌های پرسرعت V2Ray، بدون محدودیت و با کیفیت بالا به فضای وب متصل شوید — سازگار با تمامی گوشی‌ها (Android و iOS) و قابل استفاده برای خود و اطرافیانتان.\n\n"
+            "💡 <b>چه چیزهایی در تونل وی پی ان منتظر شماست؟</b>\n"
+            "• انتخاب از میان انواع پلن‌های متنوع و اقتصادی\n"
+            "• خرید آسان و خودکار بدون نیاز به پشتیبانی دستی\n"
+            "• دریافت فوری کانفیگ و آموزش اتصال\n"
+            "• پشتیبانی حرفه‌ای و پاسخ‌گو\n\n"
+            "برای مشاهده سرویس‌ها و شروع تجربه اینترنت آزاد، روی دکمه خرید سرویس کلیک کنید 👇\n\n"
+            "📢 عضویت در کانال ما: @ToonelVpn",
+            reply_markup=reply_markup,
+        )
+    else:
+        main_menu = await message.answer(
+            text=_("main_menu:message:main").format(name=user.first_name),
+            reply_markup=reply_markup,
+        )
+
     await state.update_data({MAIN_MESSAGE_ID_KEY: main_menu.message_id})
 
 
@@ -142,8 +166,6 @@ async def change_language(
     await User.update(session=session, tg_id=user.tg_id, language_code=language)
     user.language_code = language
 
-    # Use a chat-specific command scope so the bot's selected language wins
-    # over Telegram's own app language.
     await set_user_commands(callback.bot, user.tg_id, language)
 
     await callback.answer(
@@ -157,8 +179,6 @@ async def change_language(
     await state.update_data({MAIN_MESSAGE_ID_KEY: callback.message.message_id})
     is_admin = await IsAdmin()(user_id=user.tg_id)
 
-    # The current update entered the middleware with the old locale. Switch
-    # the active I18n locale explicitly for the rest of this handler.
     with I18n.get_current().use_locale(language):
         await callback.message.edit_text(
             text=_("main_menu:message:main").format(name=user.first_name),

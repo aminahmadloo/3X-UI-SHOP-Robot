@@ -1,7 +1,7 @@
 import logging
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.i18n import gettext as _
 
 from app.bot.filters import IsAdmin, IsDev
@@ -19,9 +19,14 @@ router = Router(name=__name__)
 async def callback_admin_tools(callback: CallbackQuery, user: User) -> None:
     logger.info(f"Admin {user.tg_id} opened admin tools.")
     is_dev = await IsDev()(user_id=user.tg_id)
+    markup = admin_tools_keyboard(is_dev)
+    markup.inline_keyboard.insert(
+        -1,
+        [InlineKeyboardButton(text="💰 مدیریت مبالغ کیف پول", callback_data="wallet_amounts")],
+    )
     await callback.message.edit_text(
         text=_("admin_tools:message:main"),
-        reply_markup=admin_tools_keyboard(is_dev),
+        reply_markup=markup,
     )
 
 

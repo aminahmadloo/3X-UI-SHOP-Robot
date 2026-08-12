@@ -14,6 +14,7 @@ from . import (
     subscription,
     support,
 )
+from .admin_tools.wallet_amounts_handler import router as wallet_amounts_router
 
 
 def include(app: Application, dispatcher: Dispatcher) -> None:
@@ -41,4 +42,5 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         admin_tools.server_handler.router,
         admin_tools.statistics_handler.router,
         admin_tools.user_handler.router,
+        wallet_amounts_router,
     )
