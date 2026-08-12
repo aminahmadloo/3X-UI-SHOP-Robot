@@ -14,13 +14,10 @@ APP_WINDOWS_SCHEME = "happ://add/"
 # region: Keys
 MAIN_MESSAGE_ID_KEY = "main_message_id"
 PREVIOUS_CALLBACK_KEY = "previous_callback"
-
 INPUT_PROMOCODE_KEY = "input_promocode"
-
 SERVER_NAME_KEY = "server_name"
 SERVER_HOST_KEY = "server_host"
 SERVER_MAX_CLIENTS_KEY = "server_max_clients"
-
 NOTIFICATION_CHAT_IDS_KEY = "notification_chat_ids"
 NOTIFICATION_LAST_MESSAGE_IDS_KEY = "notification_last_message_ids"
 NOTIFICATION_MESSAGE_TEXT_KEY = "notification_message_text"
@@ -28,12 +25,12 @@ NOTIFICATION_PRE_MESSAGE_TEXT_KEY = "notification_pre_message_text"
 # endregion
 
 # region: Webhook paths
-TELEGRAM_WEBHOOK = "/webhook"  # Webhook path for Telegram bot updates
-CONNECTION_WEBHOOK = "/connection"  # Webhook path for receiving connection requests
-CRYPTOMUS_WEBHOOK = "/cryptomus"  # Webhook path for receiving Cryptomus payment notifications
-HELEKET_WEBHOOK = "/heleket"  # Webhook path for receiving Heleket payment notifications
-YOOKASSA_WEBHOOK = "/yookassa"  # Webhook path for receiving Yookassa payment notifications
-YOOMONEY_WEBHOOK = "/yoomoney"  # Webhook path for receiving Yoomoney payment notifications
+TELEGRAM_WEBHOOK = "/webhook"
+CONNECTION_WEBHOOK = "/connection"
+CRYPTOMUS_WEBHOOK = "/cryptomus"
+HELEKET_WEBHOOK = "/heleket"
+YOOKASSA_WEBHOOK = "/yookassa"
+YOOMONEY_WEBHOOK = "/yoomoney"
 # endregion
 
 # region: Notification tags
@@ -45,7 +42,7 @@ EVENT_PAYMENT_CANCELED_TAG = "#EventPaymentCanceled"
 # endregion
 
 # region: I18n settings
-DEFAULT_LANGUAGE = "en"
+DEFAULT_LANGUAGE = "fa"
 I18N_DOMAIN = "bot"
 # endregion
 
@@ -58,9 +55,9 @@ MESSAGE_EFFECT_IDS = {
     "🔥": "5104841245755180586",
     "👍": "5107584321108051014",
     "👎": "5104858069142078462",
-    "❤️": "5044134455711629726",
+    "❤️": "5044134455755180586",
     "🎉": "5046509860389126442",
-    "💩": "5046589136895476101",
+    "💩": "5046584321108051014",
 }
 # endregion
 
@@ -100,7 +97,7 @@ class Currency(Enum):
 
 class ReferrerRewardType(Enum):
     DAYS = "days"
-    MONEY = "money"  # TODO: consider using currencies instead? depends on balance implementation
+    MONEY = "money"
 
     @classmethod
     def from_str(cls, value: str) -> Optional["ReferrerRewardType"]:
@@ -123,6 +120,5 @@ class ReferrerRewardLevel(Enum):
             return cls(int(value))
         except (ValueError, KeyError):
             return None
-
 
 # endregion
