@@ -50,17 +50,19 @@ async def callback_profile(
     state: FSMContext,
 ) -> None:
     logger.info(f"User {user.tg_id} opened profile page.")
+    await callback.answer()
     await state.update_data({PREVIOUS_CALLBACK_KEY: NavProfile.MAIN})
 
     client_data = None
     if user.server_id:
         client_data = await services.vpn.get_client_data(user)
-        if not client_data:
-            await services.notification.show_popup(
-                callback=callback,
-                text=_("subscription:popup:error_fetching_data"),
+        if client_data is None:
+            # A stale server assignment or a missing 3X-UI client must not
+            # prevent the profile page from opening. Treat it as having no
+            # active subscription and let the user purchase a new one.
+            logger.warning(
+                f"No active VPN client data for user {user.tg_id}; showing profile without subscription."
             )
-            return
 
     reply_markup = (
         profile_keyboard()
@@ -80,6 +82,7 @@ async def callback_show_key(
     services: ServicesContainer,
 ) -> None:
     logger.info(f"User {user.tg_id} looked key.")
+    await callback.answer()
     key = await services.vpn.get_key(user)
     key_text = _("profile:message:key")
     message = await callback.message.answer(key_text.format(key=key, seconds_text=_("10 seconds")))
