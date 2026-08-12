@@ -47,7 +47,9 @@ async def setup(bot: Bot) -> None:
 
 
 async def delete(bot: Bot) -> None:
-    await bot.delete_my_commands(
-        scope=BotCommandScopeAllPrivateChats(),
-    )
+    scope = BotCommandScopeAllPrivateChats()
+    await bot.delete_my_commands(scope=scope)
+    await bot.delete_my_commands(scope=scope, language_code="fa")
+    await bot.delete_my_commands(scope=scope, language_code="en")
+    await bot.delete_my_commands(scope=scope, language_code="ru")
     logger.info("Bot commands removed successfully.")
