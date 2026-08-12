@@ -17,20 +17,6 @@ logger = logging.getLogger(__name__)
 class User(Base):
     """
     Represents a user in the database.
-
-    Attributes:
-        id (int): Unique primary key for the user.
-        tg_id (int): Unique Telegram user ID.
-        vpn_id (str): Unique VPN identifier for the user.
-        server_id (int | None): Foreign key referencing the server.
-        first_name (str): First name of the user.
-        username (str | None): Telegram username of the user.
-        created_at (datetime): Timestamp when the user was created.
-        server (Server | None): Associated server object.
-        transactions (list[Transaction]): List of transactions associated with the user.
-        activated_promocodes (list[Promocode]): List of promocodes activated by the user.
-        referrals_sent (list[Referral]): List of Referrals sent by the user and applied by referred users.
-        referral (Referral | None): The Referral record if this user was invited.
     """
 
     __tablename__ = "users"
@@ -48,6 +34,7 @@ class User(Base):
         nullable=False,
         default=DEFAULT_LANGUAGE,
     )
+    wallet_balance: Mapped[int] = mapped_column(default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=func.now(), nullable=False)
     server: Mapped["Server | None"] = relationship("Server", back_populates="users", uselist=False)  # type: ignore
     transactions: Mapped[list["Transaction"]] = relationship("Transaction", back_populates="user")  # type: ignore
@@ -76,7 +63,8 @@ class User(Base):
             f"<User(id={self.id}, tg_id={self.tg_id}, vpn_id='{self.vpn_id}', "
             f"server_id={self.server_id}, first_name='{self.first_name}', "
             f"username='{self.username}', language_code='{self.language_code}', "
-            f"created_at={self.created_at}, is_trial_used={self.is_trial_used})>"
+            f"wallet_balance={self.wallet_balance}, created_at={self.created_at}, "
+            f"is_trial_used={self.is_trial_used})>"
         )
 
     @classmethod
@@ -145,17 +133,6 @@ class User(Base):
 
     @classmethod
     async def update_trial_status(cls, session: AsyncSession, tg_id: int, used: bool) -> bool:
-        """
-        Updates the trial status of a user.
-
-        Args:
-            session (AsyncSession): Database session.
-            tg_id (int): Telegram user ID.
-            used (bool): Whether the trial has been used.
-
-        Returns:
-            bool: True if updated, False otherwise.
-        """
         user = await cls.get(session=session, tg_id=tg_id)
 
         if not user:
