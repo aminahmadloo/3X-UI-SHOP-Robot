@@ -65,24 +65,6 @@ async def process_creating_referral(session: AsyncSession, user: User, referrer_
         return False
 
 
-async def render_main_menu(
-    message: Message,
-    user: User,
-    services: ServicesContainer,
-    config: Config,
-) -> None:
-    is_admin = await IsAdmin()(user_id=user.tg_id)
-    await message.answer(
-        text=_("main_menu:message:main").format(name=user.first_name),
-        reply_markup=main_menu_keyboard(
-            is_admin,
-            is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
-            is_trial_available=await services.subscription.is_trial_available(user),
-            is_referred_trial_available=await services.referral.is_referred_trial_available(user),
-        ),
-    )
-
-
 @router.message(Command(NavMain.START))
 async def command_main_menu(
     message: Message,
@@ -100,6 +82,7 @@ async def command_main_menu(
     if previous_message_id:
         try:
             await message.bot.delete_message(chat_id=user.tg_id, message_id=previous_message_id)
+            logger.debug(f"Main message for user {user.tg_id} deleted.")
         except Exception as exception:
             logger.error(f"Failed to delete main message for user {user.tg_id}: {exception}")
         finally:
@@ -147,21 +130,32 @@ async def show_language_menu(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data.regexp(r"^language:(fa|en|ru)$"))
-async def change_language(callback: CallbackQuery, user: User, session: AsyncSession) -> None:
+async def change_language(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    services: ServicesContainer,
+    config: Config,
+    state: FSMContext,
+) -> None:
     language = callback.data.split(":", 1)[1]
     await User.update(session=session, tg_id=user.tg_id, language_code=language)
     user.language_code = language
 
-    i18n = I18n.get_current()
-    i18n.context.set_locale(language)
+    I18n.get_current().context.set_locale(language)
     await callback.answer("زبان تغییر کرد" if language == "fa" else "Language changed")
 
-    services = callback.bot.get("services") if hasattr(callback.bot, "get") else None
-    if services is None:
-        # Services are available in dispatcher data, so this handler intentionally
-        # only updates the current menu. The next /start uses the persisted locale.
-        await callback.message.edit_text("زبان با موفقیت تغییر کرد. /start")
-        return
+    await state.update_data({MAIN_MESSAGE_ID_KEY: callback.message.message_id})
+    is_admin = await IsAdmin()(user_id=user.tg_id)
+    await callback.message.edit_text(
+        text=_("main_menu:message:main").format(name=user.first_name),
+        reply_markup=main_menu_keyboard(
+            is_admin,
+            is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
+            is_trial_available=await services.subscription.is_trial_available(user),
+            is_referred_trial_available=await services.referral.is_referred_trial_available(user),
+        ),
+    )
 
 
 @router.callback_query(F.data == NavMain.MAIN_MENU)
