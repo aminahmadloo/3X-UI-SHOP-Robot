@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
+from app.bot.utils.commands import set_user_commands
 from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY
 from app.bot.utils.navigation import NavMain
 from app.config import Config
@@ -46,7 +47,7 @@ async def process_creating_referral(session: AsyncSession, user: User, referrer_
         referrer = await User.get(session=session, tg_id=referrer_id)
         if not referrer or referrer.tg_id == user.tg_id:
             logger.info(
-                f"Failed to assign user {user.tg_id} as a referred to a referrer user {referrer_id}."
+                f"Failed to assign user {user.tg_id} as referred to a referrer user {referrer_id}."
                 f"Invalid string received."
             )
             return False
@@ -111,19 +112,29 @@ async def command_main_menu(
 
 @router.callback_query(F.data == NavMain.LANGUAGE)
 async def show_language_menu(callback: CallbackQuery) -> None:
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
     await callback.answer()
     await callback.message.edit_text(
         "🌐 انتخاب زبان / Choose language / Выберите язык",
-        reply_markup=InlineKeyboardMarkup(
+        reply_markup=__import__("aiogram.types", fromlist=["InlineKeyboardMarkup"]).InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="🇮🇷 فارسی", callback_data="language:fa"),
-                    InlineKeyboardButton(text="🇬🇧 English", callback_data="language:en"),
+                    __import__("aiogram.types", fromlist=["InlineKeyboardButton"]).InlineKeyboardButton(
+                        text="🇮🇷 فارسی", callback_data="language:fa"
+                    ),
+                    __import__("aiogram.types", fromlist=["InlineKeyboardButton"]).InlineKeyboardButton(
+                        text="🇬🇧 English", callback_data="language:en"
+                    ),
                 ],
-                [InlineKeyboardButton(text="🇷🇺 Русский", callback_data="language:ru")],
-                [InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavMain.MAIN_MENU)],
+                [
+                    __import__("aiogram.types", fromlist=["InlineKeyboardButton"]).InlineKeyboardButton(
+                        text="🇷🇺 Русский", callback_data="language:ru"
+                    )
+                ],
+                [
+                    __import__("aiogram.types", fromlist=["InlineKeyboardButton"]).InlineKeyboardButton(
+                        text="🔙 بازگشت", callback_data=NavMain.MAIN_MENU
+                    )
+                ],
             ]
         ),
     )
@@ -139,23 +150,38 @@ async def change_language(
     state: FSMContext,
 ) -> None:
     language = callback.data.split(":", 1)[1]
+
     await User.update(session=session, tg_id=user.tg_id, language_code=language)
     user.language_code = language
 
-    I18n.get_current().context.set_locale(language)
-    await callback.answer("زبان تغییر کرد" if language == "fa" else "Language changed")
+    # Telegram's command menu follows Telegram's app language when language-
+    # specific global scopes are configured. We intentionally use a chat scope
+    # so the bot's own language choice wins.
+    await set_user_commands(callback.bot, user.tg_id, language)
+
+    await callback.answer(
+        "زبان با موفقیت تغییر کرد"
+        if language == "fa"
+        else "Language changed"
+        if language == "en"
+        else "Язык изменён"
+    )
 
     await state.update_data({MAIN_MESSAGE_ID_KEY: callback.message.message_id})
     is_admin = await IsAdmin()(user_id=user.tg_id)
-    await callback.message.edit_text(
-        text=_("main_menu:message:main").format(name=user.first_name),
-        reply_markup=main_menu_keyboard(
-            is_admin,
-            is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
-            is_trial_available=await services.subscription.is_trial_available(user),
-            is_referred_trial_available=await services.referral.is_referred_trial_available(user),
-        ),
-    )
+
+    # The current update entered the middleware with the old locale. Switch
+    # the active I18n locale explicitly for the rest of this handler.
+    with I18n.get_current().use_locale(language):
+        await callback.message.edit_text(
+            text=_("main_menu:message:main").format(name=user.first_name),
+            reply_markup=main_menu_keyboard(
+                is_admin,
+                is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
+                is_trial_available=await services.subscription.is_trial_available(user),
+                is_referred_trial_available=await services.referral.is_referred_trial_available(user),
+            ),
+        )
 
 
 @router.callback_query(F.data == NavMain.CUSTOM_SERVICE)
