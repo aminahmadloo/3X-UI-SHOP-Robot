@@ -80,7 +80,21 @@ class VPNService:
             return None
 
         try:
-            client = await connection.api.client.get_by_email(str(user.tg_id))
+            # Do not use client.get_by_email() here. py3xui 0.3.x resolves that
+            # through /panel/api/inbounds/getClientTraffics/{email}, which is
+            # missing on some newer 3X-UI installations. The inbound list API
+            # already contains client settings and clientStats, so use it as
+            # the compatibility path for reading the subscription page.
+            inbounds: list[Inbound] = await connection.api.inbound.get_list()
+
+            client: Client | None = None
+            for inbound in inbounds:
+                for inbound_client in inbound.settings.clients:
+                    if inbound_client.email == str(user.tg_id):
+                        client = inbound_client
+                        break
+                if client:
+                    break
 
             if not client:
                 logger.critical(
@@ -88,25 +102,38 @@ class VPNService:
                 )
                 return None
 
-            limit_ip = await self.get_limit_ip(user=user, client=client)
+            # clientStats contains the live up/down/total/expiry counters.
+            # Prefer the matching stats record, but keep the client settings
+            # as a safe fallback for panels that return an empty clientStats.
+            stats_client: Client | None = None
+            for inbound in inbounds:
+                for stat in inbound.client_stats or []:
+                    if stat.email == str(user.tg_id):
+                        stats_client = stat
+                        break
+                if stats_client:
+                    break
+
+            source = stats_client or client
+            limit_ip = client.limit_ip
             max_devices = -1 if limit_ip == 0 else limit_ip
-            traffic_total = client.total
-            expiry_time = -1 if client.expiry_time == 0 else client.expiry_time
+            traffic_total = source.total
+            expiry_time = -1 if source.expiry_time == 0 else source.expiry_time
 
             if traffic_total <= 0:
                 traffic_remaining = -1
                 traffic_total = -1
             else:
-                traffic_remaining = client.total - (client.up + client.down)
+                traffic_remaining = source.total - (source.up + source.down)
 
-            traffic_used = client.up + client.down
+            traffic_used = source.up + source.down
             client_data = ClientData(
                 max_devices=max_devices,
                 traffic_total=traffic_total,
                 traffic_remaining=traffic_remaining,
                 traffic_used=traffic_used,
-                traffic_up=client.up,
-                traffic_down=client.down,
+                traffic_up=source.up,
+                traffic_down=source.down,
                 expiry_time=expiry_time,
             )
             logger.debug(f"Successfully retrieved client data for {user.tg_id}: {client_data}.")
