@@ -1,7 +1,7 @@
 from typing import Any
 
-from aiogram import SimpleI18nMiddleware
 from aiogram.types import TelegramObject
+from aiogram.utils.i18n import SimpleI18nMiddleware
 
 from app.bot.utils.constants import DEFAULT_LANGUAGE
 
