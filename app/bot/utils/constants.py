@@ -14,10 +14,13 @@ APP_WINDOWS_SCHEME = "happ://add/"
 # region: Keys
 MAIN_MESSAGE_ID_KEY = "main_message_id"
 PREVIOUS_CALLBACK_KEY = "previous_callback"
+
 INPUT_PROMOCODE_KEY = "input_promocode"
+
 SERVER_NAME_KEY = "server_name"
 SERVER_HOST_KEY = "server_host"
 SERVER_MAX_CLIENTS_KEY = "server_max_clients"
+
 NOTIFICATION_CHAT_IDS_KEY = "notification_chat_ids"
 NOTIFICATION_LAST_MESSAGE_IDS_KEY = "notification_last_message_ids"
 NOTIFICATION_MESSAGE_TEXT_KEY = "notification_message_text"
@@ -25,7 +28,7 @@ NOTIFICATION_PRE_MESSAGE_TEXT_KEY = "notification_pre_message_text"
 # endregion
 
 # region: Webhook paths
-TELEGRAM_WEBHOOK = "/webhook"
+TELEGRAM_WEBHOOK = "/webhook"  # Telegram webhook path
 CONNECTION_WEBHOOK = "/connection"
 CRYPTOMUS_WEBHOOK = "/cryptomus"
 HELEKET_WEBHOOK = "/heleket"
@@ -97,7 +100,7 @@ class Currency(Enum):
 
 class ReferrerRewardType(Enum):
     DAYS = "days"
-    MONEY = "money"
+    MONEY = "money"  # TODO: consider using currencies instead? depends on balance implementation
 
     @classmethod
     def from_str(cls, value: str) -> Optional["ReferrerRewardType"]:
@@ -120,5 +123,6 @@ class ReferrerRewardLevel(Enum):
             return cls(int(value))
         except (ValueError, KeyError):
             return None
+
 
 # endregion
