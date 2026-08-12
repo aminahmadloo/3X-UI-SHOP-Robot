@@ -8,6 +8,7 @@ class NavMain(str, Enum):
     REDIRECT_TO_DOWNLOAD = "redirect_to_download"
     LANGUAGE = "language"
     CUSTOM_SERVICE = "custom_service"
+    MY_SERVICES = "my_services"
     WALLET = "wallet"
 
 
