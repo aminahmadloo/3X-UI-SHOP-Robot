@@ -158,6 +158,16 @@ async def change_language(
     )
 
 
+@router.callback_query(F.data == NavMain.CUSTOM_SERVICE)
+async def callback_custom_service(callback: CallbackQuery) -> None:
+    await callback.answer("🚧 خرید سرویس با مشخصات دلخواه به‌زودی فعال می‌شود.", show_alert=True)
+
+
+@router.callback_query(F.data == NavMain.WALLET)
+async def callback_wallet(callback: CallbackQuery) -> None:
+    await callback.answer("💰 کیف پول به‌زودی فعال می‌شود.", show_alert=True)
+
+
 @router.callback_query(F.data == NavMain.MAIN_MENU)
 async def callback_main_menu(
     callback: CallbackQuery,
