@@ -1,0 +1,35 @@
+services:
+
+  redis:
+    image: redis:latest
+    container_name: 3xui-shop-redis
+    restart: always
+    volumes:
+      - redis_data:/data
+
+  bot:
+    build: .
+    container_name: 3xui-shop-bot
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./app/data:/app/data
+      - ./plans.json:/app/data/plans.json
+      - ./app/locales:/app/locales
+      - ./app/logs:/app/logs
+    env_file:
+      - .env
+    stop_signal: SIGINT
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - |
+        poetry run pybabel compile -d /app/locales -D bot &&
+        poetry run alembic -c /app/db/alembic.ini upgrade head &&
+        poetry run python /app/__main__.py
+    depends_on:
+      - redis
+
+volumes:
+  redis_data:
