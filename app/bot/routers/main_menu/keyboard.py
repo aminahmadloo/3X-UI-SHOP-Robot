@@ -20,20 +20,6 @@ def main_menu_keyboard(
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    if is_referred_trial_available:
-        builder.row(
-            InlineKeyboardButton(
-                text=_("referral:button:get_referred_trial"),
-                callback_data=NavReferral.GET_REFERRED_TRIAL,
-            )
-        )
-    elif is_trial_available:
-        builder.row(
-            InlineKeyboardButton(
-                text=_("subscription:button:get_trial"), callback_data=NavSubscription.GET_TRIAL
-            )
-        )
-
     # Main menu layout:
     # 1. Buy Service
     # 2. Custom Service
