@@ -67,6 +67,31 @@ async def process_creating_referral(session: AsyncSession, user: User, referrer_
         return False
 
 
+async def send_main_menu(
+    bot: Bot,
+    user: User,
+    services: ServicesContainer,
+    config: Config,
+    state: FSMContext,
+) -> Message:
+    """Send the same main menu used by /start for an existing user."""
+    is_admin = await IsAdmin()(user_id=user.tg_id)
+    reply_markup = main_menu_keyboard(
+        is_admin,
+        is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
+        is_trial_available=await services.subscription.is_trial_available(user),
+        is_referred_trial_available=await services.referral.is_referred_trial_available(user),
+    )
+
+    main_menu = await bot.send_message(
+        chat_id=user.tg_id,
+        text=_("main_menu:message:main").format(name=user.first_name),
+        reply_markup=reply_markup,
+    )
+    await state.update_data({MAIN_MESSAGE_ID_KEY: main_menu.message_id})
+    return main_menu
+
+
 @router.message(Command(NavMain.START))
 async def command_main_menu(
     message: Message,
@@ -98,15 +123,14 @@ async def command_main_menu(
         else:
             await process_invite_attribution(session=session, user=user, invite_hash=command.args)
 
-    is_admin = await IsAdmin()(user_id=user.tg_id)
-    reply_markup = main_menu_keyboard(
-        is_admin,
-        is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
-        is_trial_available=await services.subscription.is_trial_available(user),
-        is_referred_trial_available=await services.referral.is_referred_trial_available(user),
-    )
-
     if is_new_user:
+        is_admin = await IsAdmin()(user_id=user.tg_id)
+        reply_markup = main_menu_keyboard(
+            is_admin,
+            is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
+            is_trial_available=await services.subscription.is_trial_available(user),
+            is_referred_trial_available=await services.referral.is_referred_trial_available(user),
+        )
         await message.answer(
             "v2ray 🔐: <b>توجه هرگز کلیک نکنید👇❗️❗️❗️❗️</b>\n\n"
             "❕❕❕❕❕❕❕❕❕\n"
@@ -127,9 +151,12 @@ async def command_main_menu(
             reply_markup=reply_markup,
         )
     else:
-        main_menu = await message.answer(
-            text=_("main_menu:message:main").format(name=user.first_name),
-            reply_markup=reply_markup,
+        main_menu = await send_main_menu(
+            bot=message.bot,
+            user=user,
+            services=services,
+            config=config,
+            state=state,
         )
 
     await state.update_data({MAIN_MESSAGE_ID_KEY: main_menu.message_id})
