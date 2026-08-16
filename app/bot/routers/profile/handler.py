@@ -20,7 +20,11 @@ logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 
 
-async def prepare_message(user: User, client_data: ClientData | None) -> str:
+async def prepare_message(
+    user: User,
+    client_data: ClientData | None,
+    wallet_balance: int = 0,
+) -> str:
     profile = _("profile:message:main").format(name=user.first_name, id=user.tg_id)
 
     if not client_data:
@@ -37,7 +41,7 @@ async def prepare_message(user: User, client_data: ClientData | None) -> str:
         )
         return (
             f"{profile}\n\n"
-            f"💰 موجودی کیف پول: 0 تومان\n"
+            f"💰 موجودی کیف پول: {wallet_balance:,} تومان\n"
             f"🛍️ تعداد سرویس‌های خریداری‌شده: {purchased_services_count}\n\n"
             f"شما هنوز هیچ سرویسی خریداری نکرده‌اید.\n\n"
             f"📅 {current_datetime}"
@@ -84,8 +88,14 @@ async def callback_profile(
         if client_data and not client_data.has_subscription_expired
         else buy_subscription_keyboard()
     )
+    wallet_balance = await services.wallet.get_balance(user.tg_id)
+
     await callback.message.edit_text(
-        text=await prepare_message(user=user, client_data=client_data),
+        text=await prepare_message(
+            user=user,
+            client_data=client_data,
+            wallet_balance=wallet_balance,
+        ),
         reply_markup=reply_markup,
     )
 
