@@ -16,9 +16,9 @@ from app.bot import filters, middlewares, routers, services, tasks
 from app.bot.middlewares import MaintenanceMiddleware
 from app.bot.models import ServicesContainer
 from app.bot.payment_gateways import GatewayFactory
-from app.bot.routers.main_menu.handler import send_main_menu
 from app.bot.utils import commands
 from app.bot.utils.constants import (
+    BOT_STARTED_TAG,
     BOT_STOPPED_TAG,
     DEFAULT_LANGUAGE,
     I18N_DOMAIN,
@@ -26,7 +26,6 @@ from app.bot.utils.constants import (
 )
 from app.config import DEFAULT_BOT_HOST, DEFAULT_LOCALES_DIR, Config, load_config
 from app.db.database import Database
-from app.db.models import User
 
 
 async def on_shutdown(db: Database, bot: Bot, services: ServicesContainer) -> None:
@@ -45,7 +44,6 @@ async def on_startup(
     db: Database,
     redis: Redis,
     i18n: I18n,
-    storage: RedisStorage,
 ) -> None:
     webhook_url = urljoin(config.bot.DOMAIN, TELEGRAM_WEBHOOK)
 
@@ -55,29 +53,8 @@ async def on_startup(
     current_webhook = await bot.get_webhook_info()
     logging.info(f"Current webhook URL: {current_webhook.url}")
 
-    # Reuse the same main-menu flow as /start instead of sending the
-    # #BotStarted notification popup after every bot restart.
-    developer = await User.get(session=db.session, tg_id=config.bot.DEV_ID)
-    if developer:
-        from aiogram.fsm.context import FSMContext
-        from aiogram.fsm.storage.base import StorageKey
-
-        state = FSMContext(
-            storage=storage,
-            key=StorageKey(bot_id=bot.id, chat_id=developer.tg_id, user_id=developer.tg_id),
-        )
-        await send_main_menu(
-            bot=bot,
-            user=developer,
-            services=services,
-            config=config,
-            state=state,
-        )
-        logging.info(f"Startup main menu sent to developer {developer.tg_id}.")
-    else:
-        logging.warning(
-            f"Developer user {config.bot.DEV_ID} was not found; startup main menu was not sent."
-        )
+    await services.notification.notify_developer(BOT_STARTED_TAG)
+    logging.info("Bot started.")
 
     tasks.transactions.start_scheduler(db.session)
     if config.shop.REFERRER_REWARD_ENABLED:
