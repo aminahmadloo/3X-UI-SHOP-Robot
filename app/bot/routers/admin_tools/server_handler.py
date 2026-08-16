@@ -346,13 +346,6 @@ async def callback_edit_server_back(
             await show_server_details(callback=callback, server=server)
             return
 
-    await callback_server_management(
-        callback=callback,
-        user=None,
-        session=session,
-        state=state,
-    )
-
 
 @router.callback_query(F.data.startswith(NavAdminTools.EDIT_SERVER + "_"), IsDev())
 async def callback_edit_server(
@@ -467,33 +460,41 @@ async def callback_confirm_edit_server(
 
     logger.info(f"Dev {user.tg_id} saving server edit: {original_name} -> {new_name}.")
 
-    server = await Server.update(
-        session=session,
-        name=original_name,
-        **{
-            "name": new_name,
-            "host": new_host,
-            "max_clients": int(new_max_clients),
-        },
-    )
-
-    if server:
-        await services.server_pool.sync_servers()
-        await state.set_state(None)
-        updated_server = await Server.get_by_name(session=session, name=new_name)
-        if updated_server:
-            await show_server_details(callback=callback, server=updated_server)
-        else:
-            await callback_server_management(callback=callback, user=user, session=session, state=state)
-        await services.notification.show_popup(
-            callback=callback,
-            text=_("server_management:popup:edited_success"),
-        )
-    else:
+    server = await Server.get_by_name(session=session, name=original_name)
+    if not server:
         await services.notification.show_popup(
             callback=callback,
             text=_("server_management:popup:edit_failed"),
         )
+        return
+
+    server.name = new_name
+    server.host = new_host
+    server.max_clients = int(new_max_clients)
+
+    try:
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        logger.exception("Failed to save server edit for %s", original_name)
+        await services.notification.show_popup(
+            callback=callback,
+            text=_("server_management:popup:edit_failed"),
+        )
+        return
+
+    await services.server_pool.sync_servers()
+    await state.set_state(None)
+    updated_server = await Server.get_by_name(session=session, name=new_name)
+    if updated_server:
+        await show_server_details(callback=callback, server=updated_server)
+    else:
+        await callback_server_management(callback=callback, user=user, session=session, state=state)
+
+    await services.notification.show_popup(
+        callback=callback,
+        text=_("server_management:popup:edited_success"),
+    )
 
 
 # endregion
