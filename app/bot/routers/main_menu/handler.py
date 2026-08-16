@@ -15,7 +15,7 @@ from app.bot.utils.commands import set_user_commands
 from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY
 from app.bot.utils.navigation import NavMain
 from app.config import Config
-from app.db.models import Invite, Referral, User, WalletTopupAmount
+from app.db.models import CustomServicePricing, Invite, Referral, User, WalletTopupAmount
 
 from .keyboard import main_menu_keyboard
 from .wallet_keyboard import wallet_keyboard
@@ -220,8 +220,64 @@ async def change_language(
 
 
 @router.callback_query(F.data == NavMain.CUSTOM_SERVICE)
-async def callback_custom_service(callback: CallbackQuery) -> None:
-    await callback.answer("🚧 خرید سرویس با مشخصات دلخواه به‌زودی فعال می‌شود.", show_alert=True)
+async def callback_custom_service(
+    callback: CallbackQuery,
+    session: AsyncSession,
+) -> None:
+    pricing = await CustomServicePricing.get_or_create(session)
+
+    days = 30
+    gigabytes = 40
+    devices = 2
+    days_cost = days * pricing.base_price_per_day
+    gigabytes_cost = gigabytes * pricing.base_price_per_gb
+    devices_cost = devices * pricing.base_price_per_device
+    total = days_cost + gigabytes_cost + devices_cost
+
+    text = (
+        "کاربر گرامی، در این بخش می‌توانید سرویس مورد نیاز خود را مطابق نیازتان شخصی‌سازی کرده و در کمتر از ۵ دقیقه آن را فعال و دریافت کنید ⏱️\n\n"
+        "امکان خرید سرویس پرسرعت v2ray با انتخاب دلخواه:\n"
+        "• تعداد روز\n"
+        "• حجم مصرفی\n"
+        "• تعداد کاربران\n\n"
+        "همچنین شما می‌توانید لوکیشن مورد نظر خود را انتخاب کنید؛ این امکان کاملاً رایگان است و هیچ هزینه اضافی ندارد.\n\n"
+        "هزینه سرویس بر اساس فرمول زیر توسط ربات محاسبه می‌شود:\n\n"
+        f"هر روز: {pricing.base_price_per_day:,.0f} تومان\n"
+        f"هر گیگابایت حجم: {pricing.base_price_per_gb:,.0f} تومان\n"
+        f"هر کاربر: {pricing.base_price_per_device:,.0f} تومان\n\n"
+        "مثال: اگر بخواهید یک سرویس با مشخصات زیر انتخاب کنید:\n\n"
+        f"30 روز (30 × {pricing.base_price_per_day:,.0f} = {days_cost:,.0f} تومان)\n"
+        f"40 گیگابایت (40 × {pricing.base_price_per_gb:,.0f} = {gigabytes_cost:,.0f} تومان)\n"
+        f"2 کاربر (2 × {pricing.base_price_per_device:,.0f} = {devices_cost:,.0f} تومان)\n\n"
+        f"مبلغ نهایی سرویس شما خواهد بود: {total:,.0f} تومان\n\n"
+        "در صورتی که قصد خرید سرویس با مشخصات دلخواه خود را دارید بر روی دکمه «خرید سرویس اختصاصی» در پایین کلیک کنید."
+    )
+
+    await callback.answer()
+    await callback.message.edit_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🛒 خرید سرویس اختصاصی",
+                        callback_data="custom_service:buy",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 بازگشت به منوی اصلی",
+                        callback_data=NavMain.MAIN_MENU,
+                    )
+                ],
+            ]
+        ),
+    )
+
+
+@router.callback_query(F.data == "custom_service:buy")
+async def callback_custom_service_buy(callback: CallbackQuery) -> None:
+    await callback.answer("این بخش در مرحله بعد فعال می‌شود.", show_alert=True)
 
 
 @router.callback_query(F.data == NavMain.MY_SERVICES)
