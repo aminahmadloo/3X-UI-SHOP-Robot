@@ -350,7 +350,7 @@ async def receive_card_receipt(message: Message, user: User, session: AsyncSessi
     user_text = (
         "✅ <b>درخواست پرداخت شما ثبت شد.</b>\n\n"
         f"🆔 کد پیگیری: <code>{payment.tracking_code}</code>\n"
-        f"💰 مبلغ قابل واریز: <b>{amount:,} تومان</b>\n\n"
+        f"💰 مبلغ پرداختی: <b>{amount:,} تومان</b>\n\n"
         "📌 پیام: پس از تأیید توسط پشتیبانی، کیف پول شما شارژ می‌شود.\n\n"
         "🙏 از صبر و شکیبایی شما متشکریم."
     )
