@@ -32,7 +32,7 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="💳 مدیریت کارت به کارت", callback_data=NavAdminTools.CARD_SETTINGS),
     )
     builder.row(
-        InlineKeyboardButton(text="💳 پرداخت‌های کارت به کارت", callback_data="cardpay:menu"),
+        InlineKeyboardButton(text=_("admin_tools:button:test_button"), callback_data=NavAdminTools.TEST),
         InlineKeyboardButton(text=_("admin_tools:button:create_backup"), callback_data=NavAdminTools.CREATE_BACKUP),
     )
     builder.row(
@@ -40,7 +40,7 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=_("admin_tools:button:restart_bot"), callback_data=NavAdminTools.RESTART_BOT),
     )
     builder.row(
-        InlineKeyboardButton(text=_("admin_tools:button:test_button"), callback_data=NavAdminTools.TEST),
+        InlineKeyboardButton(text="💳 پرداخت‌های کارت به کارت", callback_data="cardpay:menu"),
     )
     builder.row(back_to_main_menu_button())
 
