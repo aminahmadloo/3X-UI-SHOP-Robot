@@ -75,6 +75,7 @@ def servers_keyboard(servers: list) -> InlineKeyboardMarkup:
 
 def server_keyboard(server_name: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=_("server_management:button:edit"), callback_data=NavAdminTools.EDIT_SERVER + f"_{server_name}"))
     builder.row(InlineKeyboardButton(text=_("server_management:button:ping"), callback_data=NavAdminTools.PING_SERVER + f"_{server_name}"))
     builder.row(InlineKeyboardButton(text=_("server_management:button:delete"), callback_data=NavAdminTools.DELETE_SERVER + f"_{server_name}"))
     builder.adjust(2)
@@ -87,6 +88,13 @@ def confirm_add_server_keyboard() -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text=_("server_management:button:confirm"), callback_data=NavAdminTools.СONFIRM_ADD_SERVER))
     builder.adjust(2)
     builder.row(back_button(NavAdminTools.ADD_SERVER_BACK))
+    return builder.as_markup()
+
+
+def confirm_edit_server_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=_("server_management:button:save"), callback_data=NavAdminTools.CONFIRM_EDIT_SERVER))
+    builder.row(back_button(NavAdminTools.EDIT_SERVER_BACK))
     return builder.as_markup()
 
 
