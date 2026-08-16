@@ -37,7 +37,6 @@ def wallet_amounts_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="➕ افزودن مبلغ", callback_data=WALLET_AMOUNT_ADD)],
             [InlineKeyboardButton(text="✏️ ویرایش مبلغ", callback_data=WALLET_AMOUNT_EDIT)],
             [InlineKeyboardButton(text="🗑 حذف مبلغ", callback_data=WALLET_AMOUNT_DELETE)],
-            [InlineKeyboardButton(text="💳 پرداخت‌های کارت به کارت", callback_data="cardpay:menu")],
             [InlineKeyboardButton(text="💰 شارژ دستی کیف پول", callback_data="wallet_manual_charge")],
             [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_tools")],
             [back_to_main_menu_button()],

@@ -10,19 +10,40 @@ from app.db.models.invite import Invite
 
 def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+
     if is_dev:
-        builder.row(InlineKeyboardButton(text=_("admin_tools:button:server_management"), callback_data=NavAdminTools.SERVER_MANAGEMENT))
-    builder.row(InlineKeyboardButton(text=_("admin_tools:button:statistics"), callback_data=NavAdminTools.STATISTICS))
-    builder.row(InlineKeyboardButton(text=_("admin_tools:button:user_editor"), callback_data=NavAdminTools.USER_EDITOR))
-    builder.row(InlineKeyboardButton(text=_("admin_tools:button:invite_editor"), callback_data=NavAdminTools.INVITE_EDITOR))
-    builder.row(InlineKeyboardButton(text=_("admin_tools:button:promocode_editor"), callback_data=NavAdminTools.PROMOCODE_EDITOR))
-    builder.row(InlineKeyboardButton(text=_("admin_tools:button:notification"), callback_data=NavAdminTools.NOTIFICATION))
-    builder.row(InlineKeyboardButton(text="💳 مدیریت کارت به کارت", callback_data=NavAdminTools.CARD_SETTINGS))
-    builder.row(InlineKeyboardButton(text=_("admin_tools:button:create_backup"), callback_data=NavAdminTools.CREATE_BACKUP))
-    builder.row(InlineKeyboardButton(text=_("admin_tools:button:maintenance_mode"), callback_data=NavAdminTools.MAINTENANCE_MODE))
-    builder.row(InlineKeyboardButton(text=_("admin_tools:button:restart_bot"), callback_data=NavAdminTools.RESTART_BOT))
-    builder.row(InlineKeyboardButton(text=_("admin_tools:button:test_button"), callback_data=NavAdminTools.TEST))
+        builder.row(
+            InlineKeyboardButton(
+                text=_("admin_tools:button:server_management"),
+                callback_data=NavAdminTools.SERVER_MANAGEMENT,
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(text=_("admin_tools:button:statistics"), callback_data=NavAdminTools.STATISTICS),
+        InlineKeyboardButton(text=_("admin_tools:button:user_editor"), callback_data=NavAdminTools.USER_EDITOR),
+    )
+    builder.row(
+        InlineKeyboardButton(text=_("admin_tools:button:invite_editor"), callback_data=NavAdminTools.INVITE_EDITOR),
+        InlineKeyboardButton(text=_("admin_tools:button:promocode_editor"), callback_data=NavAdminTools.PROMOCODE_EDITOR),
+    )
+    builder.row(
+        InlineKeyboardButton(text=_("admin_tools:button:notification"), callback_data=NavAdminTools.NOTIFICATION),
+        InlineKeyboardButton(text="💳 مدیریت کارت به کارت", callback_data=NavAdminTools.CARD_SETTINGS),
+    )
+    builder.row(
+        InlineKeyboardButton(text="💳 پرداخت‌های کارت به کارت", callback_data="cardpay:menu"),
+        InlineKeyboardButton(text=_("admin_tools:button:create_backup"), callback_data=NavAdminTools.CREATE_BACKUP),
+    )
+    builder.row(
+        InlineKeyboardButton(text=_("admin_tools:button:maintenance_mode"), callback_data=NavAdminTools.MAINTENANCE_MODE),
+        InlineKeyboardButton(text=_("admin_tools:button:restart_bot"), callback_data=NavAdminTools.RESTART_BOT),
+    )
+    builder.row(
+        InlineKeyboardButton(text=_("admin_tools:button:test_button"), callback_data=NavAdminTools.TEST),
+    )
     builder.row(back_to_main_menu_button())
+
     return builder.as_markup()
 
 
