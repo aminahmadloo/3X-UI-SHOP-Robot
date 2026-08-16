@@ -10,15 +10,8 @@ from app.db.models.invite import Invite
 
 def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-
     if is_dev:
-        builder.row(
-            InlineKeyboardButton(
-                text=_("admin_tools:button:server_management"),
-                callback_data=NavAdminTools.SERVER_MANAGEMENT,
-            )
-        )
-
+        builder.row(InlineKeyboardButton(text=_("admin_tools:button:server_management"), callback_data=NavAdminTools.SERVER_MANAGEMENT))
     builder.row(
         InlineKeyboardButton(text=_("admin_tools:button:statistics"), callback_data=NavAdminTools.STATISTICS),
         InlineKeyboardButton(text=_("admin_tools:button:user_editor"), callback_data=NavAdminTools.USER_EDITOR),
@@ -31,6 +24,7 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=_("admin_tools:button:notification"), callback_data=NavAdminTools.NOTIFICATION),
         InlineKeyboardButton(text="💳 مدیریت کارت به کارت", callback_data=NavAdminTools.CARD_SETTINGS),
     )
+    builder.row(InlineKeyboardButton(text="⚙️ مدیریت خرید سرویس با مشخصات دلخواه", callback_data=NavAdminTools.CUSTOM_SERVICE_PRICING))
     builder.row(
         InlineKeyboardButton(text=_("admin_tools:button:test_button"), callback_data=NavAdminTools.TEST),
         InlineKeyboardButton(text=_("admin_tools:button:create_backup"), callback_data=NavAdminTools.CREATE_BACKUP),
@@ -39,11 +33,24 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=_("admin_tools:button:maintenance_mode"), callback_data=NavAdminTools.MAINTENANCE_MODE),
         InlineKeyboardButton(text=_("admin_tools:button:restart_bot"), callback_data=NavAdminTools.RESTART_BOT),
     )
-    builder.row(
-        InlineKeyboardButton(text="💳 پرداخت‌های کارت به کارت", callback_data="cardpay:menu"),
-    )
+    builder.row(InlineKeyboardButton(text="💳 پرداخت‌های کارت به کارت", callback_data="cardpay:menu"))
     builder.row(back_to_main_menu_button())
+    return builder.as_markup()
 
+
+def custom_service_pricing_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="✏️ ویرایش مبالغ", callback_data="custom_service_pricing:edit"))
+    builder.row(InlineKeyboardButton(text="🔄 بازخوانی مقادیر", callback_data=NavAdminTools.CUSTOM_SERVICE_PRICING))
+    builder.row(back_button(NavAdminTools.MAIN))
+    builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def custom_service_pricing_edit_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="💾 ذخیره", callback_data="custom_service_pricing:save"))
+    builder.row(InlineKeyboardButton(text="❌ انصراف", callback_data=NavAdminTools.CUSTOM_SERVICE_PRICING))
     return builder.as_markup()
 
 
@@ -53,15 +60,14 @@ def promocode_editor_keyboard() -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text=_("promocode_editor:button:delete"), callback_data=NavAdminTools.DELETE_PROMOCODE))
     builder.row(InlineKeyboardButton(text=_("promocode_editor:button:edit"), callback_data=NavAdminTools.EDIT_PROMOCODE))
     builder.adjust(3)
-    builder.row(back_button(NavAdminTools.MAIN))
+    builder.row(back_button(NavAdminTools.PROMOCODE_EDITOR))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 
 
 def promocode_duration_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    duration_options = [1, 7, 30, 90, 365]
-    for duration in duration_options:
+    for duration in [1, 7, 30, 90, 365]:
         duration_text = _("1 day", "{} days", duration).format(duration)
         builder.row(InlineKeyboardButton(text=duration_text, callback_data=f"{duration}"))
     builder.adjust(2)
