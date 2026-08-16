@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ServicesContainer
+from app.bot.constants import NavMain
 from app.db.models import CustomServicePricing
 
 router = Router(name=__name__)
@@ -68,6 +69,7 @@ def _payment_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🏦 درگاه بانکی", callback_data="custom_service:payment:gateway")],
             [InlineKeyboardButton(text="💳 کارت به کارت", callback_data="custom_service:payment:card")],
             [InlineKeyboardButton(text="💰 پرداخت از کیف پول", callback_data="custom_service:payment:wallet")],
+            [InlineKeyboardButton(text="🔙 بازگشت به منوی اصلی", callback_data=NavMain.MAIN_MENU)],
         ]
     )
 
