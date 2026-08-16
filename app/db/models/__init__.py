@@ -1,6 +1,7 @@
 from ._base import Base
 from .card_payment import CardPayment
 from .card_settings import CardSettings
+from .custom_service_pricing import CustomServicePricing
 from .invite import Invite
 from .promocode import Promocode
 from .referral import Referral
