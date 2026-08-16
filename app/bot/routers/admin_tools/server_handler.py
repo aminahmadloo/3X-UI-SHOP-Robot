@@ -254,10 +254,7 @@ async def callback_confirmation(
 
 
 # region Server
-async def show_server_details(
-    callback: CallbackQuery,
-    server: Server,
-) -> None:
+async def show_server_details(callback: CallbackQuery, server: Server) -> None:
     status = (
         _("server_management:message:status_online")
         if server.online
@@ -296,7 +293,7 @@ async def show_edit_server(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     main_message_id = data.get(MAIN_MESSAGE_ID_KEY)
 
-    text = _("server_management:message:edit")
+    text = "✏️ <b>ویرایش سرور:</b>\n\n"
     name = _("server_management:message:name").format(server_name=data.get(SERVER_NAME_KEY))
     host = _("server_management:message:host").format(server_host=data.get(SERVER_HOST_KEY))
     max_clients = _("server_management:message:max_clients").format(
@@ -307,19 +304,19 @@ async def show_edit_server(message: Message, state: FSMContext) -> None:
     match current_state:
         case EditServerStates.name:
             text += name + "\n"
-            text += _("server_management:message:edit_name")
+            text += "نام جدید سرور را وارد کنید."
         case EditServerStates.host:
             text += name + "\n"
             text += host + "\n"
-            text += _("server_management:message:edit_host")
+            text += "آدرس جدید سرور را وارد کنید (URL پنل)."
         case EditServerStates.max_clients:
             text += name + "\n"
             text += host + "\n"
             text += max_clients + "\n"
-            text += _("server_management:message:edit_max_clients")
+            text += "حداکثر تعداد کاربران جدید را وارد کنید."
         case EditServerStates.confirmation:
-            text += name + host + max_clients + "\n"
-            text += _("server_management:message:edit_confirm")
+            text += name + "\n" + host + "\n" + max_clients + "\n"
+            text += "برای ذخیره تغییرات، دکمه زیر را بزنید."
             reply_markup = confirm_edit_server_keyboard()
 
     await message.bot.edit_message_text(
@@ -344,7 +341,6 @@ async def callback_edit_server_back(
         server = await Server.get_by_name(session=session, name=original_name)
         if server:
             await show_server_details(callback=callback, server=server)
-            return
 
 
 @router.callback_query(F.data.startswith(NavAdminTools.EDIT_SERVER + "_"), IsDev())
@@ -356,7 +352,6 @@ async def callback_edit_server(
 ) -> None:
     server_name = callback.data.split("_", 2)[2]
     server = await Server.get_by_name(session=session, name=server_name)
-
     if not server:
         return
 
@@ -464,7 +459,7 @@ async def callback_confirm_edit_server(
     if not server:
         await services.notification.show_popup(
             callback=callback,
-            text=_("server_management:popup:edit_failed"),
+            text="❌ ویرایش سرور ناموفق بود.",
         )
         return
 
@@ -479,7 +474,7 @@ async def callback_confirm_edit_server(
         logger.exception("Failed to save server edit for %s", original_name)
         await services.notification.show_popup(
             callback=callback,
-            text=_("server_management:popup:edit_failed"),
+            text="❌ ویرایش سرور ناموفق بود.",
         )
         return
 
@@ -493,7 +488,7 @@ async def callback_confirm_edit_server(
 
     await services.notification.show_popup(
         callback=callback,
-        text=_("server_management:popup:edited_success"),
+        text="✅ تنظیمات سرور با موفقیت ویرایش شد.",
     )
 
 
