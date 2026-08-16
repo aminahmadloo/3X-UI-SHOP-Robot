@@ -356,17 +356,26 @@ async def receive_card_receipt(message: Message, user: User, session: AsyncSessi
     )
     await message.answer(user_text)
 
+    settings = await CardSettings.get_or_create(
+        session,
+        card_number=config.shop.CARD_NUMBER or "",
+    )
+
     admin_text = (
         "💳 <b>درخواست جدید کارت به کارت</b>\n\n"
         f"🆔 کد پیگیری: <code>{payment.tracking_code}</code>\n"
-        f"👤 آیدی تلگرام پرداخت‌کننده: <code>{user.tg_id}</code>\n"
+        f"🆔 آیدی تلگرام پرداخت‌کننده: <code>{user.tg_id}</code>\n"
+        f"💳 کارت مقصد: <code>{settings.card_number}</code>\n"
         f"💰 مبلغ: <b>{amount:,} تومان</b>\n"
         f"🧾 شماره درخواست داخلی: <code>#{payment.id}</code>"
     )
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ تأیید و شارژ کیف پول", callback_data=f"cardpay:approve:{payment.id}")],
         [InlineKeyboardButton(text="❌ رد پرداخت", callback_data=f"cardpay:reject:{payment.id}")],
-        [InlineKeyboardButton(text="👤 مشاهده کاربر", url=f"tg://user?id={user.tg_id}")],
+        [InlineKeyboardButton(
+            text="👤 مشاهده کاربر",
+            callback_data=f"cardpay:user:{user.tg_id}",
+        )],
     ])
     for admin_id in config.bot.ADMINS:
         try:

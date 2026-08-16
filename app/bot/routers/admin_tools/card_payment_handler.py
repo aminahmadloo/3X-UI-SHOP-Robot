@@ -69,6 +69,64 @@ async def card_payment_view(callback: CallbackQuery, session) -> None:
     )
 
 
+@router.callback_query(F.data.regexp(r"^cardpay:user:\d+$"), IsAdmin())
+async def card_payment_user_view(callback: CallbackQuery, session, services: ServicesContainer) -> None:
+    user_tg_id = int(callback.data.rsplit(":", 1)[1])
+
+    target = await User.get(session, user_tg_id)
+    if not target:
+        await callback.answer("❌ کاربر پیدا نشد.", show_alert=True)
+        return
+
+    balance = await services.wallet.get_balance(target.tg_id)
+
+    completed_transactions = sum(
+        1
+        for transaction in target.transactions
+        if getattr(transaction.status, "value", transaction.status) == "completed"
+    )
+
+    username = f"@{target.username}" if target.username else "ندارد"
+    server_name = target.server.name if target.server else "اختصاص داده نشده"
+
+    created_at = target.created_at.strftime("%Y-%m-%d %H:%M:%S") if target.created_at else "نامشخص"
+
+    text = (
+        "👤 <b>اطلاعات کاربر</b>\n\n"
+        f"👤 نام: <b>{target.first_name}</b>\n"
+        f"🔗 نام کاربری: <b>{username}</b>\n"
+        f"🆔 شناسه تلگرام: <code>{target.tg_id}</code>\n\n"
+        f"💰 موجودی کیف پول: <b>{balance:,} تومان</b>\n"
+        f"🛍️ پرداخت‌های تکمیل‌شده: <b>{completed_transactions}</b>\n"
+        f"🖥️ سرور: <b>{server_name}</b>\n"
+        f"📅 تاریخ عضویت: <code>{created_at}</code>"
+    )
+
+    await callback.answer()
+    await callback.message.answer(
+        text,
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔙 بستن",
+                        callback_data="admin:user:view:close",
+                    )
+                ],
+            ]
+        ),
+    )
+
+
+@router.callback_query(F.data == "admin:user:view:close", IsAdmin())
+async def close_user_view(callback: CallbackQuery) -> None:
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        await callback.message.edit_text("👤 اطلاعات کاربر بسته شد.")
+
+
 @router.callback_query(F.data.regexp(r"^cardpay:approve:\d+$"), IsAdmin())
 async def approve_card_payment(callback: CallbackQuery, user: User, services: ServicesContainer, session, bot) -> None:
     payment_id = int(callback.data.rsplit(":", 1)[1])
