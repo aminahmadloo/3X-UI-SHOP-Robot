@@ -37,8 +37,8 @@ def _number(value: str) -> int | None:
 
 def _days_message(days_price: float) -> str:
     return (
-        "📅 <b>تعداد روز مورد نیاز برای سرویس خود را به صورت عددی بین ۷ تا ۳۰ روز ارسال کنید</b>\n\n"
-        "📌 نکته: کمترین مقدار برای خرید سرویس <b>۷ روز</b> و بیشترین مقدار <b>۳۰ روز</b> می‌باشد.\n"
+        "📅 <b>تعداد روز مورد نیاز برای سرویس خود را به صورت عددی بین ۷ تا ۹۰ روز ارسال کنید</b>\n\n"
+        "📌 نکته: کمترین مقدار برای خرید سرویس <b>۷ روز</b> و بیشترین مقدار <b>۹۰ روز</b> می‌باشد.\n"
         "لطفاً در این بازه یک عدد ارسال کنید.\n\n"
         f"💰 هزینه هر روز برای سرویس: <b>{days_price:,.0f} تومان</b>"
     )
@@ -92,7 +92,7 @@ async def handle_custom_service_days(
     state: FSMContext,
 ) -> None:
     value = _number(message.text or "")
-    if value is None or not 7 <= value <= 30:
+    if value is None or not 7 <= value <= 90:
         pricing = await CustomServicePricing.get_or_create(session)
         await message.answer(
             "❌ مقدار واردشده نامعتبر است.\n\n" + _days_message(pricing.base_price_per_day)
@@ -166,7 +166,6 @@ async def handle_custom_service_devices(
         "🧾 <b>فاکتور سرویس انتخابی شما صادر گردید:</b>\n\n"
         "🔐 <b>نام سرویس:</b> سرویس پرسرعت v2ray\n"
         f"📦 <b>پلن انتخابی:</b> {days} روزه {gigabytes} گیگ - {value} کاربره\n"
-        "📍 <b>لوکیشن:</b> دبی\n"
         f"💳 <b>قیمت سرویس:</b> {total:,.0f} تومان\n\n"
         f"💰 جهت خرید سرویس نیاز هست کیف پول خودتون رو به اندازه هزینه سرویس یعنی <b>{total:,.0f} تومان</b> شارژ کنید.\n"
         "یا اگر شارژ دارید، بر روی دکمه <b>«پرداخت از کیف پول»</b> کلیک کنید.\n\n"
