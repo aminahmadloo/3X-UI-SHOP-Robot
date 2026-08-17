@@ -11,3 +11,5 @@ class SubscriptionData(CallbackData, prefix="subscription"):
     devices: int = 0
     duration: int = 0
     price: float = 0
+    plan_id: int = 0
+    volume_gb: int = 0
