@@ -394,17 +394,64 @@ async def callback_managed_payment(
         return
 
     finally:
-        await state.clear()
+        # Keep the managed order in FSM so "تغییر روش پرداخت"
+        # can restore the exact order and config name.
+        await state.set_state(PurchaseConfigState.selecting_payment)
 
 
 @router.callback_query(F.data.regexp(r"^mp_back:\d+$"))
-async def callback_managed_payment_back(callback: CallbackQuery, session: AsyncSession, gateway_factory: GatewayFactory) -> None:
-    plan = await ServicePurchasePlan.get(session, int(callback.data.rsplit(":", 1)[1]))
-    if not plan:
-        await callback.answer("این پلن دیگر وجود ندارد.", show_alert=True)
+async def callback_managed_payment_back(
+    callback: CallbackQuery,
+    state: FSMContext,
+    gateway_factory: GatewayFactory,
+) -> None:
+    data = await state.get_data()
+    packed = data.get("subscription_data")
+
+    if not isinstance(packed, dict):
+        await callback.answer(
+            "اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید.",
+            show_alert=True,
+        )
+        await state.clear()
         return
+
+    subscription_data = SubscriptionData(
+        state=NavSubscription.CONFIG_NAME,
+        is_extend=packed.get("is_extend", False),
+        is_change=packed.get("is_change", False),
+        user_id=packed.get("user_id", 0),
+        devices=packed.get("devices", 0),
+        duration=packed.get("duration", 0),
+        price=packed.get("price", 0),
+        plan_id=packed.get("plan_id", 0),
+        volume_gb=packed.get("volume_gb", 0),
+        config_name=packed.get("config_name", ""),
+    )
+
+    if not subscription_data.plan_id:
+        await callback.answer(
+            "اطلاعات پلن سفارش نامعتبر است.",
+            show_alert=True,
+        )
+        await state.clear()
+        return
+
+    await state.set_state(PurchaseConfigState.selecting_payment)
     await callback.answer()
-    await callback.message.edit_reply_markup(reply_markup=managed_payment_method_keyboard(plan.id, plan.price_toman, gateway_factory.get_gateways()))
+
+    await callback.message.edit_text(
+        "💳 <b>انتخاب روش پرداخت</b>\n\n"
+        f"📝 نام کانفیگ: <code>{subscription_data.config_name}</code>\n"
+        f"💾 پلن: <b>{subscription_data.volume_gb}GB | {subscription_data.duration} روز</b>\n"
+        f"💰 مبلغ: <b>{subscription_data.price:,} تومان</b>\n\n"
+        "روش پرداخت را انتخاب کنید:",
+        reply_markup=managed_payment_method_keyboard(
+            subscription_data.plan_id,
+            int(subscription_data.price),
+            gateway_factory.get_gateways(),
+        ),
+    )
 
 
 @router.callback_query(F.data == NavSubscription.RENEW_SERVICE)
