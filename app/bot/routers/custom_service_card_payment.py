@@ -16,6 +16,7 @@ from aiogram.types import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer, SubscriptionData
 from app.bot.payment_gateways._gateway import PaymentGateway
 from app.bot.routers.wallet.handler import card_text, generate_tracking_code, has_pending_payment
@@ -243,7 +244,7 @@ async def _get_service_payment(session: AsyncSession, callback_data: str) -> Car
     return payment
 
 
-@router.callback_query(F.data.regexp(r"^cardpay:view:\d+$"))
+@router.callback_query(F.data.regexp(r"^cardpay:view:\d+$"), IsAdmin())
 async def service_card_payment_view(callback: CallbackQuery, session: AsyncSession) -> object:
     payment = await _get_service_payment(session, callback.data or "")
     if not payment:
@@ -278,7 +279,7 @@ async def service_card_payment_view(callback: CallbackQuery, session: AsyncSessi
     return None
 
 
-@router.callback_query(F.data.regexp(r"^cardpay:approve:\d+$"))
+@router.callback_query(F.data.regexp(r"^cardpay:approve:\d+$"), IsAdmin())
 async def service_card_payment_approve(
     callback: CallbackQuery,
     user: User,
