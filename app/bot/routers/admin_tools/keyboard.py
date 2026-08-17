@@ -4,7 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.routers.misc.keyboard import back_button, back_to_main_menu_button, cancel_button
 from app.bot.utils.navigation import NavAdminTools
-from app.db.models import Server
+from app.db.models import Server, ServicePurchasePlan
 from app.db.models.invite import Invite
 
 
@@ -45,6 +45,15 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def _plan_button_text(plan: ServicePurchasePlan) -> str:
+    if plan.price_toman % 1000 == 0:
+        price = f"{plan.price_toman // 1000:,} هزار تومان"
+    else:
+        price = f"{plan.price_toman:,} تومان"
+
+    return f"{plan.volume_gb} گیگ / {plan.duration_days} روزه / {price}"
+
+
 def service_purchase_management_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
@@ -74,6 +83,73 @@ def service_purchase_management_keyboard() -> InlineKeyboardMarkup:
 
     return builder.as_markup()
 
+
+def service_purchase_plan_list_keyboard(
+    plans: list[ServicePurchasePlan],
+    service_type: str,
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    for plan in plans:
+        builder.row(
+            InlineKeyboardButton(
+                text=_plan_button_text(plan),
+                callback_data=f"{NavAdminTools.SERVICE_PURCHASE_PLAN}:{plan.id}",
+            )
+        )
+
+    create_callback = (
+        NavAdminTools.SERVICE_PURCHASE_CREATE_ONE_MONTH
+        if service_type == "one_month"
+        else NavAdminTools.SERVICE_PURCHASE_CREATE_THREE_MONTH
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text=(
+                "➕ ساخت سرویس جدید یک ماهه"
+                if service_type == "one_month"
+                else "➕ ساخت سرویس جدید سه ماهه"
+            ),
+            callback_data=create_callback,
+        )
+    )
+
+    builder.row(back_button(NavAdminTools.SERVICE_PURCHASE_MANAGEMENT))
+    builder.row(back_to_main_menu_button())
+
+    return builder.as_markup()
+
+
+def service_purchase_plan_details_keyboard(
+    plan_id: int,
+    service_type: str,
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="✏️ ویرایش",
+            callback_data=f"{NavAdminTools.SERVICE_PURCHASE_EDIT}:{plan_id}",
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🗑 حذف",
+            callback_data=f"{NavAdminTools.SERVICE_PURCHASE_DELETE}:{plan_id}",
+        )
+    )
+
+    builder.row(
+        back_button(
+            NavAdminTools.SERVICE_PURCHASE_ONE_MONTH
+            if service_type == "one_month"
+            else NavAdminTools.SERVICE_PURCHASE_THREE_MONTH
+        )
+    )
+
+    return builder.as_markup()
 
 def custom_service_pricing_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()

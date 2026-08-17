@@ -9,14 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.filters import IsAdmin, IsDev
 from app.bot.services import ServicesContainer
 from app.bot.states.custom_service_pricing import CustomServicePricingStates
+from app.bot.states.service_purchase_plan import ServicePurchasePlanStates
 from app.bot.utils.navigation import NavAdminTools
-from app.db.models import CustomServicePricing, User
+from app.db.models import CustomServicePricing, ServicePurchasePlan, User
 
 from .keyboard import (
     admin_tools_keyboard,
     custom_service_pricing_edit_keyboard,
     custom_service_pricing_keyboard,
     service_purchase_management_keyboard,
+    service_purchase_plan_details_keyboard,
+    service_purchase_plan_list_keyboard,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,21 +61,385 @@ async def callback_service_purchase_management(
     )
 
 
+
 @router.callback_query(
     F.data.in_(
         {
             NavAdminTools.SERVICE_PURCHASE_ONE_MONTH,
             NavAdminTools.SERVICE_PURCHASE_THREE_MONTH,
-            NavAdminTools.SERVICE_PURCHASE_DEVICES,
         }
     ),
     IsAdmin(),
 )
-async def callback_service_purchase_management_placeholder(
+async def callback_service_purchase_plan_list(
     callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
 ) -> None:
-    # فعلاً فقط کلیدها ایجاد شده‌اند و منطق آن‌ها در مراحل بعدی اضافه می‌شود.
+    await state.clear()
     await callback.answer()
+
+    service_type = (
+        "one_month"
+        if callback.data == NavAdminTools.SERVICE_PURCHASE_ONE_MONTH
+        else "three_month"
+    )
+
+    plans = await ServicePurchasePlan.list_by_type(session, service_type)
+
+    title = (
+        "📅 <b>مدیریت سرویس‌های یک ماهه</b>"
+        if service_type == "one_month"
+        else "📅 <b>مدیریت سرویس‌های سه ماهه</b>"
+    )
+
+    await callback.message.edit_text(
+        title,
+        reply_markup=service_purchase_plan_list_keyboard(
+            plans,
+            service_type,
+        ),
+    )
+
+
+@router.callback_query(
+    F.data.startswith(f"{NavAdminTools.SERVICE_PURCHASE_PLAN}:"),
+    IsAdmin(),
+)
+async def callback_service_purchase_plan_details(
+    callback: CallbackQuery,
+    session: AsyncSession,
+) -> None:
+    await callback.answer()
+
+    try:
+        plan_id = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("شناسه سرویس نامعتبر است.", show_alert=True)
+        return
+
+    plan = await ServicePurchasePlan.get(session, plan_id)
+
+    if not plan:
+        await callback.answer("این سرویس دیگر وجود ندارد.", show_alert=True)
+        return
+
+    if plan.service_type == "one_month":
+        title = "📅 <b>سرویس یک ماهه</b>"
+    else:
+        title = "📅 <b>سرویس سه ماهه</b>"
+
+    price = (
+        f"{plan.price_toman // 1000:,} هزار تومان"
+        if plan.price_toman % 1000 == 0
+        else f"{plan.price_toman:,} تومان"
+    )
+
+    await callback.message.edit_text(
+        f"{title}\n\n"
+        f"📦 حجم: <b>{plan.volume_gb} گیگ</b>\n"
+        f"📅 مدت: <b>{plan.duration_days} روز</b>\n"
+        f"💰 قیمت: <b>{price}</b>",
+        reply_markup=service_purchase_plan_details_keyboard(
+            plan.id,
+            plan.service_type,
+        ),
+    )
+
+
+async def _start_plan_creation(
+    callback: CallbackQuery,
+    state: FSMContext,
+    service_type: str,
+) -> None:
+    await state.clear()
+    await state.update_data(
+        plan_mode="create",
+        service_type=service_type,
+    )
+    await state.set_state(ServicePurchasePlanStates.waiting_volume)
+
+    title = (
+        "یک ماهه"
+        if service_type == "one_month"
+        else "سه ماهه"
+    )
+
+    await callback.answer()
+    await callback.message.edit_text(
+        f"➕ <b>ساخت سرویس جدید {title}</b>\n\n"
+        "حجم سرویس را به گیگ وارد کنید:\n"
+        "مثلاً: <code>20</code>"
+    )
+
+
+@router.callback_query(
+    F.data.in_(
+        {
+            NavAdminTools.SERVICE_PURCHASE_CREATE_ONE_MONTH,
+            NavAdminTools.SERVICE_PURCHASE_CREATE_THREE_MONTH,
+        }
+    ),
+    IsAdmin(),
+)
+async def callback_service_purchase_plan_create(
+    callback: CallbackQuery,
+    state: FSMContext,
+) -> None:
+    service_type = (
+        "one_month"
+        if callback.data == NavAdminTools.SERVICE_PURCHASE_CREATE_ONE_MONTH
+        else "three_month"
+    )
+
+    await _start_plan_creation(callback, state, service_type)
+
+
+@router.callback_query(
+    F.data.startswith(f"{NavAdminTools.SERVICE_PURCHASE_EDIT}:"),
+    IsAdmin(),
+)
+async def callback_service_purchase_plan_edit(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    try:
+        plan_id = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("شناسه سرویس نامعتبر است.", show_alert=True)
+        return
+
+    plan = await ServicePurchasePlan.get(session, plan_id)
+
+    if not plan:
+        await callback.answer("سرویس پیدا نشد.", show_alert=True)
+        return
+
+    await state.clear()
+    await state.update_data(
+        plan_mode="edit",
+        plan_id=plan.id,
+        service_type=plan.service_type,
+        volume_gb=plan.volume_gb,
+        duration_days=plan.duration_days,
+        price_toman=plan.price_toman,
+    )
+
+    await state.set_state(ServicePurchasePlanStates.waiting_volume)
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "✏️ <b>ویرایش سرویس</b>\n\n"
+        f"حجم فعلی: <b>{plan.volume_gb} گیگ</b>\n\n"
+        "حجم جدید را وارد کنید:"
+    )
+
+
+@router.callback_query(
+    F.data.startswith(f"{NavAdminTools.SERVICE_PURCHASE_DELETE}:"),
+    IsAdmin(),
+)
+async def callback_service_purchase_plan_delete(
+    callback: CallbackQuery,
+    session: AsyncSession,
+) -> None:
+    try:
+        plan_id = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("شناسه سرویس نامعتبر است.", show_alert=True)
+        return
+
+    plan = await ServicePurchasePlan.get(session, plan_id)
+
+    if not plan:
+        await callback.answer("سرویس قبلاً حذف شده است.", show_alert=True)
+        return
+
+    service_type = plan.service_type
+    await session.delete(plan)
+    await session.commit()
+
+    await callback.answer("✅ سرویس حذف شد")
+
+    plans = await ServicePurchasePlan.list_by_type(
+        session,
+        service_type,
+    )
+
+    title = (
+        "📅 <b>مدیریت سرویس‌های یک ماهه</b>"
+        if service_type == "one_month"
+        else "📅 <b>مدیریت سرویس‌های سه ماهه</b>"
+    )
+
+    await callback.message.edit_text(
+        title,
+        reply_markup=service_purchase_plan_list_keyboard(
+            plans,
+            service_type,
+        ),
+    )
+
+
+@router.message(ServicePurchasePlanStates.waiting_volume, IsAdmin())
+async def process_service_purchase_plan_volume(
+    message: Message,
+    state: FSMContext,
+) -> None:
+    raw = (message.text or "").strip()
+
+    try:
+        value = int(raw)
+        if value <= 0:
+            raise ValueError
+    except ValueError:
+        await message.answer(
+            "❌ حجم نامعتبر است.\n"
+            "لطفاً یک عدد صحیح بزرگ‌تر از صفر وارد کنید."
+        )
+        return
+
+    await state.update_data(volume_gb=value)
+    await state.set_state(ServicePurchasePlanStates.waiting_duration)
+
+    await message.answer(
+        "📅 مدت سرویس را به روز وارد کنید:\n"
+        "مثلاً: <code>31</code>"
+    )
+
+
+@router.message(ServicePurchasePlanStates.waiting_duration, IsAdmin())
+async def process_service_purchase_plan_duration(
+    message: Message,
+    state: FSMContext,
+) -> None:
+    raw = (message.text or "").strip()
+
+    try:
+        value = int(raw)
+        if value <= 0:
+            raise ValueError
+    except ValueError:
+        await message.answer(
+            "❌ مدت نامعتبر است.\n"
+            "لطفاً تعداد روز را به صورت عدد صحیح وارد کنید."
+        )
+        return
+
+    await state.update_data(duration_days=value)
+    await state.set_state(ServicePurchasePlanStates.waiting_price)
+
+    await message.answer(
+        "💰 قیمت سرویس را به تومان وارد کنید:\n"
+        "مثلاً: <code>100000</code>"
+    )
+
+
+@router.message(ServicePurchasePlanStates.waiting_price, IsAdmin())
+async def process_service_purchase_plan_price(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    raw = (
+        (message.text or "")
+        .replace(",", "")
+        .replace("٬", "")
+        .strip()
+    )
+
+    try:
+        value = int(raw)
+        if value < 0:
+            raise ValueError
+    except ValueError:
+        await message.answer(
+            "❌ قیمت نامعتبر است.\n"
+            "لطفاً مبلغ را فقط به صورت عدد وارد کنید."
+        )
+        return
+
+    data = await state.get_data()
+
+    if data.get("plan_mode") == "edit":
+        plan = await ServicePurchasePlan.get(
+            session,
+            int(data["plan_id"]),
+        )
+
+        if not plan:
+            await state.clear()
+            await message.answer("❌ سرویس موردنظر پیدا نشد.")
+            return
+
+        plan.volume_gb = int(data["volume_gb"])
+        plan.duration_days = int(data["duration_days"])
+        plan.price_toman = value
+
+        await session.commit()
+        service_type = plan.service_type
+        plan_id = plan.id
+
+        await state.clear()
+
+        await message.answer(
+            "✅ تغییرات سرویس ذخیره شد."
+        )
+
+        plans = await ServicePurchasePlan.list_by_type(
+            session,
+            service_type,
+        )
+
+        title = (
+            "📅 <b>مدیریت سرویس‌های یک ماهه</b>"
+            if service_type == "one_month"
+            else "📅 <b>مدیریت سرویس‌های سه ماهه</b>"
+        )
+
+        await message.answer(
+            title,
+            reply_markup=service_purchase_plan_list_keyboard(
+                plans,
+                service_type,
+            ),
+        )
+        return
+
+    plan = ServicePurchasePlan(
+        service_type=data["service_type"],
+        volume_gb=int(data["volume_gb"]),
+        duration_days=int(data["duration_days"]),
+        price_toman=value,
+    )
+
+    session.add(plan)
+    await session.commit()
+
+    service_type = plan.service_type
+    await state.clear()
+
+    await message.answer("✅ سرویس جدید با موفقیت ساخته شد.")
+
+    plans = await ServicePurchasePlan.list_by_type(
+        session,
+        service_type,
+    )
+
+    title = (
+        "📅 <b>مدیریت سرویس‌های یک ماهه</b>"
+        if service_type == "one_month"
+        else "📅 <b>مدیریت سرویس‌های سه ماهه</b>"
+    )
+
+    await message.answer(
+        title,
+        reply_markup=service_purchase_plan_list_keyboard(
+            plans,
+            service_type,
+        ),
+    )
 
 
 @router.callback_query(F.data == NavAdminTools.CUSTOM_SERVICE_PRICING, IsAdmin())
