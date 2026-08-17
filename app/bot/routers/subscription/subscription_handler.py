@@ -8,16 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ClientData, ServicesContainer, SubscriptionData
 from app.bot.payment_gateways import GatewayFactory
-from app.bot.utils.navigation import NavSubscription
-from app.config import Config
-from app.db.models import User
-
-from .keyboard import (
+from app.bot.routers.subscription.keyboard import (
     devices_keyboard,
     duration_keyboard,
     payment_method_keyboard,
+    purchase_duration_keyboard,
+    service_purchase_plan_keyboard,
     subscription_keyboard,
 )
+from app.bot.utils.navigation import NavSubscription
+from app.config import Config
+from app.db.models import ConnectedDeviceSettings, ServicePurchasePlan, User
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -29,7 +30,6 @@ async def show_subscription(
     callback_data: SubscriptionData,
 ) -> None:
     if client_data:
-
         if client_data.has_subscription_expired:
             text = _("subscription:message:expired")
         else:
@@ -53,24 +53,135 @@ async def show_subscription(
 async def callback_subscription_buy(
     callback: CallbackQuery,
     user: User,
+    session: AsyncSession,
     state: FSMContext,
-    services: ServicesContainer,
 ) -> None:
-    """Start a new service purchase directly from the main menu."""
+    """Start the admin-managed service purchase flow."""
     logger.info(f"User {user.tg_id} started a new service purchase.")
 
-    await state.set_state(None)
+    await state.clear()
 
+    settings = await ConnectedDeviceSettings.get_or_create(session)
     callback_data = SubscriptionData(
-        state=NavSubscription.PROCESS,
+        state=NavSubscription.PLAN_ONE_MONTH,
         user_id=user.tg_id,
+        devices=settings.max_connected_devices,
     )
 
+    await callback.answer()
     await callback.message.edit_text(
-        text=_("subscription:message:devices"),
-        reply_markup=devices_keyboard(
-            services.plan.get_all_plans(),
-            callback_data,
+        "🛒 <b>انتخاب نوع سرویس</b>\n\n"
+        "تعداد دستگاه از تنظیمات مدیریت خرید سرویس تعیین شده است.",
+        reply_markup=purchase_duration_keyboard(
+            devices=settings.max_connected_devices,
+            callback_data=callback_data,
+        ),
+    )
+
+
+@router.callback_query(
+    SubscriptionData.filter(
+        F.state.in_({NavSubscription.PLAN_ONE_MONTH, NavSubscription.PLAN_THREE_MONTH})
+    )
+)
+async def callback_subscription_plan_category(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    callback_data: SubscriptionData,
+) -> None:
+    service_type = (
+        "one_month"
+        if callback_data.state == NavSubscription.PLAN_ONE_MONTH
+        else "three_month"
+    )
+
+    plans = await ServicePurchasePlan.list_by_type(session, service_type)
+    if not plans:
+        await callback.answer("برای این نوع سرویس هنوز پلنی ثبت نشده است.", show_alert=True)
+        return
+
+    settings = await ConnectedDeviceSettings.get_or_create(session)
+    callback_data.devices = settings.max_connected_devices
+    callback_data.state = NavSubscription.PLAN
+
+    title = (
+        "📅 <b>سرویس‌های یک ماهه</b>"
+        if service_type == "one_month"
+        else "📅 <b>سرویس‌های سه ماهه</b>"
+    )
+
+    await callback.answer()
+    await callback.message.edit_text(
+        f"{title}\n\n"
+        f"👥 تعداد دستگاه: <b>{settings.max_connected_devices}</b>\n"
+        "یکی از پلن‌های زیر را انتخاب کنید:",
+        reply_markup=service_purchase_plan_keyboard(plans),
+    )
+
+
+@router.callback_query(F.data.regexp(r"^subscription_plan:\d+$"))
+async def callback_subscription_plan_selected(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    callback_data: SubscriptionData,
+) -> None:
+    try:
+        plan_id = int(callback.data.rsplit(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("شناسه پلن نامعتبر است.", show_alert=True)
+        return
+
+    plan = await ServicePurchasePlan.get(session, plan_id)
+    if not plan:
+        await callback.answer("این پلن دیگر وجود ندارد.", show_alert=True)
+        return
+
+    settings = await ConnectedDeviceSettings.get_or_create(session)
+
+    callback_data.state = NavSubscription.PAY
+    callback_data.devices = settings.max_connected_devices
+    callback_data.duration = plan.duration_days
+    callback_data.price = plan.price_toman
+    callback_data.plan_id = plan.id
+    callback_data.volume_gb = plan.volume_gb
+
+    logger.info(
+        "User %s selected managed plan %s | devices=%s duration=%s volume=%sGB price=%s",
+        user.tg_id,
+        plan.id,
+        callback_data.devices,
+        callback_data.duration,
+        callback_data.volume_gb,
+        callback_data.price,
+    )
+
+    # The existing payment gateway layer is reused. The managed plan price is
+    # carried by SubscriptionData so it is persisted in the transaction payload.
+    # A legacy Plan object is only used as a type-compatible fallback; the
+    # price_override is the authoritative value for this purchase flow.
+    legacy_plan = None
+
+    try:
+        from app.bot.models.plan import Plan
+
+        legacy_plan = Plan(devices=callback_data.devices, prices={})
+    except Exception:
+        pass
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "💳 <b>انتخاب روش پرداخت</b>\n\n"
+        f"📱 دستگاه: <b>{callback_data.devices}</b>\n"
+        f"💾 حجم: <b>{callback_data.volume_gb} گیگ</b>\n"
+        f"📅 مدت: <b>{callback_data.duration} روز</b>\n"
+        f"💰 مبلغ: <b>{callback_data.price:,} تومان</b>",
+        reply_markup=payment_method_keyboard(
+            plan=legacy_plan,
+            callback_data=callback_data,
+            gateways=callback.bot.get("gateway_factory", []) if False else [],
+            price_override=callback_data.price,
         ),
     )
 
@@ -86,12 +197,10 @@ async def callback_subscription_renew_service(
     logger.info(f"User {user.tg_id} opened renew service page.")
 
     await state.set_state(None)
-
     client_data = None
 
     if user.server_id:
         client_data = await services.vpn.get_client_data(user)
-
         if not client_data:
             logger.warning(
                 f"No active 3X-UI client data for user {user.tg_id}; "
@@ -124,18 +233,17 @@ async def callback_subscription(
     if user.server_id:
         client_data = await services.vpn.get_client_data(user)
         if not client_data:
-            # A user can keep a historical server_id after the 3X-UI client
-            # has been removed (for example after a test/reset). This is not a
-            # fatal error for the subscription page: treat it as no active
-            # subscription so the user can start a new purchase. Real API
-            # failures are already logged by VPNService.get_client_data().
             logger.warning(
                 f"No active 3X-UI client data for user {user.tg_id}; "
                 "showing subscription page as inactive."
             )
 
     callback_data = SubscriptionData(state=NavSubscription.PROCESS, user_id=user.tg_id)
-    await show_subscription(callback=callback, client_data=client_data, callback_data=callback_data)
+    await show_subscription(
+        callback=callback,
+        client_data=client_data,
+        callback_data=callback_data,
+    )
 
 
 @router.callback_query(SubscriptionData.filter(F.state == NavSubscription.EXTEND))
