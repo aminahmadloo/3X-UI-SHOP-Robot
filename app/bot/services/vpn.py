@@ -102,11 +102,6 @@ class VPNService:
             return None
 
         try:
-            # Do not use client.get_by_email() here. py3xui 0.3.x resolves that
-            # through /panel/api/inbounds/getClientTraffics/{email}, which is
-            # missing on some newer 3X-UI installations. The inbound list API
-            # already contains client settings and clientStats, so use it as
-            # the compatibility path for reading the subscription page.
             inbounds: list[Inbound] = await connection.api.inbound.get_list()
 
             client: Client | None = None
@@ -124,9 +119,6 @@ class VPNService:
                 )
                 return None
 
-            # clientStats contains the live up/down/total/expiry counters.
-            # Prefer the matching stats record, but keep the client settings
-            # as a safe fallback for panels that return an empty clientStats.
             stats_client: Client | None = None
             for inbound in inbounds:
                 for stat in inbound.client_stats or []:
@@ -199,7 +191,7 @@ class VPNService:
         inbound_id: int = 1,
     ) -> bool:
         logger.info(
-            f"Creating new client {user.tg_id} | {devices} devices {duration} days."
+            f"Creating new client {user.tg_id} | {devices} devices {duration} days | {total_gb} GB."
         )
 
         if not await self.server_pool_service.assign_server_to_user(user):
@@ -238,7 +230,7 @@ class VPNService:
             )
             logger.info(
                 f"Successfully created client for {user.tg_id} "
-                f"on inbound {selected_inbound_id}"
+                f"on inbound {selected_inbound_id} with limit_ip={devices}, total_gb={total_gb}"
             )
             return True
         except Exception as exception:
@@ -259,7 +251,7 @@ class VPNService:
         total_gb: int = 0,
     ) -> bool:
         logger.info(
-            f"Updating client {user.tg_id} | {devices} devices {duration} days."
+            f"Updating client {user.tg_id} | {devices} devices {duration} days | {total_gb} GB."
         )
         connection = await self.server_pool_service.get_connection(user)
         if not connection:
@@ -312,7 +304,8 @@ class VPNService:
                 client=client,
             )
             logger.info(
-                f"Client {user.tg_id} updated successfully on inbound {inbound.id}."
+                f"Client {user.tg_id} updated successfully on inbound {inbound.id} "
+                f"with limit_ip={devices}, total_gb={total_gb}."
             )
             return True
         except Exception as exception:
@@ -326,12 +319,14 @@ class VPNService:
         user: User,
         devices: int,
         duration: int,
+        total_gb: int = 0,
     ) -> bool:
         if not await self.is_client_exists(user):
             return await self.create_client(
                 user=user,
                 devices=devices,
                 duration=duration,
+                total_gb=total_gb,
             )
         return False
 
@@ -340,12 +335,14 @@ class VPNService:
         user: User,
         devices: int,
         duration: int,
+        total_gb: int = 0,
     ) -> bool:
         return await self.update_client(
             user=user,
             devices=devices,
             duration=duration,
             replace_devices=True,
+            total_gb=total_gb,
         )
 
     async def change_subscription(
@@ -353,6 +350,7 @@ class VPNService:
         user: User,
         devices: int,
         duration: int,
+        total_gb: int = 0,
     ) -> bool:
         if await self.is_client_exists(user):
             return await self.update_client(
@@ -361,6 +359,7 @@ class VPNService:
                 duration,
                 replace_devices=True,
                 replace_duration=True,
+                total_gb=total_gb,
             )
         return False
 
@@ -400,7 +399,6 @@ class VPNService:
         user: User,
         promocode: Promocode,
     ) -> bool:
-        # TODO: consider moving to some 'promocode module services' with usage of VPN service methods.
         async with self.session() as session:
             activated = await Promocode.set_activated(
                 session=session,
