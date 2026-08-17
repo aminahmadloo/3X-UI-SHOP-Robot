@@ -61,6 +61,48 @@ def subscription_keyboard(
     return builder.as_markup()
 
 
+def purchase_duration_keyboard(
+    devices: int,
+    callback_data: SubscriptionData,
+) -> InlineKeyboardMarkup:
+    """Show the two admin-managed purchase categories before plan selection."""
+    builder = InlineKeyboardBuilder()
+
+    callback_data.devices = devices
+    callback_data.state = NavSubscription.PLAN_ONE_MONTH
+    builder.button(
+        text=f"📅 یک ماهه / {format_device_count(devices)}",
+        callback_data=callback_data.pack(),
+    )
+
+    callback_data.state = NavSubscription.PLAN_THREE_MONTH
+    builder.button(
+        text=f"📅 سه ماهه / {format_device_count(devices)}",
+        callback_data=callback_data.pack(),
+    )
+
+    builder.adjust(1)
+    builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def service_purchase_plan_keyboard(
+    plans: list,
+) -> InlineKeyboardMarkup:
+    """Render admin-managed service purchase plans."""
+    builder = InlineKeyboardBuilder()
+
+    for plan in plans:
+        price = f"{plan.price_toman:,} تومان"
+        builder.button(
+            text=f"💾 {plan.volume_gb} گیگ / {plan.duration_days} روز / {price}",
+            callback_data=f"subscription_plan:{plan.id}",
+        )
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 def devices_keyboard(
     plans: list[Plan],
     callback_data: SubscriptionData,
@@ -136,10 +178,15 @@ def payment_method_keyboard(
     plan: Plan,
     callback_data: SubscriptionData,
     gateways: list[PaymentGateway],
+    price_override: float | None = None,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for gateway in gateways:
-        price = plan.get_price(currency=gateway.currency, duration=callback_data.duration)
+        if price_override is None:
+            price = plan.get_price(currency=gateway.currency, duration=callback_data.duration)
+        else:
+            price = price_override
+
         if price is None:
             continue
 
