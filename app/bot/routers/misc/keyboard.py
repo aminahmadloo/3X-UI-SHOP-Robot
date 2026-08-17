@@ -32,6 +32,7 @@ def back_to_main_menu_button() -> InlineKeyboardButton:
     return InlineKeyboardButton(
         text=_("misc:button:back_to_main_menu"),
         callback_data=NavMain.MAIN_MENU,
+        style="danger",
     )
 
 
