@@ -65,7 +65,7 @@ class PaymentGateway(ABC):
 
         async with self.session() as session:
             transaction = await Transaction.get_by_id(session=session, payment_id=payment_id)
-            data = SubscriptionData.unpack(transaction.subscription)
+            data = SubscriptionData.deserialize(transaction.subscription)
             logger.debug(f"Subscription data unpacked: {data}")
             user = await User.get(session=session, tg_id=data.user_id)
 
@@ -146,7 +146,7 @@ class PaymentGateway(ABC):
         logger.info(f"Payment canceled {payment_id}")
         async with self.session() as session:
             transaction = await Transaction.get_by_id(session=session, payment_id=payment_id)
-            data = SubscriptionData.unpack(transaction.subscription)
+            data = SubscriptionData.deserialize(transaction.subscription)
 
             await Transaction.update(
                 session=session,
