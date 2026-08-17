@@ -86,6 +86,12 @@ def managed_payment_method_keyboard(plan_id: int, price_toman: int, gateways: li
                 callback_data=callback_data,
             )
         )
+    builder.row(
+        InlineKeyboardButton(
+            text=f"💳 کارت به کارت | {price_toman:,} تومان",
+            callback_data=f"mp_card:{plan_id}",
+        )
+    )
     builder.row(InlineKeyboardButton(text="🔙 تغییر سرویس", callback_data=f"subscription_back_plan:{plan_id}"))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()

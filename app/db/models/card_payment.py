@@ -9,7 +9,7 @@ from . import Base
 
 
 class CardPayment(Base):
-    """Manual card-to-card wallet top-up request submitted with a receipt."""
+    """Manual card-to-card payment request, for wallet top-ups or service purchases."""
 
     __tablename__ = "card_payments"
 
@@ -21,6 +21,10 @@ class CardPayment(Base):
     receipt_file_id: Mapped[str] = mapped_column(String(512), nullable=False)
     tracking_code: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    payment_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="wallet_topup"
+    )
+    order_data: Mapped[str | None] = mapped_column(String(255), nullable=True)
     admin_tg_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     admin_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=func.now(), nullable=False)
@@ -38,6 +42,8 @@ class CardPayment(Base):
         amount: int,
         receipt_file_id: str,
         tracking_code: str,
+        payment_type: str = "wallet_topup",
+        order_data: str | None = None,
     ) -> Self:
         item = cls(
             user_tg_id=user_tg_id,
@@ -45,6 +51,8 @@ class CardPayment(Base):
             receipt_file_id=receipt_file_id,
             tracking_code=tracking_code,
             status="pending",
+            payment_type=payment_type,
+            order_data=order_data,
         )
         session.add(item)
         await session.commit()
