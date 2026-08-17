@@ -18,6 +18,7 @@ from app.config import Config
 from app.db.models import CustomServicePricing, Invite, Referral, User, WalletTopupAmount
 
 from .keyboard import main_menu_keyboard
+from app.bot.routers.misc.keyboard import back_to_main_menu_button
 from .wallet_keyboard import wallet_keyboard
 
 logger = logging.getLogger(__name__)
@@ -266,10 +267,7 @@ async def callback_custom_service(
                     )
                 ],
                 [
-                    InlineKeyboardButton(
-                        text="🔙 بازگشت به منوی اصلی",
-                        callback_data=NavMain.MAIN_MENU,
-                    )
+                    back_to_main_menu_button()
                 ],
             ]
         ),
