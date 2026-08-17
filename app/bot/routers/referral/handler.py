@@ -32,17 +32,27 @@ async def generate_referral_summary_text(
 ) -> str:
     referral_link = f"https://t.me/{bot_username}?start={user.tg_id}"
 
-    text = _("referral:message:user_summary")
+    text = (
+        "🎉 <b>دوستانتان را دعوت کنید و جایزه بگیرید!</b>\n"
+    )
 
     referred_trial_enabled = config.shop.REFERRED_TRIAL_ENABLED
     if referred_trial_enabled:
         referred_duration = format_subscription_period(config.shop.REFERRED_TRIAL_PERIOD)
-        text += _("referral:message:user_summary_referred_trial_enabled").format(
-            referred_duration=referred_duration,
-        )
+        text += (
+            "\n"
+            "🔗 وقتی کاربر جدید از لینک دعوت شما وارد شود و روی دکمه «🎁 دریافت هدیه» بزند، "
+            "مدت هدیه او {referred_duration} افزایش می‌یابد.\n"
+        ).format(referred_duration=referred_duration)
 
     referrals_count = await Referral.get_referral_count(session=session, referrer_tg_id=user.tg_id)
-    text += _("referral:message:user_summary_invite_link").format(
+    text += (
+        "\n"
+        "📎 <b>لینک دعوت اختصاصی شما:</b>\n"
+        "<code>{referral_link}</code>\n"
+        "<i>(برای کپی کردن روی لینک بزنید)</i>\n"
+        "👀 <b>تعداد کلیک روی لینک شما:</b> {referrals_count}\n"
+    ).format(
         referral_link=referral_link,
         referrals_count=referrals_count,
     )
@@ -71,7 +81,13 @@ async def generate_referral_summary_text(
             second_referrer_duration = format_subscription_period(
                 config.shop.REFERRER_LEVEL_TWO_PERIOD
             )
-            text += _("referral:message:user_summary_explain_referrer_days").format(
+            text += (
+                "\n"
+                "💸 <b>سیستم دعوت دو سطحی</b>\n"
+                "👥 <b>برای هر پرداخت موفق</b> اشتراک با لینک دعوت شما:\n"
+                "1️⃣ شما <b>+{first_referrer_duration}</b> به اشتراک خود دریافت می‌کنید.\n"
+                "2️⃣ همچنین <b>+{second_referrer_duration}</b> از کاربران دعوت‌شده توسط دعوت‌شدگان شما دریافت می‌کنید!\n"
+            ).format(
                 first_referrer_duration=first_referrer_duration,
                 second_referrer_duration=second_referrer_duration,
             )
@@ -80,17 +96,28 @@ async def generate_referral_summary_text(
         elif reward_type == ReferrerRewardType.MONEY:
             first_referrer_rate = config.shop.REFERRER_LEVEL_ONE_RATE
             second_referrer_rate = config.shop.REFERRER_LEVEL_TWO_RATE
-            text += _("referral:message:user_summary_explain_referrer_money").format(
+            text += (
+                "\n"
+                "💸 <b>سیستم دعوت دو سطحی</b>\n"
+                "👥 <b>برای هر پرداخت موفق</b> اشتراک با لینک دعوت شما:\n"
+                "1️⃣ شما <b>{first_referrer_rate}%</b> از مبلغ پرداختی دعوت‌شدگان خود را در کیف پول دریافت می‌کنید.\n"
+                "2️⃣ همچنین <b>{second_referrer_rate}%</b> از پرداخت کاربران دعوت‌شده توسط دعوت‌شدگان شما را دریافت می‌کنید!\n"
+            ).format(
                 first_referrer_rate=first_referrer_rate,
                 second_referrer_rate=second_referrer_rate,
             )
 
-            # TODO: handle and format money currencies
-
         pending_rewards_count = await ReferrerReward.get_pending_rewards_count(
             session=session, user_tg_id=user.tg_id
         )
-        text += _("referral:message:user_summary_referrer_rewards").format(
+        text += (
+            "\n"
+            "📊 <b>پاداش شما از پرداخت‌های دعوت‌شدگان</b>\n"
+            "سطح اول: {first_level_rewards_sum}\n"
+            "سطح دوم: {second_level_rewards_sum}\n"
+            "<i>پاداش‌ها حداکثر تا ۱۵ دقیقه واریز می‌شوند. پاداش‌های در انتظار: "
+            "{pending_rewards_count}</i>"
+        ).format(
             first_level_rewards_sum=first_level_rewards_sum,
             second_level_rewards_sum=second_level_rewards_sum,
             pending_rewards_count=pending_rewards_count,
