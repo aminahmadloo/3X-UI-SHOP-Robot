@@ -224,8 +224,8 @@ async def receive_custom_service_receipt(
     )
     markup = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🔎 مشاهده سفارش", callback_data=f"cardpay:view:{payment.id}")],
-            [InlineKeyboardButton(text="❌ رد پرداخت", callback_data=f"cardpay:reject:{payment.id}")],
+            [InlineKeyboardButton(text="🔎 مشاهده سفارش", callback_data=f"service_cardpay:view:{payment.id}")],
+            [InlineKeyboardButton(text="❌ رد پرداخت", callback_data=f"service_cardpay:reject:{payment.id}")],
             [InlineKeyboardButton(text="👤 مشاهده کاربر", callback_data=f"cardpay:user:{user.tg_id}")],
         ]
     )
@@ -254,7 +254,7 @@ async def _get_service_payment(session: AsyncSession, callback_data: str) -> Car
     return payment
 
 
-@router.callback_query(F.data.regexp(r"^cardpay:view:\d+$"), IsAdmin())
+@router.callback_query(F.data.regexp(r"^service_cardpay:view:\d+$"), IsAdmin())
 async def service_card_payment_view(callback: CallbackQuery, session: AsyncSession) -> object:
     payment = await _get_service_payment(session, callback.data or "")
     if not payment:
@@ -281,15 +281,65 @@ async def service_card_payment_view(callback: CallbackQuery, session: AsyncSessi
         ),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="✅ تأیید و ایجاد سرویس", callback_data=f"cardpay:approve:{payment.id}")],
-                [InlineKeyboardButton(text="❌ رد پرداخت", callback_data=f"cardpay:reject:{payment.id}")],
+                [InlineKeyboardButton(text="✅ تأیید و ایجاد سرویس", callback_data=f"service_cardpay:approve:{payment.id}")],
+                [InlineKeyboardButton(text="❌ رد پرداخت", callback_data=f"service_cardpay:reject:{payment.id}")],
             ]
         ),
     )
     return None
 
 
-@router.callback_query(F.data.regexp(r"^cardpay:approve:\d+$"), IsAdmin())
+@router.callback_query(F.data.regexp(r"^service_cardpay:reject:\d+$"), IsAdmin())
+async def service_card_payment_reject(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    bot,
+) -> object:
+    payment = await _get_service_payment(session, callback.data or "")
+    if not payment:
+        return UNHANDLED
+
+    if payment.status != "pending":
+        await callback.answer(
+            "⚠️ این درخواست قبلاً بررسی شده است.",
+            show_alert=True,
+        )
+        return None
+
+    payment.status = "rejected"
+    payment.admin_tg_id = user.tg_id
+    payment.reviewed_at = datetime.now()
+    await session.commit()
+
+    await callback.answer("❌ پرداخت سرویس رد شد.", show_alert=True)
+
+    if callback.message and callback.message.photo:
+        await callback.message.edit_caption(
+            caption=(callback.message.caption or "")
+            + f"\n\n❌ <b>پرداخت سرویس رد شد</b> توسط <code>{user.tg_id}</code>"
+        )
+
+    try:
+        await bot.send_message(
+            payment.user_tg_id,
+            "❌ <b>پرداخت خرید سرویس شما تأیید نشد.</b>\n\n"
+            f"🆔 کد پیگیری: <code>{payment.tracking_code or payment.id}</code>\n"
+            f"💰 مبلغ: <b>{payment.amount:,} تومان</b>\n\n"
+            "رسید پرداخت شما توسط مدیریت تأیید نشد. "
+            "در صورت اشتباه، با پشتیبانی تماس بگیرید.",
+        )
+    except Exception:
+        logger.exception(
+            "Failed to notify user %s about rejected service payment %s",
+            payment.user_tg_id,
+            payment.id,
+        )
+
+    return None
+
+
+@router.callback_query(F.data.regexp(r"^service_cardpay:approve:\d+$"), IsAdmin())
 async def service_card_payment_approve(
     callback: CallbackQuery,
     user: User,

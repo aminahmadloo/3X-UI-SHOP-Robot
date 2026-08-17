@@ -22,7 +22,7 @@ class ManualWalletChargeState(StatesGroup):
 
 @router.callback_query(F.data == "cardpay:menu", IsAdmin())
 async def card_payment_menu(callback: CallbackQuery, session) -> None:
-    pending = await CardPayment.get_pending(session)
+    pending = [p for p in await CardPayment.get_pending(session) if p.payment_type == "wallet_topup"]
     if not pending:
         text = "💳 <b>پرداخت‌های کارت به کارت</b>\n\nدر حال حاضر درخواست در انتظار بررسی وجود ندارد."
         markup = InlineKeyboardMarkup(inline_keyboard=[
@@ -47,8 +47,8 @@ async def card_payment_menu(callback: CallbackQuery, session) -> None:
 async def card_payment_view(callback: CallbackQuery, session) -> None:
     payment_id = int(callback.data.rsplit(":", 1)[1])
     payment = await CardPayment.get(session, payment_id)
-    if not payment:
-        await callback.answer("❌ درخواست پیدا نشد.", show_alert=True)
+    if not payment or payment.payment_type != "wallet_topup":
+        await callback.answer("❌ درخواست شارژ کیف پول پیدا نشد.", show_alert=True)
         return
     await callback.answer()
     await callback.message.bot.send_photo(
@@ -131,8 +131,8 @@ async def close_user_view(callback: CallbackQuery) -> None:
 async def approve_card_payment(callback: CallbackQuery, user: User, services: ServicesContainer, session, bot) -> None:
     payment_id = int(callback.data.rsplit(":", 1)[1])
     payment = await CardPayment.get(session, payment_id)
-    if not payment:
-        await callback.answer("❌ درخواست پیدا نشد.", show_alert=True)
+    if not payment or payment.payment_type != "wallet_topup":
+        await callback.answer("❌ درخواست شارژ کیف پول پیدا نشد.", show_alert=True)
         return
     if payment.status != "pending":
         await callback.answer("⚠️ این درخواست قبلاً بررسی شده است.", show_alert=True)
@@ -172,8 +172,8 @@ async def approve_card_payment(callback: CallbackQuery, user: User, services: Se
 async def reject_card_payment(callback: CallbackQuery, user: User, session, bot) -> None:
     payment_id = int(callback.data.rsplit(":", 1)[1])
     payment = await CardPayment.get(session, payment_id)
-    if not payment:
-        await callback.answer("❌ درخواست پیدا نشد.", show_alert=True)
+    if not payment or payment.payment_type != "wallet_topup":
+        await callback.answer("❌ درخواست شارژ کیف پول پیدا نشد.", show_alert=True)
         return
     if payment.status != "pending":
         await callback.answer("⚠️ این درخواست قبلاً بررسی شده است.", show_alert=True)

@@ -179,11 +179,6 @@ async def custom_service_payment_gateway(callback: CallbackQuery) -> None:
     await callback.answer("🏦 درگاه بانکی در مرحله بعد به این فاکتور متصل می‌شود.", show_alert=True)
 
 
-@router.callback_query(F.data == "custom_service:payment:card")
-async def custom_service_payment_card(callback: CallbackQuery) -> None:
-    await callback.answer("💳 پرداخت کارت به کارت در مرحله بعد به این فاکتور متصل می‌شود.", show_alert=True)
-
-
 @router.callback_query(F.data == "custom_service:payment:wallet")
 async def custom_service_payment_wallet(
     callback: CallbackQuery,
