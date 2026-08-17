@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime
-from types import SimpleNamespace
 
 from aiogram import F, Router
 from aiogram.dispatcher.event.bases import UNHANDLED
@@ -18,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer, SubscriptionData
-from app.bot.payment_gateways._gateway import PaymentGateway
 from app.bot.routers.wallet.handler import card_text, generate_tracking_code, has_pending_payment
 from app.bot.utils.constants import TransactionStatus
 from app.bot.utils.navigation import NavSubscription
@@ -348,10 +346,6 @@ async def service_card_payment_approve(
     user: User,
     session: AsyncSession,
     db,
-    bot,
-    config: Config,
-    storage,
-    i18n,
     services: ServicesContainer,
 ) -> object:
     payment_id = int((callback.data or "").rsplit(":", 1)[1])
@@ -397,15 +391,52 @@ async def service_card_payment_approve(
             if transaction is None:
                 raise RuntimeError("Unable to create or recover service transaction")
 
-        context = SimpleNamespace(
-            session=db.session,
-            config=config,
-            services=services,
-            bot=bot,
-            i18n=i18n,
-            storage=storage,
+        service_user = await User.get(
+            session=session,
+            tg_id=subscription_data.user_id,
         )
-        await PaymentGateway._on_payment_succeeded(context, payment_id=payment_id)
+
+        await Transaction.update(
+            session=session,
+            payment_id=payment_id,
+            status=TransactionStatus.COMPLETED,
+        )
+
+        if subscription_data.is_extend:
+            await services.vpn.extend_subscription(
+                user=service_user,
+                devices=subscription_data.devices,
+                duration=subscription_data.duration,
+                total_gb=subscription_data.volume_gb,
+            )
+            logger.info(f"Subscription extended for user {service_user.tg_id}")
+
+        elif subscription_data.is_change:
+            await services.vpn.change_subscription(
+                user=service_user,
+                devices=subscription_data.devices,
+                duration=subscription_data.duration,
+                total_gb=subscription_data.volume_gb,
+            )
+            logger.info(f"Subscription changed for user {service_user.tg_id}")
+
+        else:
+            await services.vpn.create_subscription(
+                user=service_user,
+                devices=subscription_data.devices,
+                duration=subscription_data.duration,
+                total_gb=subscription_data.volume_gb,
+                config_name=subscription_data.config_name,
+            )
+
+            logger.info(f"Subscription created for user {service_user.tg_id}")
+
+            key = await services.vpn.get_key(service_user)
+
+            await services.notification.notify_purchase_success(
+                user_id=service_user.tg_id,
+                key=key,
+            )
 
         payment.status = "approved"
         payment.reviewed_at = datetime.now()
