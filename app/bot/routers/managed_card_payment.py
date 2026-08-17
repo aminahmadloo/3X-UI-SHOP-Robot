@@ -56,8 +56,11 @@ async def managed_card_payment(
         return
 
     await state.update_data(
-        custom_service_subscription=subscription_data.pack(),
+        custom_service_days=subscription_data.duration,
+        custom_service_gigabytes=subscription_data.volume_gb,
+        custom_service_devices=subscription_data.devices,
         custom_service_total=int(subscription_data.price),
+        custom_service_subscription=subscription_data.pack(),
     )
     await custom_service_payment_card(
         callback=callback,
