@@ -88,18 +88,31 @@ def purchase_duration_keyboard(
 
 def service_purchase_plan_keyboard(
     plans: list,
+    callback_data: SubscriptionData,
 ) -> InlineKeyboardMarkup:
-    """Render admin-managed service purchase plans."""
+    """Render the plans configured by the admin."""
     builder = InlineKeyboardBuilder()
 
     for plan in plans:
-        price = f"{plan.price_toman:,} تومان"
         builder.button(
-            text=f"💾 {plan.volume_gb} گیگ / {plan.duration_days} روز / {price}",
+            text=(
+                f"💾 {plan.volume_gb} گیگ / "
+                f"{plan.duration_days} روز / "
+                f"{plan.price_toman:,} تومان"
+            ),
             callback_data=f"subscription_plan:{plan.id}",
         )
 
     builder.adjust(1)
+
+    callback_data.state = NavSubscription.PLAN_ONE_MONTH
+    builder.row(
+        back_button(
+            callback_data.pack(),
+            text="🔙 تغییر نوع سرویس",
+        )
+    )
+    builder.row(back_to_main_menu_button())
     return builder.as_markup()
 
 
@@ -175,7 +188,7 @@ def pay_keyboard(pay_url: str, callback_data: SubscriptionData) -> InlineKeyboar
 
 
 def payment_method_keyboard(
-    plan: Plan,
+    plan: Plan | None,
     callback_data: SubscriptionData,
     gateways: list[PaymentGateway],
     price_override: float | None = None,
@@ -183,6 +196,8 @@ def payment_method_keyboard(
     builder = InlineKeyboardBuilder()
     for gateway in gateways:
         if price_override is None:
+            if plan is None:
+                continue
             price = plan.get_price(currency=gateway.currency, duration=callback_data.duration)
         else:
             price = price_override
