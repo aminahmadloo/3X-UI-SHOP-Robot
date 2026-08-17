@@ -24,9 +24,6 @@ from app.db.models import Transaction, User
 
 logger = logging.getLogger(__name__)
 
-from app.bot.models import SubscriptionData
-from app.bot.utils.constants import Currency
-
 
 class PaymentGateway(ABC):
     name: str
@@ -81,7 +78,7 @@ class PaymentGateway(ABC):
         if self.config.shop.REFERRER_REWARD_ENABLED:
             await self.services.referral.add_referrers_rewards_on_payment(
                 referred_tg_id=data.user_id,
-                payment_amount=data.price,  # TODO: (!) add currency unified processing
+                payment_amount=data.price,
                 payment_id=payment_id,
             )
 
@@ -111,6 +108,7 @@ class PaymentGateway(ABC):
                     user=user,
                     devices=data.devices,
                     duration=data.duration,
+                    total_gb=data.volume_gb,
                 )
                 logger.info(f"Subscription extended for user {user.tg_id}")
                 await self.services.notification.notify_extend_success(
@@ -122,6 +120,7 @@ class PaymentGateway(ABC):
                     user=user,
                     devices=data.devices,
                     duration=data.duration,
+                    total_gb=data.volume_gb,
                 )
                 logger.info(f"Subscription changed for user {user.tg_id}")
                 await self.services.notification.notify_change_success(
@@ -133,6 +132,7 @@ class PaymentGateway(ABC):
                     user=user,
                     devices=data.devices,
                     duration=data.duration,
+                    total_gb=data.volume_gb,
                 )
                 logger.info(f"Subscription created for user {user.tg_id}")
                 key = await self.services.vpn.get_key(user)
