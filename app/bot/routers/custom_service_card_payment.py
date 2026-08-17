@@ -290,8 +290,12 @@ async def service_card_payment_approve(
     i18n,
     services: ServicesContainer,
 ) -> object:
-    payment = await _get_service_payment(session, callback.data or "")
-    if not payment:
+    payment_id = int((callback.data or "").rsplit(":", 1)[1])
+    locked_result = await session.execute(
+        select(CardPayment).where(CardPayment.id == payment_id).with_for_update()
+    )
+    payment = locked_result.scalar_one_or_none()
+    if not payment or not payment.admin_note or not payment.admin_note.startswith(SERVICE_ORDER_PREFIX):
         return UNHANDLED
 
     if payment.status != "pending":
@@ -310,21 +314,24 @@ async def service_card_payment_approve(
 
     payment.status = "processing"
     payment.admin_tg_id = user.tg_id
-    await session.commit()
 
     payment_id = f"card_payment:{payment.id}"
     try:
-        transaction = await Transaction.create(
-            session=session,
-            tg_id=payment.user_tg_id,
-            subscription=subscription_data.pack(),
-            payment_id=payment_id,
-            status=TransactionStatus.PENDING,
-        )
-        if transaction is None:
-            transaction = await Transaction.get_by_id(session=session, payment_id=payment_id)
-        if transaction is None:
-            raise RuntimeError("Unable to create or recover service transaction")
+        async with db.session() as transaction_session:
+            transaction = await Transaction.create(
+                session=transaction_session,
+                tg_id=payment.user_tg_id,
+                subscription=subscription_data.pack(),
+                payment_id=payment_id,
+                status=TransactionStatus.PENDING,
+            )
+            if transaction is None:
+                transaction = await Transaction.get_by_id(
+                    session=transaction_session,
+                    payment_id=payment_id,
+                )
+            if transaction is None:
+                raise RuntimeError("Unable to create or recover service transaction")
 
         context = SimpleNamespace(
             session=db.session,
@@ -340,11 +347,8 @@ async def service_card_payment_approve(
         payment.reviewed_at = datetime.now()
         await session.commit()
     except Exception as exc:
-        payment.status = "pending"
-        payment.admin_tg_id = None
-        payment.reviewed_at = None
-        await session.commit()
-        logger.exception("Failed to fulfill custom service card payment %s: %s", payment.id, exc)
+        await session.rollback()
+        logger.exception("Failed to fulfill custom service card payment %s: %s", payment_id, exc)
         await callback.answer("❌ ساخت یا تحویل سرویس انجام نشد؛ درخواست به حالت بررسی برگشت.", show_alert=True)
         return None
 
