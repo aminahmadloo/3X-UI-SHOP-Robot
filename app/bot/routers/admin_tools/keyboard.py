@@ -24,7 +24,14 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=_("admin_tools:button:notification"), callback_data=NavAdminTools.NOTIFICATION),
         InlineKeyboardButton(text="💳 مدیریت کارت به کارت", callback_data=NavAdminTools.CARD_SETTINGS),
     )
-    builder.row(InlineKeyboardButton(text="⚙️ مدیریت خرید سرویس با مشخصات دلخواه", callback_data=NavAdminTools.CUSTOM_SERVICE_PRICING))
+    builder.row(InlineKeyboardButton(
+        text="⚙️ مدیریت خرید سرویس با مشخصات دلخواه",
+        callback_data=NavAdminTools.CUSTOM_SERVICE_PRICING,
+    ))
+    builder.row(InlineKeyboardButton(
+        text="🛒 مدیریت خرید سرویس",
+        callback_data=NavAdminTools.SERVICE_PURCHASE_MANAGEMENT,
+    ))
     builder.row(
         InlineKeyboardButton(text=_("admin_tools:button:test_button"), callback_data=NavAdminTools.TEST),
         InlineKeyboardButton(text=_("admin_tools:button:create_backup"), callback_data=NavAdminTools.CREATE_BACKUP),
@@ -35,6 +42,36 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
     )
     builder.row(InlineKeyboardButton(text="💳 پرداخت‌های کارت به کارت", callback_data="cardpay:menu"))
     builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def service_purchase_management_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📅 مدیریت سرویس‌های یک ماهه",
+            callback_data=NavAdminTools.SERVICE_PURCHASE_ONE_MONTH,
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📅 مدیریت سرویس‌های سه ماهه",
+            callback_data=NavAdminTools.SERVICE_PURCHASE_THREE_MONTH,
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📱 مدیریت تعداد دستگاه متصل",
+            callback_data=NavAdminTools.SERVICE_PURCHASE_DEVICES,
+        )
+    )
+
+    builder.row(back_button(NavAdminTools.MAIN))
+    builder.row(back_to_main_menu_button())
+
     return builder.as_markup()
 
 

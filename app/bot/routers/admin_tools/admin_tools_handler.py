@@ -16,6 +16,7 @@ from .keyboard import (
     admin_tools_keyboard,
     custom_service_pricing_edit_keyboard,
     custom_service_pricing_keyboard,
+    service_purchase_management_keyboard,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,34 @@ async def callback_admin_tools(callback: CallbackQuery, user: User) -> None:
         [InlineKeyboardButton(text="💰 مدیریت مبالغ کیف پول", callback_data="wallet_amounts")],
     )
     await callback.message.edit_text(text=_("admin_tools:message:main"), reply_markup=markup)
+
+
+@router.callback_query(F.data == NavAdminTools.SERVICE_PURCHASE_MANAGEMENT, IsAdmin())
+async def callback_service_purchase_management(
+    callback: CallbackQuery,
+) -> None:
+    await callback.answer()
+    await callback.message.edit_text(
+        text="🛒 <b>مدیریت خرید سرویس</b>",
+        reply_markup=service_purchase_management_keyboard(),
+    )
+
+
+@router.callback_query(
+    F.data.in_(
+        {
+            NavAdminTools.SERVICE_PURCHASE_ONE_MONTH,
+            NavAdminTools.SERVICE_PURCHASE_THREE_MONTH,
+            NavAdminTools.SERVICE_PURCHASE_DEVICES,
+        }
+    ),
+    IsAdmin(),
+)
+async def callback_service_purchase_management_placeholder(
+    callback: CallbackQuery,
+) -> None:
+    # فعلاً فقط کلیدها ایجاد شده‌اند و منطق آن‌ها در مراحل بعدی اضافه می‌شود.
+    await callback.answer()
 
 
 @router.callback_query(F.data == NavAdminTools.CUSTOM_SERVICE_PRICING, IsAdmin())
