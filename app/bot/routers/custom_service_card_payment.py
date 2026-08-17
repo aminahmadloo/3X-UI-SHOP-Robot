@@ -36,10 +36,10 @@ class CustomServiceCardPaymentState(StatesGroup):
 
 
 def _build_subscription_data(data: dict, user_tg_id: int) -> SubscriptionData | None:
-    packed = data.get("custom_service_subscription")
-    if packed:
+    stored = data.get("custom_service_subscription")
+    if stored:
         try:
-            subscription_data = SubscriptionData.unpack(packed)
+            subscription_data = SubscriptionData.deserialize(stored)
         except Exception:
             return None
         if subscription_data.user_id != user_tg_id:
@@ -57,14 +57,16 @@ def _build_subscription_data(data: dict, user_tg_id: int) -> SubscriptionData | 
     if not (7 <= days <= 90 and 5 <= gigabytes <= 400 and 2 <= devices <= 10 and total > 0):
         return None
 
-    config_name = f"{gigabytes}GB-{days}D-tg{user_tg_id}-sub101-custom"
+    config_name = data.get("custom_service_config_name") or f"{gigabytes}GB-{days}D-tg{user_tg_id}-sub101-custom"
     return SubscriptionData(
         state=NavSubscription.CONFIG_NAME,
-        user_id=user_tg_id,
+        is_extend=data.get("custom_service_is_extend", False),
+        is_change=data.get("custom_service_is_change", False),
+        user_id=data.get("custom_service_user_id", user_tg_id),
         devices=devices,
         duration=days,
         price=total,
-        plan_id=0,
+        plan_id=data.get("custom_service_plan_id", 0),
         volume_gb=gigabytes,
         config_name=config_name,
     )
@@ -108,9 +110,10 @@ async def custom_service_payment_card(
         await callback.answer("❌ پرداخت کارت به کارت در حال حاضر فعال نیست.", show_alert=True)
         return
 
+    stored_subscription = subscription_data.serialize()
     await state.set_state(CustomServiceCardPaymentState.waiting_receipt)
     await state.update_data(
-        custom_service_subscription=subscription_data.pack(),
+        custom_service_subscription=stored_subscription,
         custom_service_total=int(subscription_data.price),
     )
     await callback.answer()
@@ -123,8 +126,8 @@ async def custom_service_payment_card(
 @router.callback_query(F.data == "custom_service:card:paid")
 async def custom_service_card_paid(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
-    packed = data.get("custom_service_subscription")
-    if not packed:
+    stored_subscription = data.get("custom_service_subscription")
+    if not stored_subscription:
         await state.clear()
         await callback.answer("❌ درخواست پرداخت منقضی شده است.", show_alert=True)
         return
@@ -153,16 +156,16 @@ async def receive_custom_service_receipt(
     bot,
 ) -> None:
     data = await state.get_data()
-    packed = data.get("custom_service_subscription")
+    stored_subscription = data.get("custom_service_subscription")
     amount = int(data.get("custom_service_total", 0))
 
-    if not packed or amount <= 0:
+    if not stored_subscription or amount <= 0:
         await state.clear()
         await message.answer("❌ درخواست پرداخت منقضی شده است.")
         return
 
     try:
-        subscription_data = SubscriptionData.unpack(packed)
+        subscription_data = SubscriptionData.deserialize(stored_subscription)
     except Exception:
         await state.clear()
         await message.answer("❌ اطلاعات سفارش سرویس نامعتبر است. لطفاً دوباره سفارش دهید.")
@@ -197,7 +200,7 @@ async def receive_custom_service_receipt(
         message.photo[-1].file_id,
         tracking_code,
         payment_type=SERVICE_PAYMENT_TYPE,
-        order_data=packed,
+        order_data=stored_subscription,
     )
     await state.clear()
 
@@ -261,7 +264,7 @@ async def service_card_payment_view(callback: CallbackQuery, session: AsyncSessi
         return UNHANDLED
 
     try:
-        subscription_data = SubscriptionData.unpack(payment.order_data or "")
+        subscription_data = SubscriptionData.deserialize(payment.order_data or "")
     except Exception:
         await callback.answer("❌ اطلاعات سفارش سرویس خراب یا نامعتبر است.", show_alert=True)
         return None
@@ -364,7 +367,7 @@ async def service_card_payment_approve(
         return None
 
     try:
-        subscription_data = SubscriptionData.unpack(payment.order_data)
+        subscription_data = SubscriptionData.deserialize(payment.order_data)
     except Exception:
         await callback.answer("❌ اطلاعات سفارش سرویس نامعتبر است.", show_alert=True)
         return None
@@ -382,7 +385,7 @@ async def service_card_payment_approve(
             transaction = await Transaction.create(
                 session=transaction_session,
                 tg_id=payment.user_tg_id,
-                subscription=subscription_data.pack(),
+                subscription=subscription_data.serialize(),
                 payment_id=payment_id,
                 status=TransactionStatus.PENDING,
             )
