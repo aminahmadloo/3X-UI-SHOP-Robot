@@ -71,7 +71,8 @@ async def callback_subscription_buy(
     await callback.answer()
     await callback.message.edit_text(
         "🛒 <b>انتخاب نوع سرویس</b>\n\n"
-        "تعداد دستگاه از تنظیمات مدیریت خرید سرویس تعیین شده است.",
+        f"👥 تعداد دستگاه: <b>{settings.max_connected_devices}</b>\n\n"
+        "نوع سرویس را انتخاب کنید:",
         reply_markup=purchase_duration_keyboard(
             devices=settings.max_connected_devices,
             callback_data=callback_data,
@@ -98,7 +99,10 @@ async def callback_subscription_plan_category(
 
     plans = await ServicePurchasePlan.list_by_type(session, service_type)
     if not plans:
-        await callback.answer("برای این نوع سرویس هنوز پلنی ثبت نشده است.", show_alert=True)
+        await callback.answer(
+            "برای این نوع سرویس هنوز پلنی ثبت نشده است.",
+            show_alert=True,
+        )
         return
 
     settings = await ConnectedDeviceSettings.get_or_create(session)
@@ -116,7 +120,10 @@ async def callback_subscription_plan_category(
         f"{title}\n\n"
         f"👥 تعداد دستگاه: <b>{settings.max_connected_devices}</b>\n"
         "یکی از پلن‌های زیر را انتخاب کنید:",
-        reply_markup=service_purchase_plan_keyboard(plans),
+        reply_markup=service_purchase_plan_keyboard(
+            plans,
+            callback_data,
+        ),
     )
 
 
@@ -126,6 +133,7 @@ async def callback_subscription_plan_selected(
     user: User,
     session: AsyncSession,
     callback_data: SubscriptionData,
+    gateway_factory: GatewayFactory,
 ) -> None:
     try:
         plan_id = int(callback.data.rsplit(":", 1)[1])
@@ -157,30 +165,17 @@ async def callback_subscription_plan_selected(
         callback_data.price,
     )
 
-    # The existing payment gateway layer is reused. The managed plan price is
-    # carried by SubscriptionData so it is persisted in the transaction payload.
-    # A legacy Plan object is only used as a type-compatible fallback; the
-    # price_override is the authoritative value for this purchase flow.
-    legacy_plan = None
-
-    try:
-        from app.bot.models.plan import Plan
-
-        legacy_plan = Plan(devices=callback_data.devices, prices={})
-    except Exception:
-        pass
-
     await callback.answer()
     await callback.message.edit_text(
         "💳 <b>انتخاب روش پرداخت</b>\n\n"
-        f"📱 دستگاه: <b>{callback_data.devices}</b>\n"
+        f"📱 تعداد دستگاه: <b>{callback_data.devices}</b>\n"
         f"💾 حجم: <b>{callback_data.volume_gb} گیگ</b>\n"
         f"📅 مدت: <b>{callback_data.duration} روز</b>\n"
         f"💰 مبلغ: <b>{callback_data.price:,} تومان</b>",
         reply_markup=payment_method_keyboard(
-            plan=legacy_plan,
+            plan=None,
             callback_data=callback_data,
-            gateways=callback.bot.get("gateway_factory", []) if False else [],
+            gateways=gateway_factory.get_gateways(),
             price_override=callback_data.price,
         ),
     )
