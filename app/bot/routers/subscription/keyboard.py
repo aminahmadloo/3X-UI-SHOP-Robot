@@ -41,9 +41,9 @@ def purchase_duration_keyboard(devices: int, callback_data: SubscriptionData) ->
     builder = InlineKeyboardBuilder()
     callback_data.devices = devices
     callback_data.state = NavSubscription.PLAN_ONE_MONTH
-    builder.button(text=f"📅 یک ماهه / {format_device_count(devices)}", callback_data=callback_data.pack())
+    builder.button(text=f"📅 یک ماهه / {devices} کاربره", callback_data=callback_data.pack())
     callback_data.state = NavSubscription.PLAN_THREE_MONTH
-    builder.button(text=f"📅 سه ماهه / {format_device_count(devices)}", callback_data=callback_data.pack())
+    builder.button(text=f"📅 سه ماهه / {devices} کاربره", callback_data=callback_data.pack())
     builder.adjust(1)
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
@@ -60,6 +60,22 @@ def service_purchase_plan_keyboard(plans: list, callback_data: SubscriptionData)
     service_type = plans[0].service_type if plans else "one_month"
     callback_data.state = NavSubscription.PLAN_ONE_MONTH if service_type == "one_month" else NavSubscription.PLAN_THREE_MONTH
     builder.row(back_button(callback_data.pack(), text="🔙 تغییر نوع سرویس"))
+    builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def managed_payment_method_keyboard(plan_id: int, price_toman: int, gateways: list[PaymentGateway]) -> InlineKeyboardMarkup:
+    """Use compact callbacks for managed plans so Telegram's 64-byte callback limit is never exceeded."""
+    builder = InlineKeyboardBuilder()
+    for gateway in gateways:
+        callback_data = f"mp:{gateway.callback}:{plan_id}"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{gateway.name} | {price_toman:,} تومان",
+                callback_data=callback_data,
+            )
+        )
+    builder.row(InlineKeyboardButton(text="🔙 تغییر سرویس", callback_data=f"subscription_back_plan:{plan_id}"))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 
@@ -98,8 +114,11 @@ def duration_keyboard(plan_service: PlanService, callback_data: SubscriptionData
 def pay_keyboard(pay_url: str, callback_data: SubscriptionData) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=_("subscription:button:pay"), url=pay_url))
-    callback_data.state = NavSubscription.DURATION
-    builder.row(back_button(callback_data.pack(), text=_("subscription:button:change_payment_method")))
+    if callback_data.plan_id:
+        builder.row(InlineKeyboardButton(text="🔙 تغییر روش پرداخت", callback_data=f"mp_back:{callback_data.plan_id}"))
+    else:
+        callback_data.state = NavSubscription.DURATION
+        builder.row(back_button(callback_data.pack(), text=_("subscription:button:change_payment_method")))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 
@@ -117,11 +136,8 @@ def payment_method_keyboard(plan: Plan | None, callback_data: SubscriptionData, 
             continue
         callback_data.state = gateway.callback
         builder.row(InlineKeyboardButton(text=f"{gateway.name} | {price} {gateway.currency.symbol}", callback_data=callback_data.pack()))
-    if callback_data.plan_id:
-        builder.row(InlineKeyboardButton(text="🔙 تغییر سرویس", callback_data=f"subscription_back_plan:{callback_data.plan_id}"))
-    else:
-        callback_data.state = NavSubscription.DEVICES
-        builder.row(back_button(callback_data.pack(), text=_("subscription:button:change_duration")))
+    callback_data.state = NavSubscription.DEVICES
+    builder.row(back_button(callback_data.pack(), text=_("subscription:button:change_duration")))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 
