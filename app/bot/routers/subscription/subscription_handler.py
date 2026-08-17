@@ -132,7 +132,6 @@ async def callback_subscription_plan_selected(
     callback: CallbackQuery,
     user: User,
     session: AsyncSession,
-    callback_data: SubscriptionData,
     gateway_factory: GatewayFactory,
 ) -> None:
     try:
@@ -148,12 +147,15 @@ async def callback_subscription_plan_selected(
 
     settings = await ConnectedDeviceSettings.get_or_create(session)
 
-    callback_data.state = NavSubscription.PAY
-    callback_data.devices = settings.max_connected_devices
-    callback_data.duration = plan.duration_days
-    callback_data.price = plan.price_toman
-    callback_data.plan_id = plan.id
-    callback_data.volume_gb = plan.volume_gb
+    callback_data = SubscriptionData(
+        state=NavSubscription.PAY,
+        user_id=user.tg_id,
+        devices=settings.max_connected_devices,
+        duration=plan.duration_days,
+        price=plan.price_toman,
+        plan_id=plan.id,
+        volume_gb=plan.volume_gb,
+    )
 
     logger.info(
         "User %s selected managed plan %s | devices=%s duration=%s volume=%sGB price=%s",
