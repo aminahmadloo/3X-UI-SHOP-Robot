@@ -28,7 +28,7 @@ from app.db.models import CardPayment, CardSettings, Transaction, User
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 
-SERVICE_ORDER_PREFIX = "SERVICE_ORDER_V1:"
+SERVICE_PAYMENT_TYPE = "service_purchase"
 
 
 class CustomServiceCardPaymentState(StatesGroup):
@@ -186,9 +186,9 @@ async def receive_custom_service_receipt(
         amount,
         message.photo[-1].file_id,
         tracking_code,
+        payment_type=SERVICE_PAYMENT_TYPE,
+        order_data=packed,
     )
-    payment.admin_note = SERVICE_ORDER_PREFIX + packed
-    await session.commit()
     await state.clear()
 
     await message.answer(
@@ -239,7 +239,7 @@ async def invalid_custom_service_receipt(message: Message) -> None:
 async def _get_service_payment(session: AsyncSession, callback_data: str) -> CardPayment | None:
     payment_id = int(callback_data.rsplit(":", 1)[1])
     payment = await CardPayment.get(session, payment_id)
-    if not payment or not payment.admin_note or not payment.admin_note.startswith(SERVICE_ORDER_PREFIX):
+    if not payment or payment.payment_type != SERVICE_PAYMENT_TYPE or not payment.order_data:
         return None
     return payment
 
@@ -251,7 +251,7 @@ async def service_card_payment_view(callback: CallbackQuery, session: AsyncSessi
         return UNHANDLED
 
     try:
-        subscription_data = SubscriptionData.unpack(payment.admin_note[len(SERVICE_ORDER_PREFIX):])
+        subscription_data = SubscriptionData.unpack(payment.order_data or "")
     except Exception:
         await callback.answer("❌ اطلاعات سفارش سرویس خراب یا نامعتبر است.", show_alert=True)
         return None
@@ -296,7 +296,7 @@ async def service_card_payment_approve(
         select(CardPayment).where(CardPayment.id == payment_id).with_for_update()
     )
     payment = locked_result.scalar_one_or_none()
-    if not payment or not payment.admin_note or not payment.admin_note.startswith(SERVICE_ORDER_PREFIX):
+    if not payment or payment.payment_type != SERVICE_PAYMENT_TYPE or not payment.order_data:
         return UNHANDLED
 
     if payment.status != "pending":
@@ -304,7 +304,7 @@ async def service_card_payment_approve(
         return None
 
     try:
-        subscription_data = SubscriptionData.unpack(payment.admin_note[len(SERVICE_ORDER_PREFIX):])
+        subscription_data = SubscriptionData.unpack(payment.order_data)
     except Exception:
         await callback.answer("❌ اطلاعات سفارش سرویس نامعتبر است.", show_alert=True)
         return None
