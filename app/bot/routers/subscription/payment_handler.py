@@ -45,12 +45,23 @@ async def callback_payment_method_selected(
         method = callback_data.state
         devices = callback_data.devices
         duration = callback_data.duration
+        volume_gb = callback_data.volume_gb
         logger.info(f"User {user.tg_id} selected payment method: {method}")
-        logger.info(f"User {user.tg_id} selected {devices} devices and {duration} days.")
+        logger.info(
+            f"User {user.tg_id} selected {devices} devices, "
+            f"{duration} days and {volume_gb} GB."
+        )
+
         gateway = gateway_factory.get_gateway(method)
-        plan = services.plan.get_plan(devices)
-        price = plan.get_price(currency=gateway.currency, duration=duration)
-        callback_data.price = price
+
+        if callback_data.plan_id:
+            # Managed service purchase: the price selected by the admin is
+            # already stored in SubscriptionData and must be preserved exactly.
+            price = callback_data.price
+        else:
+            plan = services.plan.get_plan(devices)
+            price = plan.get_price(currency=gateway.currency, duration=duration)
+            callback_data.price = price
 
         pay_url = await gateway.create_payment(callback_data)
 
@@ -65,6 +76,7 @@ async def callback_payment_method_selected(
             text=text.format(
                 devices=devices,
                 duration=format_subscription_period(duration),
+                volume=volume_gb,
                 price=price,
                 currency=gateway.currency.symbol,
             ),
