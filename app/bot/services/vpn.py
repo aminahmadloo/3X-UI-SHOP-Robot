@@ -36,12 +36,11 @@ class VPNService:
         logger.info("VPN Service initialized.")
 
     async def _find_client(self, user: User) -> tuple[Client, Inbound] | None:
-        """Find a client through the inbound list API.
+        """Find the user's client.
 
-        py3xui 0.3.x uses the client-traffic endpoint for get_by_email(), but
-        some newer 3X-UI versions do not expose that endpoint. The inbound
-        list response contains both client settings and clientStats, so use it
-        consistently for client lookup and updates.
+        New clients are identified primarily by sub_id == user.vpn_id.
+        Older clients are supported through the legacy email == tg_id
+        fallback.
         """
         connection = await self.server_pool_service.get_connection(user)
         if not connection:
@@ -55,10 +54,19 @@ class VPNService:
             )
             return None
 
-        email = str(user.tg_id)
+        user_vpn_id = str(user.vpn_id)
+        legacy_email = str(user.tg_id)
+
+        # New identity: stable subscription/client identifier.
         for inbound in inbounds:
             for client in inbound.settings.clients or []:
-                if client.email == email:
+                if str(client.sub_id or "") == user_vpn_id:
+                    return client, inbound
+
+        # Backward compatibility for clients created before config-name support.
+        for inbound in inbounds:
+            for client in inbound.settings.clients or []:
+                if str(client.email or "") == legacy_email:
                     return client, inbound
 
         return None
@@ -105,13 +113,25 @@ class VPNService:
             inbounds: list[Inbound] = await connection.api.inbound.get_list()
 
             client: Client | None = None
+
+            # New clients are identified by the stable subscription ID.
             for inbound in inbounds:
                 for inbound_client in inbound.settings.clients or []:
-                    if inbound_client.email == str(user.tg_id):
+                    if str(inbound_client.sub_id or "") == str(user.vpn_id):
                         client = inbound_client
                         break
                 if client:
                     break
+
+            # Backward compatibility for clients created before config-name support.
+            if not client:
+                for inbound in inbounds:
+                    for inbound_client in inbound.settings.clients or []:
+                        if str(inbound_client.email or "") == str(user.tg_id):
+                            client = inbound_client
+                            break
+                    if client:
+                        break
 
             if not client:
                 logger.warning(
@@ -120,9 +140,11 @@ class VPNService:
                 return None
 
             stats_client: Client | None = None
+
+            # client_stats uses the client's email/name as its lookup key.
             for inbound in inbounds:
                 for stat in inbound.client_stats or []:
-                    if stat.email == str(user.tg_id):
+                    if str(stat.email or "") == str(client.email or ""):
                         stats_client = stat
                         break
                 if stats_client:
@@ -189,6 +211,7 @@ class VPNService:
         flow: str = "xtls-rprx-vision",
         total_gb: int = 0,
         inbound_id: int = 1,
+        config_name: str | None = None,
     ) -> bool:
         logger.info(
             f"Creating new client {user.tg_id} | {devices} devices {duration} days | {total_gb} GB."
@@ -212,8 +235,10 @@ class VPNService:
             )
             return False
 
+        client_name = (config_name or f"tg{user.tg_id}").strip()
+
         new_client = Client(
-            email=str(user.tg_id),
+            email=client_name,
             enable=enable,
             id=user.vpn_id,
             expiry_time=days_to_timestamp(duration),
@@ -320,6 +345,7 @@ class VPNService:
         devices: int,
         duration: int,
         total_gb: int = 0,
+        config_name: str | None = None,
     ) -> bool:
         if not await self.is_client_exists(user):
             return await self.create_client(
@@ -327,6 +353,7 @@ class VPNService:
                 devices=devices,
                 duration=duration,
                 total_gb=total_gb,
+                config_name=config_name,
             )
         return False
 

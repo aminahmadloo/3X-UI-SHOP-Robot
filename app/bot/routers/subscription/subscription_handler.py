@@ -1,20 +1,27 @@
 import logging
+import re
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, Message
 from aiogram.utils.i18n import gettext as _
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ClientData, ServicesContainer, SubscriptionData
 from app.bot.payment_gateways import GatewayFactory
-from app.bot.routers.subscription.keyboard import devices_keyboard, duration_keyboard, managed_payment_method_keyboard, pay_keyboard, payment_method_keyboard, purchase_duration_keyboard, service_purchase_plan_keyboard, subscription_keyboard
+from app.bot.routers.subscription.keyboard import config_name_keyboard, devices_keyboard, duration_keyboard, managed_payment_method_keyboard, pay_keyboard, payment_method_keyboard, purchase_duration_keyboard, service_purchase_plan_keyboard, subscription_keyboard
 from app.bot.utils.navigation import NavSubscription
 from app.config import Config
 from app.db.models import ConnectedDeviceSettings, ServicePurchasePlan, User
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
+
+
+class PurchaseConfigState(StatesGroup):
+    waiting_config_name = State()
+    selecting_payment = State()
 
 
 async def show_subscription(callback: CallbackQuery, client_data: ClientData | None, callback_data: SubscriptionData) -> None:
@@ -31,7 +38,11 @@ async def callback_subscription_buy(callback: CallbackQuery, user: User, session
     settings = await ConnectedDeviceSettings.get_or_create(session)
     data = SubscriptionData(state=NavSubscription.PLAN_ONE_MONTH, user_id=user.tg_id, devices=settings.max_connected_devices)
     await callback.answer()
-    await callback.message.edit_text("🛒 <b>انتخاب نوع سرویس</b>\n\n" f"👥 تعداد دستگاه: <b>{settings.max_connected_devices}</b>\n\nنوع سرویس را انتخاب کنید:", reply_markup=purchase_duration_keyboard(settings.max_connected_devices, data))
+    await callback.message.edit_text(
+        "🛒 <b>خرید سرویس جدید</b>\n\n"
+        "لطفاً دسته‌بندی مورد نظر را انتخاب کنید:",
+        reply_markup=purchase_duration_keyboard(settings.max_connected_devices, data),
+    )
 
 
 @router.callback_query(SubscriptionData.filter(F.state.in_({NavSubscription.PLAN_ONE_MONTH, NavSubscription.PLAN_THREE_MONTH})))
@@ -44,9 +55,13 @@ async def callback_subscription_plan_category(callback: CallbackQuery, user: Use
     settings = await ConnectedDeviceSettings.get_or_create(session)
     callback_data.devices = settings.max_connected_devices
     callback_data.state = NavSubscription.PLAN
-    title = "📅 <b>سرویس‌های یک ماهه</b>" if service_type == "one_month" else "📅 <b>سرویس‌های سه ماهه</b>"
     await callback.answer()
-    await callback.message.edit_text(f"{title}\n\n👥 تعداد دستگاه: <b>{settings.max_connected_devices}</b>\nیکی از پلن‌های زیر را انتخاب کنید:", reply_markup=service_purchase_plan_keyboard(plans, callback_data))
+    await callback.message.edit_text(
+        "<b>انتخاب پلن</b>\n\n"
+        "لطفاً پلن مورد نظر را انتخاب کنید:\n\n"
+        "قیمت‌های ویژه برای اولین خرید شما",
+        reply_markup=service_purchase_plan_keyboard(plans, callback_data),
+    )
 
 
 @router.callback_query(F.data.regexp(r"^subscription_back_plan:\d+$"))
@@ -58,39 +73,326 @@ async def callback_subscription_back_to_plan(callback: CallbackQuery, session: A
     plans = await ServicePurchasePlan.list_by_type(session, plan.service_type)
     settings = await ConnectedDeviceSettings.get_or_create(session)
     data = SubscriptionData(state=NavSubscription.PLAN_ONE_MONTH if plan.service_type == "one_month" else NavSubscription.PLAN_THREE_MONTH, user_id=callback.from_user.id, devices=settings.max_connected_devices)
-    title = "📅 <b>سرویس‌های یک ماهه</b>" if plan.service_type == "one_month" else "📅 <b>سرویس‌های سه ماهه</b>"
     await callback.answer()
-    await callback.message.edit_text(f"{title}\n\n👥 تعداد دستگاه: <b>{settings.max_connected_devices}</b>\nیکی از پلن‌های زیر را انتخاب کنید:", reply_markup=service_purchase_plan_keyboard(plans, data))
+    await callback.message.edit_text(
+        "<b>انتخاب پلن</b>\n\n"
+        "لطفاً پلن مورد نظر را انتخاب کنید:\n\n"
+        "قیمت‌های ویژه برای اولین خرید شما",
+        reply_markup=service_purchase_plan_keyboard(plans, data),
+    )
+
+
+def _build_auto_config_name(volume_gb: int, duration_days: int, tg_id: int, sub_number: int = 101) -> str:
+    return f"{volume_gb}GB-{duration_days}D-tg{tg_id}-sub{sub_number}"
+
+
+def _sanitize_config_name(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "", name.strip())
 
 
 @router.callback_query(F.data.regexp(r"^subscription_plan:\d+$"))
-async def callback_subscription_plan_selected(callback: CallbackQuery, user: User, session: AsyncSession, gateway_factory: GatewayFactory) -> None:
+async def callback_subscription_plan_selected(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
     plan = await ServicePurchasePlan.get(session, int(callback.data.rsplit(":", 1)[1]))
+
     if not plan:
         await callback.answer("این پلن دیگر وجود ندارد.", show_alert=True)
         return
-    settings = await ConnectedDeviceSettings.get_or_create(session)
+
+    auto_name = _build_auto_config_name(
+        volume_gb=plan.volume_gb,
+        duration_days=plan.duration_days,
+        tg_id=user.tg_id,
+    )
+
+    data = SubscriptionData(
+        state=NavSubscription.CONFIG_NAME,
+        user_id=user.tg_id,
+        devices=(await ConnectedDeviceSettings.get_or_create(session)).max_connected_devices,
+        duration=plan.duration_days,
+        price=plan.price_toman,
+        plan_id=plan.id,
+        volume_gb=plan.volume_gb,
+        config_name=auto_name,
+    )
+
+    await state.update_data(
+        subscription_data={
+            "state": NavSubscription.CONFIG_NAME.value,
+            "is_extend": data.is_extend,
+            "is_change": data.is_change,
+            "user_id": data.user_id,
+            "devices": data.devices,
+            "duration": data.duration,
+            "price": data.price,
+            "plan_id": data.plan_id,
+            "volume_gb": data.volume_gb,
+            "config_name": data.config_name,
+        }
+    )
+    await state.set_state(PurchaseConfigState.waiting_config_name)
+
     await callback.answer()
-    await callback.message.edit_text("💳 <b>انتخاب روش پرداخت</b>\n\n" f"📱 تعداد دستگاه: <b>{settings.max_connected_devices}</b>\n💾 حجم: <b>{plan.volume_gb} گیگ</b>\n📅 مدت: <b>{plan.duration_days} روز</b>\n💰 مبلغ: <b>{plan.price_toman:,} تومان</b>", reply_markup=managed_payment_method_keyboard(plan.id, plan.price_toman, gateway_factory.get_gateways()))
+
+    await callback.message.edit_text(
+        "⚙️ <b>نام کانفیگ</b>\n\n"
+        f"نام خودکار:\n<code>{auto_name}</code>\n\n"
+        "یا نام دلخواه خود را وارد کنید <b>(فقط انگلیسی)</b>:\n\n"
+        "نام انتخابی باید فقط شامل حروف انگلیسی، عدد، <code>_</code> یا <code>-</code> باشد.",
+        reply_markup=config_name_keyboard(data),
+    )
+
+
+@router.callback_query(F.data == "subscription_config_name:auto")
+async def callback_config_name_auto(
+    callback: CallbackQuery,
+    state: FSMContext,
+    gateway_factory: GatewayFactory,
+) -> None:
+    data = await state.get_data()
+    packed = data.get("subscription_data")
+
+    if not packed:
+        await callback.answer(
+            "اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید.",
+            show_alert=True,
+        )
+        return
+
+    if not isinstance(packed, dict):
+        await callback.answer(
+            "اطلاعات سفارش نامعتبر است. لطفاً دوباره پلن را انتخاب کنید.",
+            show_alert=True,
+        )
+        await state.clear()
+        return
+
+    callback_data = SubscriptionData(
+        state=NavSubscription.CONFIG_NAME,
+        is_extend=packed.get("is_extend", False),
+        is_change=packed.get("is_change", False),
+        user_id=packed.get("user_id", 0),
+        devices=packed.get("devices", 0),
+        duration=packed.get("duration", 0),
+        price=packed.get("price", 0),
+        plan_id=packed.get("plan_id", 0),
+        volume_gb=packed.get("volume_gb", 0),
+        config_name=packed.get("config_name", ""),
+    )
+
+    if not callback_data.config_name:
+        await callback.answer("نام خودکار موجود نیست.", show_alert=True)
+        return
+
+    await state.set_state(PurchaseConfigState.selecting_payment)
+    await callback.answer()
+
+    await callback.message.edit_text(
+        "💳 <b>انتخاب روش پرداخت</b>\n\n"
+        f"📝 نام کانفیگ: <code>{callback_data.config_name}</code>\n"
+        f"💾 پلن: <b>{callback_data.volume_gb}GB | {callback_data.duration} روز</b>\n"
+        f"💰 مبلغ: <b>{callback_data.price:,} تومان</b>\n\n"
+        "روش پرداخت را انتخاب کنید:",
+        reply_markup=managed_payment_method_keyboard(
+            callback_data.plan_id,
+            int(callback_data.price),
+            gateway_factory.get_gateways(),
+        ),
+    )
+
+
+@router.callback_query(F.data == "subscription_config_name:custom")
+async def callback_config_name_custom(
+    callback: CallbackQuery,
+    state: FSMContext,
+) -> None:
+    data = await state.get_data()
+
+    if not data.get("subscription_data"):
+        await callback.answer(
+            "اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید.",
+            show_alert=True,
+        )
+        await state.clear()
+        return
+
+    await state.set_state(PurchaseConfigState.waiting_config_name)
+    await callback.answer()
+
+    await callback.message.edit_text(
+        "✏️ <b>نام دلخواه کانفیگ</b>\n\n"
+        "لطفاً نام مورد نظر را ارسال کنید.\n\n"
+        "فقط این کاراکترها مجاز هستند:\n"
+        "<code>A-Z</code>، <code>a-z</code>، <code>0-9</code>، "
+        "<code>_</code> و <code>-</code>"
+    )
+
+
+@router.message(PurchaseConfigState.waiting_config_name)
+async def message_config_name(
+    message: Message,
+    user: User,
+    state: FSMContext,
+    gateway_factory: GatewayFactory,
+) -> None:
+    raw_name = (message.text or "").strip()
+
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", raw_name):
+        await message.answer(
+            "❌ نام واردشده معتبر نیست.\n\n"
+            "لطفاً فقط از حروف انگلیسی، عدد، <code>_</code> و <code>-</code> استفاده کنید."
+        )
+        return
+
+    data = await state.get_data()
+    packed = data.get("subscription_data")
+
+    if not packed:
+        await message.answer(
+            "اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید."
+        )
+        await state.clear()
+        return
+
+    if not isinstance(packed, dict):
+        await message.answer(
+            "اطلاعات سفارش نامعتبر است. لطفاً دوباره پلن را انتخاب کنید."
+        )
+        await state.clear()
+        return
+
+    callback_data = SubscriptionData(
+        state=NavSubscription.CONFIG_NAME,
+        is_extend=packed.get("is_extend", False),
+        is_change=packed.get("is_change", False),
+        user_id=packed.get("user_id", user.tg_id),
+        devices=packed.get("devices", 0),
+        duration=packed.get("duration", 0),
+        price=packed.get("price", 0),
+        plan_id=packed.get("plan_id", 0),
+        volume_gb=packed.get("volume_gb", 0),
+        config_name="",
+    )
+
+    callback_data.config_name = (
+        f"{callback_data.volume_gb}GB-"
+        f"{callback_data.duration}D-"
+        f"tg{user.tg_id}-"
+        f"sub101-"
+        f"{raw_name}"
+    )
+
+    await state.update_data(
+        subscription_data={
+            **packed,
+            "config_name": callback_data.config_name,
+        }
+    )
+    await state.set_state(PurchaseConfigState.selecting_payment)
+
+    await message.answer(
+        "💳 <b>انتخاب روش پرداخت</b>\n\n"
+        f"📝 نام کانفیگ: <code>{callback_data.config_name}</code>\n"
+        f"💾 پلن: <b>{callback_data.volume_gb}GB | {callback_data.duration} روز</b>\n"
+        f"💰 مبلغ: <b>{callback_data.price:,} تومان</b>\n\n"
+        "روش پرداخت را انتخاب کنید:",
+        reply_markup=managed_payment_method_keyboard(
+            callback_data.plan_id,
+            int(callback_data.price),
+            gateway_factory.get_gateways(),
+        ),
+    )
 
 
 @router.callback_query(F.data.regexp(r"^mp:subscription:pay_[^:]+:\d+$"))
-async def callback_managed_payment(callback: CallbackQuery, user: User, session: AsyncSession, gateway_factory: GatewayFactory, state: FSMContext) -> None:
+async def callback_managed_payment(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    gateway_factory: GatewayFactory,
+    state: FSMContext,
+) -> None:
     gateway_callback, plan_id_text = callback.data[3:].rsplit(":", 1)
-    plan = await ServicePurchasePlan.get(session, int(plan_id_text))
-    if not plan:
-        await callback.answer("این پلن دیگر وجود ندارد.", show_alert=True)
+
+    data = await state.get_data()
+    packed = data.get("subscription_data")
+
+    if not packed:
+        await callback.answer(
+            "اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید.",
+            show_alert=True,
+        )
         return
-    settings = await ConnectedDeviceSettings.get_or_create(session)
-    data = SubscriptionData(state=gateway_callback, user_id=user.tg_id, devices=settings.max_connected_devices, duration=plan.duration_days, price=plan.price_toman, plan_id=plan.id, volume_gb=plan.volume_gb)
+
+    if not isinstance(packed, dict):
+        await callback.answer(
+            "اطلاعات سفارش نامعتبر است. لطفاً دوباره پلن را انتخاب کنید.",
+            show_alert=True,
+        )
+        await state.clear()
+        return
+
+    subscription_data = SubscriptionData(
+        state=NavSubscription.CONFIG_NAME,
+        is_extend=packed.get("is_extend", False),
+        is_change=packed.get("is_change", False),
+        user_id=packed.get("user_id", 0),
+        devices=packed.get("devices", 0),
+        duration=packed.get("duration", 0),
+        price=packed.get("price", 0),
+        plan_id=packed.get("plan_id", 0),
+        volume_gb=packed.get("volume_gb", 0),
+        config_name=packed.get("config_name", ""),
+    )
+
+    if subscription_data.user_id != user.tg_id:
+        await callback.answer("خطا در اطلاعات سفارش.", show_alert=True)
+        return
+
+    plan = await ServicePurchasePlan.get(
+        session,
+        int(plan_id_text),
+    )
+
+    if not plan:
+        await callback.answer(
+            "این پلن دیگر وجود ندارد.",
+            show_alert=True,
+        )
+        return
+
     gateway = gateway_factory.get_gateway(gateway_callback)
+
     try:
-        pay_url = await gateway.create_payment(data)
+        pay_url = await gateway.create_payment(subscription_data)
+
         await callback.answer()
-        await callback.message.edit_text("🧾 <b>سفارش شما</b>\n\n" f"📱 تعداد دستگاه: <b>{data.devices}</b>\n💾 حجم: <b>{data.volume_gb} گیگ</b>\n📅 مدت: <b>{data.duration} روز</b>\n💰 مبلغ: <b>{data.price:,} تومان</b>", reply_markup=pay_keyboard(pay_url, data))
+
+        await callback.message.edit_text(
+            "🧾 <b>سفارش شما</b>\n\n"
+            f"📝 نام کانفیگ: <code>{subscription_data.config_name}</code>\n"
+            f"📱 تعداد دستگاه: <b>{subscription_data.devices}</b>\n"
+            f"💾 حجم: <b>{subscription_data.volume_gb} گیگ</b>\n"
+            f"📅 مدت: <b>{subscription_data.duration} روز</b>\n"
+            f"💰 مبلغ: <b>{subscription_data.price:,} تومان</b>",
+            reply_markup=pay_keyboard(pay_url, subscription_data),
+        )
+
     except Exception as exception:
-        logger.exception("Managed payment creation failed: %s", exception)
-        await callback.answer("خطا در ایجاد پرداخت.", show_alert=True)
+        logger.exception(
+            "Managed payment creation failed: %s",
+            exception,
+        )
+        await callback.answer(
+            "خطا در ایجاد پرداخت.",
+            show_alert=True,
+        )
+        return
+
     finally:
         await state.clear()
 

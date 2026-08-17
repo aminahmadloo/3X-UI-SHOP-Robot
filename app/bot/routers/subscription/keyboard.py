@@ -40,10 +40,15 @@ def subscription_keyboard(has_subscription: bool, callback_data: SubscriptionDat
 def purchase_duration_keyboard(devices: int, callback_data: SubscriptionData) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     callback_data.devices = devices
+
+    user_text = "کاربر نامحدود" if devices == 0 else f"{devices} کاربره"
+
     callback_data.state = NavSubscription.PLAN_ONE_MONTH
-    builder.button(text=f"📅 یک ماهه / {devices} کاربره", callback_data=callback_data.pack())
+    builder.button(text=f"🚀 یک ماهه | {user_text}", callback_data=callback_data.pack())
+
     callback_data.state = NavSubscription.PLAN_THREE_MONTH
-    builder.button(text=f"📅 سه ماهه / {devices} کاربره", callback_data=callback_data.pack())
+    builder.button(text=f"🚀 سه ماهه | {user_text}", callback_data=callback_data.pack())
+
     builder.adjust(1)
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
@@ -52,8 +57,14 @@ def purchase_duration_keyboard(devices: int, callback_data: SubscriptionData) ->
 def service_purchase_plan_keyboard(plans: list, callback_data: SubscriptionData) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for plan in plans:
+        volume = f"{plan.volume_gb:,}".translate(str.maketrans("0123456789,", "۰۱۲۳۴۵۶۷۸۹٬"))
+        duration = f"{plan.duration_days:,}".translate(str.maketrans("0123456789,", "۰۱۲۳۴۵۶۷۸۹٬"))
+        price = f"{plan.price_toman:,}".translate(str.maketrans("0123456789,", "۰۱۲۳۴۵۶۷۸۹٬"))
+
+        button_text = f"🌟 {volume} گیگ | {duration} روزه | {price} تومان"
+
         builder.button(
-            text=f"💾 {plan.volume_gb} گیگ / {plan.duration_days} روز / {plan.price_toman:,} تومان",
+            text=button_text,
             callback_data=f"subscription_plan:{plan.id}",
         )
     builder.adjust(1)
@@ -110,6 +121,25 @@ def duration_keyboard(plan_service: PlanService, callback_data: SubscriptionData
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 
+
+
+def config_name_keyboard(callback_data: SubscriptionData) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.button(
+        text="✅ استفاده از نام خودکار",
+        callback_data="subscription_config_name:auto",
+    )
+
+    builder.button(
+        text="✏️ وارد کردن نام دلخواه",
+        callback_data="subscription_config_name:custom",
+    )
+
+    builder.adjust(1)
+    builder.row(back_to_main_menu_button())
+
+    return builder.as_markup()
 
 def pay_keyboard(pay_url: str, callback_data: SubscriptionData) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()

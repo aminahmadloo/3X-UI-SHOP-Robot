@@ -48,6 +48,7 @@ class NavSubscription(str, Enum):
     PLAN_ONE_MONTH = "plan_one_month"
     PLAN_THREE_MONTH = "plan_three_month"
     PLAN = "plan"
+    CONFIG_NAME = "config_name"
     PROMOCODE = "promocode"
     GET_TRIAL = "get_trial"
     PAY = "pay"
