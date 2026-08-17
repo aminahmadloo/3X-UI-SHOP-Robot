@@ -38,6 +38,8 @@ class NavDownload(str, Enum):
 
 class NavSubscription(str, Enum):
     MAIN = "subscription"
+    BUY = "buy"
+    RENEW_SERVICE = "renew_service"
     CHANGE = "change"
     EXTEND = "extend"
     PROCESS = "process"

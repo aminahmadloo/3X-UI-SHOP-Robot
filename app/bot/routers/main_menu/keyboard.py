@@ -30,7 +30,7 @@ def main_menu_keyboard(
     builder.row(
         InlineKeyboardButton(
             text="🛒 خرید سرویس",
-            callback_data=NavSubscription.MAIN,
+            callback_data=NavSubscription.BUY,
             style="primary",
         )
     )
@@ -51,6 +51,13 @@ def main_menu_keyboard(
         InlineKeyboardButton(
             text="💰 کیف پول",
             callback_data=NavMain.WALLET,
+        ),
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🔄 تمدید سرویس",
+            callback_data=NavSubscription.RENEW_SERVICE,
         ),
     )
 

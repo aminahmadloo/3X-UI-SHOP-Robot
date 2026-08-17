@@ -49,6 +49,67 @@ async def show_subscription(
     )
 
 
+@router.callback_query(F.data == NavSubscription.BUY)
+async def callback_subscription_buy(
+    callback: CallbackQuery,
+    user: User,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
+    """Start a new service purchase directly from the main menu."""
+    logger.info(f"User {user.tg_id} started a new service purchase.")
+
+    await state.set_state(None)
+
+    callback_data = SubscriptionData(
+        state=NavSubscription.PROCESS,
+        user_id=user.tg_id,
+    )
+
+    await callback.message.edit_text(
+        text=_("subscription:message:devices"),
+        reply_markup=devices_keyboard(
+            services.plan.get_all_plans(),
+            callback_data,
+        ),
+    )
+
+
+@router.callback_query(F.data == NavSubscription.RENEW_SERVICE)
+async def callback_subscription_renew_service(
+    callback: CallbackQuery,
+    user: User,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
+    """Open the existing subscription page for renewal/change actions."""
+    logger.info(f"User {user.tg_id} opened renew service page.")
+
+    await state.set_state(None)
+
+    client_data = None
+
+    if user.server_id:
+        client_data = await services.vpn.get_client_data(user)
+
+        if not client_data:
+            logger.warning(
+                f"No active 3X-UI client data for user {user.tg_id}; "
+                "showing subscription page as inactive."
+            )
+
+    callback_data = SubscriptionData(
+        state=NavSubscription.PROCESS,
+        user_id=user.tg_id,
+    )
+
+    await show_subscription(
+        callback=callback,
+        client_data=client_data,
+        callback_data=callback_data,
+    )
+
+
 @router.callback_query(F.data == NavSubscription.MAIN)
 async def callback_subscription(
     callback: CallbackQuery,
