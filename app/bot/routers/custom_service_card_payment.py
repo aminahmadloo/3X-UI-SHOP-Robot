@@ -36,6 +36,16 @@ class CustomServiceCardPaymentState(StatesGroup):
 
 
 def _build_subscription_data(data: dict, user_tg_id: int) -> SubscriptionData | None:
+    packed = data.get("custom_service_subscription")
+    if packed:
+        try:
+            subscription_data = SubscriptionData.unpack(packed)
+        except Exception:
+            return None
+        if subscription_data.user_id != user_tg_id:
+            return None
+        return subscription_data
+
     try:
         days = int(data["custom_service_days"])
         gigabytes = int(data["custom_service_gigabytes"])
