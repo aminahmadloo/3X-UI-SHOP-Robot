@@ -60,7 +60,7 @@ def main_menu_keyboard(
             callback_data=NavProfile.MAIN,
         ),
         InlineKeyboardButton(
-            text=_("main_menu:button:referral"),
+            text="🤝 معرفی به دوستان",
             callback_data=NavReferral.MAIN,
         ),
     )
