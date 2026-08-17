@@ -31,6 +31,7 @@ def main_menu_keyboard(
         InlineKeyboardButton(
             text="🛒 خرید سرویس",
             callback_data=NavSubscription.MAIN,
+            style="primary",
         )
     )
 
@@ -38,6 +39,7 @@ def main_menu_keyboard(
         InlineKeyboardButton(
             text="⚙️ خرید سرویس با مشخصات دلخواه",
             callback_data=NavMain.CUSTOM_SERVICE,
+            style="success",
         )
     )
 
