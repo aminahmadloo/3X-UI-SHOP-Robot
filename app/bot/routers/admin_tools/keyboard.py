@@ -84,6 +84,26 @@ def service_purchase_management_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+
+def connected_device_settings_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="✏️ ویرایش تعداد دستگاه",
+            callback_data="connected_device_settings:edit",
+        )
+    )
+
+    builder.row(
+        back_button(NavAdminTools.SERVICE_PURCHASE_MANAGEMENT)
+    )
+
+    builder.row(back_to_main_menu_button())
+
+    return builder.as_markup()
+
+
 def service_purchase_plan_list_keyboard(
     plans: list[ServicePurchasePlan],
     service_type: str,
