@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from types import SimpleNamespace
 
 from aiogram import F, Router
@@ -12,6 +13,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ServicesContainer, SubscriptionData
@@ -108,7 +110,7 @@ async def custom_service_payment_card(
 
 
 @router.callback_query(F.data == "custom_service:card:paid")
-async def custom_service_card_paid(callback: CallbackQuery, user: User, state: FSMContext) -> None:
+async def custom_service_card_paid(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     packed = data.get("custom_service_subscription")
     if not packed:
@@ -167,9 +169,6 @@ async def receive_custom_service_receipt(
 
     for _ in range(5):
         tracking_code = generate_tracking_code(user.tg_id)
-        existing = await session.get(CardPayment, None)
-        del existing
-        from sqlalchemy import select
         result = await session.execute(
             select(CardPayment.id).where(CardPayment.tracking_code == tracking_code)
         )
@@ -338,7 +337,7 @@ async def service_card_payment_approve(
         await PaymentGateway._on_payment_succeeded(context, payment_id=payment_id)
 
         payment.status = "approved"
-        payment.reviewed_at = __import__("datetime").datetime.now()
+        payment.reviewed_at = datetime.now()
         await session.commit()
     except Exception as exc:
         payment.status = "pending"
@@ -355,16 +354,6 @@ async def service_card_payment_approve(
             caption=(callback.message.caption or "")
             + f"\n\n✅ <b>تأیید و سرویس ایجاد شد</b> توسط <code>{user.tg_id}</code>"
         )
-    try:
-        await bot.send_message(
-            payment.user_tg_id,
-            "🎉 <b>سرویس شما آماده شد.</b>\n\n"
-            f"📦 {subscription_data.volume_gb} گیگ | {subscription_data.duration} روز | {subscription_data.devices} کاربر\n"
-            f"💰 مبلغ: <b>{payment.amount:,} تومان</b>\n\n"
-            "سرویس شما مستقیماً پس از تأیید پرداخت ایجاد و تحویل شد.",
-        )
-    except Exception:
-        logger.exception("Failed to notify user %s about service payment %s", payment.user_tg_id, payment.id)
     return None
 
 
