@@ -105,7 +105,12 @@ def service_purchase_plan_keyboard(
 
     builder.adjust(1)
 
-    callback_data.state = NavSubscription.PLAN_ONE_MONTH
+    service_type = plans[0].service_type if plans else "one_month"
+    callback_data.state = (
+        NavSubscription.PLAN_ONE_MONTH
+        if service_type == "one_month"
+        else NavSubscription.PLAN_THREE_MONTH
+    )
     builder.row(
         back_button(
             callback_data.pack(),
