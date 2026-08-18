@@ -96,6 +96,7 @@ async def callback_subscription_plan_selected(
     user: User,
     session: AsyncSession,
     state: FSMContext,
+    services: ServicesContainer,
 ) -> None:
     plan = await ServicePurchasePlan.get(session, int(callback.data.rsplit(":", 1)[1]))
 
@@ -103,7 +104,7 @@ async def callback_subscription_plan_selected(
         await callback.answer("این پلن دیگر وجود ندارد.", show_alert=True)
         return
 
-    auto_name = _build_auto_config_name(
+    auto_name = await services.vpn._generate_unique_config_name(
         volume_gb=plan.volume_gb,
         duration_days=plan.duration_days,
         tg_id=user.tg_id,
