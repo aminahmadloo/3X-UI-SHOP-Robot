@@ -18,12 +18,30 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "servers",
-        sa.Column("selected_inbound_ids", sa.Text(), nullable=False, server_default="[]"),
-    )
-    op.alter_column("servers", "selected_inbound_ids", server_default=None)
+    inspector = sa.inspect(op.get_bind())
+    columns = {
+        column["name"]
+        for column in inspector.get_columns("servers")
+    }
+
+    if "selected_inbound_ids" not in columns:
+        op.add_column(
+            "servers",
+            sa.Column(
+                "selected_inbound_ids",
+                sa.Text(),
+                nullable=False,
+                server_default="[]",
+            ),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("servers", "selected_inbound_ids")
+    inspector = sa.inspect(op.get_bind())
+    columns = {
+        column["name"]
+        for column in inspector.get_columns("servers")
+    }
+
+    if "selected_inbound_ids" in columns:
+        op.drop_column("servers", "selected_inbound_ids")
