@@ -438,8 +438,23 @@ class VPNService:
                 logger.info(f"Updated client {user.tg_id} with additional {duration} day(s).")
                 return True
         else:
-            created = await self.create_client(user=user, devices=devices, duration=duration)
+            config_name = await self._generate_unique_config_name(
+                volume_gb=0,
+                duration_days=duration,
+                tg_id=user.tg_id,
+            )
+
+            created = await self.create_client(
+                user=user,
+                devices=devices,
+                duration=duration,
+                config_name=config_name,
+            )
+
             if created:
-                logger.info(f"Created client {user.tg_id} with additional {duration} day(s)")
+                logger.info(
+                    f"Created client {user.tg_id} with additional {duration} day(s)"
+                    f" and name={config_name}"
+                )
                 return True
         return False
