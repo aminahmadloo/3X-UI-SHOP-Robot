@@ -86,6 +86,13 @@ def managed_payment_method_keyboard(plan_id: int, price_toman: int, gateways: li
                 callback_data=callback_data,
             )
         )
+
+    builder.row(
+        InlineKeyboardButton(
+            text=f"💰 کیف پول | {price_toman:,} تومان",
+            callback_data=f"mp_wallet:{plan_id}",
+        )
+    )
     builder.row(
         InlineKeyboardButton(
             text=f"💳 کارت به کارت | {price_toman:,} تومان",
@@ -128,7 +135,6 @@ def duration_keyboard(plan_service: PlanService, callback_data: SubscriptionData
     return builder.as_markup()
 
 
-
 def config_name_keyboard(callback_data: SubscriptionData) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
@@ -146,6 +152,7 @@ def config_name_keyboard(callback_data: SubscriptionData) -> InlineKeyboardMarku
     builder.row(back_to_main_menu_button())
 
     return builder.as_markup()
+
 
 def pay_keyboard(pay_url: str, callback_data: SubscriptionData) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
