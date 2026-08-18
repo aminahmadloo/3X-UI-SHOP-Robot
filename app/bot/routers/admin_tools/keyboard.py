@@ -13,34 +13,13 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
     if is_dev:
         builder.row(InlineKeyboardButton(text=_("admin_tools:button:server_management"), callback_data=NavAdminTools.SERVER_MANAGEMENT))
         builder.row(InlineKeyboardButton(text="🎯 مدیریت اینباندهای سرویس", callback_data=NavAdminTools.INBOUND_MANAGEMENT))
-    builder.row(
-        InlineKeyboardButton(text=_("admin_tools:button:statistics"), callback_data=NavAdminTools.STATISTICS),
-        InlineKeyboardButton(text=_("admin_tools:button:user_editor"), callback_data=NavAdminTools.USER_EDITOR),
-    )
-    builder.row(
-        InlineKeyboardButton(text=_("admin_tools:button:invite_editor"), callback_data=NavAdminTools.INVITE_EDITOR),
-        InlineKeyboardButton(text=_("admin_tools:button:promocode_editor"), callback_data=NavAdminTools.PROMOCODE_EDITOR),
-    )
-    builder.row(
-        InlineKeyboardButton(text=_("admin_tools:button:notification"), callback_data=NavAdminTools.NOTIFICATION),
-        InlineKeyboardButton(text="💳 مدیریت کارت به کارت", callback_data=NavAdminTools.CARD_SETTINGS),
-    )
-    builder.row(InlineKeyboardButton(
-        text="⚙️ مدیریت خرید سرویس با مشخصات دلخواه",
-        callback_data=NavAdminTools.CUSTOM_SERVICE_PRICING,
-    ))
-    builder.row(InlineKeyboardButton(
-        text="🛒 مدیریت خرید سرویس",
-        callback_data=NavAdminTools.SERVICE_PURCHASE_MANAGEMENT,
-    ))
-    builder.row(
-        InlineKeyboardButton(text=_("admin_tools:button:test_button"), callback_data=NavAdminTools.TEST),
-        InlineKeyboardButton(text=_("admin_tools:button:create_backup"), callback_data=NavAdminTools.CREATE_BACKUP),
-    )
-    builder.row(
-        InlineKeyboardButton(text=_("admin_tools:button:maintenance_mode"), callback_data=NavAdminTools.MAINTENANCE_MODE),
-        InlineKeyboardButton(text=_("admin_tools:button:restart_bot"), callback_data=NavAdminTools.RESTART_BOT),
-    )
+    builder.row(InlineKeyboardButton(text=_("admin_tools:button:statistics"), callback_data=NavAdminTools.STATISTICS), InlineKeyboardButton(text=_("admin_tools:button:user_editor"), callback_data=NavAdminTools.USER_EDITOR))
+    builder.row(InlineKeyboardButton(text=_("admin_tools:button:invite_editor"), callback_data=NavAdminTools.INVITE_EDITOR), InlineKeyboardButton(text=_("admin_tools:button:promocode_editor"), callback_data=NavAdminTools.PROMOCODE_EDITOR))
+    builder.row(InlineKeyboardButton(text=_("admin_tools:button:notification"), callback_data=NavAdminTools.NOTIFICATION), InlineKeyboardButton(text="💳 مدیریت کارت به کارت", callback_data=NavAdminTools.CARD_SETTINGS))
+    builder.row(InlineKeyboardButton(text="⚙️ مدیریت خرید سرویس با مشخصات دلخواه", callback_data=NavAdminTools.CUSTOM_SERVICE_PRICING))
+    builder.row(InlineKeyboardButton(text="🛒 مدیریت خرید سرویس", callback_data=NavAdminTools.SERVICE_PURCHASE_MANAGEMENT))
+    builder.row(InlineKeyboardButton(text=_("admin_tools:button:test_button"), callback_data=NavAdminTools.TEST), InlineKeyboardButton(text=_("admin_tools:button:create_backup"), callback_data=NavAdminTools.CREATE_BACKUP))
+    builder.row(InlineKeyboardButton(text=_("admin_tools:button:maintenance_mode"), callback_data=NavAdminTools.MAINTENANCE_MODE), InlineKeyboardButton(text=_("admin_tools:button:restart_bot"), callback_data=NavAdminTools.RESTART_BOT))
     builder.row(InlineKeyboardButton(text="💳 پرداخت‌های کارت به کارت", callback_data="cardpay:menu"))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
@@ -51,7 +30,6 @@ def _plan_button_text(plan: ServicePurchasePlan) -> str:
         price = f"{plan.price_toman // 1000:,} هزار تومان"
     else:
         price = f"{plan.price_toman:,} تومان"
-
     return f"{plan.volume_gb} گیگ / {plan.duration_days} روزه / {price}"
 
 
@@ -242,17 +220,19 @@ def invite_details_keyboard(invite: Invite) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def confirm_delete_invite_keyboard(invite_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=_("invite_editor:button:confirm_delete"), callback_data=NavAdminTools.DELETE_INVITE + f"_{invite_id}"))
+    builder.row(cancel_button(NavAdminTools.SHOW_INVITE_DETAILS + f"_{invite_id}"))
+    return builder.as_markup()
+
+
 def inbound_management_keyboard(servers: list[Server]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for server in servers:
         status = "🟢" if server.online else "🔴"
         selected = len(server.configured_inbound_ids)
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{status} {server.name} ({selected} انتخاب)",
-                callback_data=f"{NavAdminTools.INBOUND_MANAGEMENT}:server:{server.id}",
-            )
-        )
+        builder.row(InlineKeyboardButton(text=f"{status} {server.name} ({selected} انتخاب)", callback_data=f"{NavAdminTools.INBOUND_MANAGEMENT}:server:{server.id}"))
     builder.row(back_button(NavAdminTools.MAIN))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
@@ -270,17 +250,7 @@ def inbound_selection_keyboard(server: Server, inbounds: list) -> InlineKeyboard
         suffix = f" | {protocol}" if protocol else ""
         if port:
             suffix += f":{port}"
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{checked} {remark}{suffix} [#{inbound_id}]",
-                callback_data=f"{NavAdminTools.INBOUND_MANAGEMENT}:toggle:{server.id}:{inbound_id}",
-            )
-        )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔄 بازخوانی اینباندها",
-            callback_data=f"{NavAdminTools.INBOUND_MANAGEMENT}:refresh:{server.id}",
-        )
-    )
+        builder.row(InlineKeyboardButton(text=f"{checked} {remark}{suffix} [#{inbound_id}]", callback_data=f"{NavAdminTools.INBOUND_MANAGEMENT}:toggle:{server.id}:{inbound_id}"))
+    builder.row(InlineKeyboardButton(text="🔄 بازخوانی اینباندها", callback_data=f"{NavAdminTools.INBOUND_MANAGEMENT}:refresh:{server.id}"))
     builder.row(back_button(NavAdminTools.INBOUND_MANAGEMENT))
     return builder.as_markup()
