@@ -42,6 +42,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         subscription.payment_handler.router,
         subscription.promocode_handler.router,
         subscription.trial_handler.router,
+        subscription.wallet_payment.router,
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,
         admin_tools.inbound_management_handler.router,

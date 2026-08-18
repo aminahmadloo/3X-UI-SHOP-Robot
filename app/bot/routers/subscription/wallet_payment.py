@@ -3,7 +3,6 @@ from uuid import uuid4
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,7 +57,6 @@ async def managed_wallet_payment(
     state: FSMContext,
     services: ServicesContainer,
     config: Config,
-    storage: RedisStorage,
 ) -> None:
     plan_id = int((callback.data or "").rsplit(":", 1)[1])
     data = await state.get_data()
@@ -220,7 +218,6 @@ async def managed_wallet_payment(
             user=service_user,
             services=services,
             config=config,
-            storage=storage,
         )
     except Exception:
         logger.exception("Failed to redirect user %s after wallet payment", user.tg_id)
