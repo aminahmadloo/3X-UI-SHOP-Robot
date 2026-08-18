@@ -193,50 +193,6 @@ class ServerPoolService:
 
         return connection
 
-
-    async def check_panel_connection(self):
-        """
-        Check live connection with XUI panel using existing pool connections.
-        """
-        result = {
-            "online": False,
-            "servers": 0,
-            "inbounds": 0,
-            "message": "",
-        }
-
-        try:
-            connections = list(self._servers.values())
-
-            if not connections:
-                result["message"] = "No active XUI connection"
-                return result
-
-            result["servers"] = len(connections)
-
-            total_inbounds = 0
-
-            for connection in connections:
-                try:
-                    inbounds = await connection.api.inbound.get_list()
-                    total_inbounds += len(inbounds)
-
-                except Exception as exc:
-                    logger.error(
-                        f"Failed checking XUI server {connection.server.name}: {exc}"
-                    )
-
-            result["inbounds"] = total_inbounds
-            result["online"] = True
-            result["message"] = "XUI connection OK"
-
-            return result
-
-        except Exception as exc:
-            logger.error(f"Panel connection check failed: {exc}")
-            result["message"] = str(exc)
-            return result
-
     async def sync_servers(self) -> None:
         """Synchronize DB servers with the connection pool without re-login storms."""
         async with self.session() as session:
