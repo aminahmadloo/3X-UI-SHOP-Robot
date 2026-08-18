@@ -31,7 +31,7 @@ class VPNService:
     @staticmethod
     def _build_auto_config_name(volume_gb: int, duration_days: int, tg_id: int, sub_number: int = 101) -> str:
         """Build the standard automatic config/client name."""
-        return f"{volume_gb}GB-{duration_days}D-tg{tg_id}-sub{sub_number}"
+        return f"{volume_gb}GB-{duration_days}D-tg{tg_id}-{sub_number}"
 
     async def _generate_unique_config_name(
         self,
@@ -70,7 +70,7 @@ class VPNService:
                     f"Could not read existing XUI clients while generating name: {exception}"
                 )
 
-        number = 101
+        number = 1
 
         while True:
             name = self._build_auto_config_name(
@@ -257,15 +257,17 @@ class VPNService:
             return False
 
         client_name = config_name.strip()
+        unique_client_name = f"{client_name}-{str(uuid.uuid4())[:8]}"
+
         logger.info(
-            f"Using config/client name for {user.tg_id}: {client_name}; "
+            f"Using config/client name for {user.tg_id}: {unique_client_name}; "
             f"selected inbounds={[inbound.id for inbound in selected_inbounds]}"
         )
 
         client_uuid = str(uuid.uuid4())
 
         new_client = Client(
-            email=client_name,
+            email=unique_client_name,
             enable=enable,
             id=client_uuid,
             expiry_time=days_to_timestamp(duration),
@@ -285,7 +287,7 @@ class VPNService:
                 created_ids.append(int(inbound.id))
                 logger.info(
                     f"Successfully created client for {user.tg_id} on inbound {inbound.id} "
-                    f"with limit_ip={devices}, total_gb={total_gb}, name={client_name}"
+                    f"with limit_ip={devices}, total_gb={total_gb}, name={unique_client_name}"
                 )
             return client_uuid
         except Exception as exception:

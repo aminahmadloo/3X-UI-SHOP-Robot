@@ -82,8 +82,8 @@ async def callback_subscription_back_to_plan(callback: CallbackQuery, session: A
     )
 
 
-def _build_auto_config_name(volume_gb: int, duration_days: int, tg_id: int, sub_number: int = 101) -> str:
-    return f"{volume_gb}GB-{duration_days}D-tg{tg_id}-sub{sub_number}"
+def _build_auto_config_name(volume_gb: int, duration_days: int, tg_id: int, sub_number: int = 1) -> str:
+    return f"{volume_gb}GB-{duration_days}D-tg{tg_id}-{sub_number}"
 
 
 def _sanitize_config_name(name: str) -> str:
@@ -282,7 +282,7 @@ async def message_config_name(
         f"{callback_data.volume_gb}GB-"
         f"{callback_data.duration}D-"
         f"tg{user.tg_id}-"
-        f"sub101-"
+        f"1-"
         f"{raw_name}"
     )
 
