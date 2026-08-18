@@ -7,7 +7,6 @@ from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ServicesContainer, SubscriptionData
-from app.bot.routers.main_menu.handler import redirect_to_main_menu
 from app.bot.utils.constants import TransactionStatus
 from app.bot.utils.navigation import NavSubscription
 from app.config import Config
@@ -206,21 +205,27 @@ async def managed_wallet_payment(
             data=subscription,
         )
     else:
+        # Remove the payment-method selection message before sending
+        # the final successful-payment message.
+        try:
+            if callback.message:
+                await callback.message.delete()
+                logger.info(
+                    "Payment method selection message deleted for user %s",
+                    user.tg_id,
+                )
+        except Exception:
+            logger.warning(
+                "Failed to delete payment method selection message for user %s",
+                user.tg_id,
+                exc_info=True,
+            )
+
         key = await services.vpn.get_key(service_user)
         await services.notification.notify_purchase_success(
             user_id=user.tg_id,
             key=key,
         )
-
-    try:
-        await redirect_to_main_menu(
-            bot=callback.bot,
-            user=service_user,
-            services=services,
-            config=config,
-        )
-    except Exception:
-        logger.exception("Failed to redirect user %s after wallet payment", user.tg_id)
 
     logger.info(
         "Wallet payment completed for user %s: payment=%s amount=%s balance=%s",

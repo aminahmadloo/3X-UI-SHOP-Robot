@@ -187,8 +187,14 @@ def payment_method_keyboard(plan: Plan | None, callback_data: SubscriptionData, 
 
 def payment_success_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=_("subscription:button:download_app"), callback_data=NavMain.REDIRECT_TO_DOWNLOAD))
+    builder.row(
+        InlineKeyboardButton(
+            text=_("subscription:button:download_app"),
+            callback_data=NavMain.REDIRECT_TO_DOWNLOAD,
+        )
+    )
     builder.row(close_notification_button())
+    builder.row(back_to_main_menu_button())
     return builder.as_markup()
 
 
