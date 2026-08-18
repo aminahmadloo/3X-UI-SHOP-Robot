@@ -37,34 +37,52 @@ class VPNService:
         volume_gb: int,
         duration_days: int,
         tg_id: int,
+        connection=None,
     ) -> str:
         """
         Generate unique client name.
-        Example:
-        20GB-30D-tg78797797-sub101
-        20GB-30D-tg78797797-sub102
+        Checks both database subscriptions and existing XUI clients.
         """
 
+        existing_names = set()
+
         async with self.session() as session:
-            number = 101
+            result = await session.execute(
+                Subscription.__table__.select()
+            )
 
-            while True:
-                name = self._build_auto_config_name(
-                    volume_gb=volume_gb,
-                    duration_days=duration_days,
-                    tg_id=tg_id,
-                    sub_number=number,
+            for row in result.mappings().all():
+                if row["config_name"]:
+                    existing_names.add(str(row["config_name"]))
+
+        if connection:
+            try:
+                inbounds = await connection.api.inbound.get_list()
+
+                for inbound in inbounds:
+                    for client in inbound.settings.clients or []:
+                        if client.email:
+                            existing_names.add(str(client.email))
+
+            except Exception as exception:
+                logger.warning(
+                    f"Could not read existing XUI clients while generating name: {exception}"
                 )
 
-                result = await session.execute(
-                    Subscription.__table__.select()
-                    .where(Subscription.config_name == name)
-                )
+        number = 101
 
-                if result.first() is None:
-                    return name
+        while True:
+            name = self._build_auto_config_name(
+                volume_gb=volume_gb,
+                duration_days=duration_days,
+                tg_id=tg_id,
+                sub_number=number,
+            )
 
-                number += 1
+            if name not in existing_names:
+                return name
+
+            number += 1
 
     async def _find_clients(self, user: User) -> list[tuple[Client, Inbound]]:
         """Find every copy of the user's client across all inbounds."""
@@ -231,15 +249,13 @@ class VPNService:
             logger.error(f"No selected/usable inbounds found on server {connection.server.name}.")
             return False
 
-        client_name = (
-            config_name.strip()
-            if config_name and config_name.strip()
-            else await self._generate_unique_config_name(
-                volume_gb=total_gb,
-                duration_days=duration,
-                tg_id=user.tg_id,
+        if not config_name or not config_name.strip():
+            logger.error(
+                f"No config name provided for client creation. User={user.tg_id}"
             )
-        )
+            return False
+
+        client_name = config_name.strip()
         logger.info(
             f"Using config/client name for {user.tg_id}: {client_name}; "
             f"selected inbounds={[inbound.id for inbound in selected_inbounds]}"
@@ -354,17 +370,6 @@ class VPNService:
                 )
                 return False
 
-        created = await self.create_client(
-            user=user,
-            devices=devices,
-            duration=duration,
-            total_gb=total_gb,
-            config_name=config_name,
-        )
-
-        if not created:
-            return False
-
         final_config_name = (
             config_name.strip()
             if config_name and config_name.strip()
@@ -374,6 +379,17 @@ class VPNService:
                 tg_id=user.tg_id,
             )
         )
+
+        created = await self.create_client(
+            user=user,
+            devices=devices,
+            duration=duration,
+            total_gb=total_gb,
+            config_name=final_config_name,
+        )
+
+        if not created:
+            return False
 
         async with self.session() as session:
             fresh_user = await User.get(
