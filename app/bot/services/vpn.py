@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 
 import copy
 import logging
+import uuid
 
 from py3xui import Client, Inbound
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -233,7 +234,7 @@ class VPNService:
         total_gb: int = 0,
         inbound_id: int = 1,
         config_name: str | None = None,
-    ) -> bool:
+    ) -> str | None:
         logger.info(f"Creating new client {user.tg_id} | {devices} devices {duration} days | {total_gb} GB.")
 
         if not await self.server_pool_service.assign_server_to_user(user):
@@ -261,14 +262,16 @@ class VPNService:
             f"selected inbounds={[inbound.id for inbound in selected_inbounds]}"
         )
 
+        client_uuid = str(uuid.uuid4())
+
         new_client = Client(
             email=client_name,
             enable=enable,
-            id=user.vpn_id,
+            id=client_uuid,
             expiry_time=days_to_timestamp(duration),
             flow=flow,
             limit_ip=devices,
-            sub_id=user.vpn_id,
+            sub_id=client_uuid,
             total_gb=total_gb,
         )
 
@@ -284,12 +287,12 @@ class VPNService:
                     f"Successfully created client for {user.tg_id} on inbound {inbound.id} "
                     f"with limit_ip={devices}, total_gb={total_gb}, name={client_name}"
                 )
-            return True
+            return client_uuid
         except Exception as exception:
             logger.error(
                 f"Error creating client for {user.tg_id} on inbound {getattr(inbound, 'id', 'unknown')}: {exception}"
             )
-            return False
+            return None
 
     async def update_client(
         self,
@@ -353,23 +356,6 @@ class VPNService:
         total_gb: int = 0,
         config_name: str | None = None,
     ) -> bool:
-        async with self.session() as session:
-            result = await session.execute(
-                Subscription.__table__.select()
-                .where(
-                    Subscription.user_id == user.id,
-                    Subscription.status == "active",
-                )
-            )
-
-            active_subscription = result.first()
-
-            if active_subscription:
-                logger.warning(
-                    f"User {user.tg_id} already has an active subscription."
-                )
-                return False
-
         final_config_name = (
             config_name.strip()
             if config_name and config_name.strip()
@@ -380,7 +366,7 @@ class VPNService:
             )
         )
 
-        created = await self.create_client(
+        client_uuid = await self.create_client(
             user=user,
             devices=devices,
             duration=duration,
@@ -388,7 +374,7 @@ class VPNService:
             config_name=final_config_name,
         )
 
-        if not created:
+        if not client_uuid:
             return False
 
         async with self.session() as session:
@@ -407,7 +393,7 @@ class VPNService:
                 user_id=fresh_user.id,
                 server_id=fresh_user.server_id,
                 config_name=final_config_name,
-                client_id=str(fresh_user.vpn_id),
+                client_id=client_uuid,
                 volume_gb=total_gb,
                 duration_days=duration,
                 devices=devices,
