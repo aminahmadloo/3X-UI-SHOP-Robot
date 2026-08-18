@@ -114,3 +114,4 @@ class NavAdminTools(str, Enum):
     SERVICE_PURCHASE_CREATE_THREE_MONTH = "service_purchase_create_three_month"
     SERVICE_PURCHASE_EDIT = "service_purchase_edit"
     SERVICE_PURCHASE_DELETE = "service_purchase_delete"
+    SUBSCRIPTION_SETTINGS = "subscription_settings"

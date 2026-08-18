@@ -8,6 +8,7 @@ from . import (
     promocode_handler,
     restart_handler,
     server_handler,
+    subscription_settings_handler,
     statistics_handler,
     user_handler,
 )

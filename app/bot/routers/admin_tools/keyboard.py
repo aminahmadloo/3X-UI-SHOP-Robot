@@ -18,6 +18,7 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text=_("admin_tools:button:notification"), callback_data=NavAdminTools.NOTIFICATION), InlineKeyboardButton(text="💳 مدیریت کارت به کارت", callback_data=NavAdminTools.CARD_SETTINGS))
     builder.row(InlineKeyboardButton(text="⚙️ مدیریت خرید سرویس با مشخصات دلخواه", callback_data=NavAdminTools.CUSTOM_SERVICE_PRICING))
     builder.row(InlineKeyboardButton(text="🛒 مدیریت خرید سرویس", callback_data=NavAdminTools.SERVICE_PURCHASE_MANAGEMENT))
+    builder.row(InlineKeyboardButton(text="⚙️ مدیریت تنظیمات سابسکریپشن", callback_data=NavAdminTools.SUBSCRIPTION_SETTINGS))
     builder.row(InlineKeyboardButton(text=_("admin_tools:button:test_button"), callback_data=NavAdminTools.TEST), InlineKeyboardButton(text=_("admin_tools:button:create_backup"), callback_data=NavAdminTools.CREATE_BACKUP))
     builder.row(InlineKeyboardButton(text=_("admin_tools:button:maintenance_mode"), callback_data=NavAdminTools.MAINTENANCE_MODE), InlineKeyboardButton(text=_("admin_tools:button:restart_bot"), callback_data=NavAdminTools.RESTART_BOT))
     builder.row(InlineKeyboardButton(text="💳 پرداخت‌های کارت به کارت", callback_data="cardpay:menu"))
@@ -253,4 +254,46 @@ def inbound_selection_keyboard(server: Server, inbounds: list) -> InlineKeyboard
         builder.row(InlineKeyboardButton(text=f"{checked} {remark}{suffix} [#{inbound_id}]", callback_data=f"{NavAdminTools.INBOUND_MANAGEMENT}:toggle:{server.id}:{inbound_id}"))
     builder.row(InlineKeyboardButton(text="🔄 بازخوانی اینباندها", callback_data=f"{NavAdminTools.INBOUND_MANAGEMENT}:refresh:{server.id}"))
     builder.row(back_button(NavAdminTools.INBOUND_MANAGEMENT))
+    return builder.as_markup()
+
+
+def subscription_settings_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🌐 ویرایش دامنه",
+            callback_data="subscription_settings:domain"
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🔢 ویرایش پورت",
+            callback_data="subscription_settings:port"
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📁 ویرایش مسیر",
+            callback_data="subscription_settings:path"
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🔄 بازخوانی مقادیر",
+            callback_data=NavAdminTools.SUBSCRIPTION_SETTINGS
+        )
+    )
+
+    builder.row(
+        back_button(NavAdminTools.MAIN)
+    )
+
+    builder.row(
+        back_to_main_menu_button()
+    )
+
     return builder.as_markup()
