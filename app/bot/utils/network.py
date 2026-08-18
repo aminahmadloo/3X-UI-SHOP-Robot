@@ -21,6 +21,14 @@ async def ping_url(url: str, timeout: int = 5) -> float | None:
 
 
 def extract_base_url(url: str, port: int, path: str) -> str:
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
     parsed_url = urlparse(url)
+
     base_url = f"{parsed_url.scheme}://{parsed_url.hostname}:{port}"
-    return urljoin(base_url, path)
+
+    if not path.startswith("/"):
+        path = "/" + path
+
+    return urljoin(base_url + "/", path.rstrip("/") + "/")

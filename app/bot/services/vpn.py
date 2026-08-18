@@ -16,7 +16,7 @@ from app.bot.models import ClientData
 from app.bot.utils.network import extract_base_url
 from app.bot.utils.time import add_days_to_timestamp, days_to_timestamp, get_current_timestamp
 from app.config import Config
-from app.db.models import Promocode, Subscription, User
+from app.db.models import Promocode, Subscription, SubscriptionSettings, User
 
 logger = logging.getLogger(__name__)
 
@@ -243,10 +243,13 @@ class VPNService:
             logger.warning(f"No client_id stored for user {user.tg_id}.")
             return None
 
+        async with self.session() as session:
+            settings = await SubscriptionSettings.get_or_create(session)
+
         subscription = extract_base_url(
-            url=user.server.host,
-            port=self.config.xui.SUBSCRIPTION_PORT,
-            path="/sub/",
+            url=settings.domain or user.server.host,
+            port=settings.port,
+            path=settings.path,
         )
 
         key = f"{subscription}{client_id}"
