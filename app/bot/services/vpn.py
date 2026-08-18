@@ -15,7 +15,7 @@ from app.bot.models import ClientData
 from app.bot.utils.network import extract_base_url
 from app.bot.utils.time import add_days_to_timestamp, days_to_timestamp, get_current_timestamp
 from app.config import Config
-from app.db.models import Promocode, User
+from app.db.models import Promocode, Subscription, User
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,40 @@ class VPNService:
     def _build_auto_config_name(volume_gb: int, duration_days: int, tg_id: int, sub_number: int = 101) -> str:
         """Build the standard automatic config/client name."""
         return f"{volume_gb}GB-{duration_days}D-tg{tg_id}-sub{sub_number}"
+
+    async def _generate_unique_config_name(
+        self,
+        volume_gb: int,
+        duration_days: int,
+        tg_id: int,
+    ) -> str:
+        """
+        Generate unique client name.
+        Example:
+        20GB-30D-tg78797797-sub101
+        20GB-30D-tg78797797-sub102
+        """
+
+        async with self.session() as session:
+            number = 101
+
+            while True:
+                name = self._build_auto_config_name(
+                    volume_gb=volume_gb,
+                    duration_days=duration_days,
+                    tg_id=tg_id,
+                    sub_number=number,
+                )
+
+                result = await session.execute(
+                    Subscription.__table__.select()
+                    .where(Subscription.config_name == name)
+                )
+
+                if result.first() is None:
+                    return name
+
+                number += 1
 
     async def _find_clients(self, user: User) -> list[tuple[Client, Inbound]]:
         """Find every copy of the user's client across all inbounds."""
@@ -200,7 +234,11 @@ class VPNService:
         client_name = (
             config_name.strip()
             if config_name and config_name.strip()
-            else self._build_auto_config_name(volume_gb=total_gb, duration_days=duration, tg_id=user.tg_id)
+            else await self._generate_unique_config_name(
+                volume_gb=total_gb,
+                duration_days=duration,
+                tg_id=user.tg_id,
+            )
         )
         logger.info(
             f"Using config/client name for {user.tg_id}: {client_name}; "
@@ -291,10 +329,83 @@ class VPNService:
             logger.error(f"Error updating client {user.tg_id}: {exception}")
             return False
 
-    async def create_subscription(self, user: User, devices: int, duration: int, total_gb: int = 0, config_name: str | None = None) -> bool:
-        if not await self.is_client_exists(user):
-            return await self.create_client(user=user, devices=devices, duration=duration, total_gb=total_gb, config_name=config_name)
-        return False
+    async def create_subscription(
+        self,
+        user: User,
+        devices: int,
+        duration: int,
+        total_gb: int = 0,
+        config_name: str | None = None,
+    ) -> bool:
+        async with self.session() as session:
+            result = await session.execute(
+                Subscription.__table__.select()
+                .where(
+                    Subscription.user_id == user.id,
+                    Subscription.status == "active",
+                )
+            )
+
+            active_subscription = result.first()
+
+            if active_subscription:
+                logger.warning(
+                    f"User {user.tg_id} already has an active subscription."
+                )
+                return False
+
+        created = await self.create_client(
+            user=user,
+            devices=devices,
+            duration=duration,
+            total_gb=total_gb,
+            config_name=config_name,
+        )
+
+        if not created:
+            return False
+
+        final_config_name = (
+            config_name.strip()
+            if config_name and config_name.strip()
+            else await self._generate_unique_config_name(
+                volume_gb=total_gb,
+                duration_days=duration,
+                tg_id=user.tg_id,
+            )
+        )
+
+        async with self.session() as session:
+            fresh_user = await User.get(
+                session=session,
+                tg_id=user.tg_id,
+            )
+
+            if not fresh_user:
+                logger.error(
+                    f"User {user.tg_id} not found while saving subscription."
+                )
+                return False
+
+            subscription = Subscription(
+                user_id=fresh_user.id,
+                server_id=fresh_user.server_id,
+                config_name=final_config_name,
+                client_id=str(fresh_user.vpn_id),
+                volume_gb=total_gb,
+                duration_days=duration,
+                devices=devices,
+                status="active",
+            )
+
+            session.add(subscription)
+            await session.commit()
+
+        logger.info(
+            f"Subscription record created for user {user.tg_id}"
+        )
+
+        return True
 
     async def extend_subscription(self, user: User, devices: int, duration: int, total_gb: int = 0) -> bool:
         return await self.update_client(user=user, devices=devices, duration=duration, replace_devices=True, total_gb=total_gb)

@@ -421,13 +421,18 @@ async def service_card_payment_approve(
             logger.info(f"Subscription changed for user {service_user.tg_id}")
 
         else:
-            await services.vpn.create_subscription(
+            success = await services.vpn.create_subscription(
                 user=service_user,
                 devices=subscription_data.devices,
                 duration=subscription_data.duration,
                 total_gb=subscription_data.volume_gb,
                 config_name=subscription_data.config_name,
             )
+
+            if not success:
+                raise RuntimeError(
+                    f"Failed to create subscription for user {service_user.tg_id}"
+                )
 
             logger.info(f"Subscription created for user {service_user.tg_id}")
 
