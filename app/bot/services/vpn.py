@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .server_pool import ServerPoolService
 
+import copy
 import logging
 
 from py3xui import Client, Inbound
@@ -12,11 +13,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import ClientData
 from app.bot.utils.network import extract_base_url
-from app.bot.utils.time import (
-    add_days_to_timestamp,
-    days_to_timestamp,
-    get_current_timestamp,
-)
+from app.bot.utils.time import add_days_to_timestamp, days_to_timestamp, get_current_timestamp
 from app.config import Config
 from app.db.models import Promocode, User
 
@@ -24,80 +21,64 @@ logger = logging.getLogger(__name__)
 
 
 class VPNService:
-    def __init__(
-        self,
-        config: Config,
-        session: async_sessionmaker,
-        server_pool_service: ServerPoolService,
-    ) -> None:
+    def __init__(self, config: Config, session: async_sessionmaker, server_pool_service: ServerPoolService) -> None:
         self.config = config
         self.session = session
         self.server_pool_service = server_pool_service
         logger.info("VPN Service initialized.")
 
     @staticmethod
-    def _build_auto_config_name(
-        volume_gb: int,
-        duration_days: int,
-        tg_id: int,
-        sub_number: int = 101,
-    ) -> str:
+    def _build_auto_config_name(volume_gb: int, duration_days: int, tg_id: int, sub_number: int = 101) -> str:
         """Build the standard automatic config/client name."""
         return f"{volume_gb}GB-{duration_days}D-tg{tg_id}-sub{sub_number}"
 
-    async def _find_client(self, user: User) -> tuple[Client, Inbound] | None:
-        """Find the user's client.
-
-        New clients are identified primarily by sub_id == user.vpn_id.
-        Older clients are supported through the legacy email == tg_id
-        fallback.
-        """
+    async def _find_clients(self, user: User) -> list[tuple[Client, Inbound]]:
+        """Find every copy of the user's client across all inbounds."""
         connection = await self.server_pool_service.get_connection(user)
         if not connection:
-            return None
+            return []
 
         try:
             inbounds: list[Inbound] = await connection.api.inbound.get_list()
         except Exception as exception:
-            logger.error(
-                f"Failed to fetch inbounds while looking up client {user.tg_id}: {exception}"
-            )
-            return None
+            logger.error(f"Failed to fetch inbounds while looking up client {user.tg_id}: {exception}")
+            return []
 
         user_vpn_id = str(user.vpn_id)
         legacy_email = str(user.tg_id)
+        matches: list[tuple[Client, Inbound]] = []
 
-        # New identity: stable subscription/client identifier.
         for inbound in inbounds:
             for client in inbound.settings.clients or []:
                 if str(client.sub_id or "") == user_vpn_id:
-                    return client, inbound
+                    matches.append((client, inbound))
 
-        # Backward compatibility for clients created before config-name support.
+        if matches:
+            return matches
+
         for inbound in inbounds:
             for client in inbound.settings.clients or []:
                 if str(client.email or "") == legacy_email:
-                    return client, inbound
+                    matches.append((client, inbound))
 
-        return None
+        return matches
+
+    async def _find_client(self, user: User) -> tuple[Client, Inbound] | None:
+        matches = await self._find_clients(user)
+        return matches[0] if matches else None
 
     async def is_client_exists(self, user: User) -> Client | None:
         result = await self._find_client(user)
-
         if result:
             client, inbound = result
             connection = await self.server_pool_service.get_connection(user)
             server_name = connection.server.name if connection else "unknown"
-            logger.debug(
-                f"Client {user.tg_id} exists in inbound {inbound.id} on server {server_name}."
-            )
+            logger.debug(f"Client {user.tg_id} exists in inbound {inbound.id} on server {server_name}.")
             return client
 
         connection = await self.server_pool_service.get_connection(user)
         server_name = connection.server.name if connection else "unknown"
-        logger.debug(
-            f"Client {user.tg_id} not found on server {server_name}."
-        )
+        logger.debug(f"Client {user.tg_id} not found on server {server_name}.")
         return None
 
     async def get_limit_ip(self, user: User, client: Client) -> int | None:
@@ -105,26 +86,20 @@ class VPNService:
         if not result:
             logger.error(f"Client {client.email} not found in inbound list.")
             return None
-
         inbound_client, _ = result
-        logger.debug(
-            f"Client {client.email} limit ip: {inbound_client.limit_ip}"
-        )
+        logger.debug(f"Client {client.email} limit ip: {inbound_client.limit_ip}")
         return inbound_client.limit_ip
 
     async def get_client_data(self, user: User) -> ClientData | None:
         logger.debug(f"Starting to retrieve client data for {user.tg_id}.")
-
         connection = await self.server_pool_service.get_connection(user)
         if not connection:
             return None
 
         try:
             inbounds: list[Inbound] = await connection.api.inbound.get_list()
-
             client: Client | None = None
 
-            # New clients are identified by the stable subscription ID.
             for inbound in inbounds:
                 for inbound_client in inbound.settings.clients or []:
                     if str(inbound_client.sub_id or "") == str(user.vpn_id):
@@ -133,7 +108,6 @@ class VPNService:
                 if client:
                     break
 
-            # Backward compatibility for clients created before config-name support.
             if not client:
                 for inbound in inbounds:
                     for inbound_client in inbound.settings.clients or []:
@@ -144,14 +118,10 @@ class VPNService:
                         break
 
             if not client:
-                logger.warning(
-                    f"Client {user.tg_id} not found on server {connection.server.name}."
-                )
+                logger.warning(f"Client {user.tg_id} not found on server {connection.server.name}.")
                 return None
 
             stats_client: Client | None = None
-
-            # client_stats uses the client's email/name as its lookup key.
             for inbound in inbounds:
                 for stat in inbound.client_stats or []:
                     if str(stat.email or "") == str(client.email or ""):
@@ -170,10 +140,7 @@ class VPNService:
                 traffic_remaining = -1
                 traffic_total = -1
             else:
-                traffic_remaining = max(
-                    0,
-                    source.total - (source.up + source.down),
-                )
+                traffic_remaining = max(0, source.total - (source.up + source.down))
 
             traffic_used = source.up + source.down
             client_data = ClientData(
@@ -185,14 +152,10 @@ class VPNService:
                 traffic_down=source.down,
                 expiry_time=expiry_time,
             )
-            logger.debug(
-                f"Successfully retrieved client data for {user.tg_id}: {client_data}."
-            )
+            logger.debug(f"Successfully retrieved client data for {user.tg_id}: {client_data}.")
             return client_data
         except Exception as exception:
-            logger.error(
-                f"Error retrieving client data for {user.tg_id}: {exception}"
-            )
+            logger.error(f"Error retrieving client data for {user.tg_id}: {exception}")
             return None
 
     async def get_key(self, user: User) -> str | None:
@@ -203,11 +166,7 @@ class VPNService:
             logger.debug(f"Server ID for user {user.tg_id} not found.")
             return None
 
-        subscription = extract_base_url(
-            url=user.server.host,
-            port=self.config.xui.SUBSCRIPTION_PORT,
-            path=self.config.xui.SUBSCRIPTION_PATH,
-        )
+        subscription = extract_base_url(url=user.server.host, port=self.config.xui.SUBSCRIPTION_PORT, path=self.config.xui.SUBSCRIPTION_PATH)
         key = f"{subscription}{user.vpn_id}"
         logger.debug(f"Fetched key for {user.tg_id}: {key}.")
         return key
@@ -223,9 +182,7 @@ class VPNService:
         inbound_id: int = 1,
         config_name: str | None = None,
     ) -> bool:
-        logger.info(
-            f"Creating new client {user.tg_id} | {devices} devices {duration} days | {total_gb} GB."
-        )
+        logger.info(f"Creating new client {user.tg_id} | {devices} devices {duration} days | {total_gb} GB.")
 
         if not await self.server_pool_service.assign_server_to_user(user):
             logger.error(f"Could not assign a server to user {user.tg_id}.")
@@ -235,31 +192,19 @@ class VPNService:
         if not connection:
             return False
 
-        selected_inbound_id = await self.server_pool_service.get_inbound_id(
-            connection.api,
-            preferred_id=inbound_id,
-        )
-        if selected_inbound_id is None:
-            logger.error(
-                f"No usable inbound found on server {connection.server.name}."
-            )
+        selected_inbounds = await self.server_pool_service.get_selected_inbounds(connection.server, connection.api)
+        if not selected_inbounds:
+            logger.error(f"No selected/usable inbounds found on server {connection.server.name}.")
             return False
 
-        # The config-name selector is the source of truth. If the caller does
-        # not provide a name, always use the same automatic naming convention
-        # instead of falling back to the old Telegram ID email/name.
         client_name = (
             config_name.strip()
             if config_name and config_name.strip()
-            else self._build_auto_config_name(
-                volume_gb=total_gb,
-                duration_days=duration,
-                tg_id=user.tg_id,
-            )
+            else self._build_auto_config_name(volume_gb=total_gb, duration_days=duration, tg_id=user.tg_id)
         )
-
         logger.info(
-            f"Using config/client name for {user.tg_id}: {client_name}"
+            f"Using config/client name for {user.tg_id}: {client_name}; "
+            f"selected inbounds={[inbound.id for inbound in selected_inbounds]}"
         )
 
         new_client = Client(
@@ -273,19 +218,22 @@ class VPNService:
             total_gb=total_gb,
         )
 
+        created_ids: list[int] = []
         try:
-            await connection.api.client.add(
-                inbound_id=selected_inbound_id,
-                clients=[new_client],
-            )
-            logger.info(
-                f"Successfully created client for {user.tg_id} "
-                f"on inbound {selected_inbound_id} with limit_ip={devices}, total_gb={total_gb}, name={client_name}"
-            )
+            for inbound in selected_inbounds:
+                await connection.api.client.add(
+                    inbound_id=inbound.id,
+                    clients=[copy.deepcopy(new_client)],
+                )
+                created_ids.append(int(inbound.id))
+                logger.info(
+                    f"Successfully created client for {user.tg_id} on inbound {inbound.id} "
+                    f"with limit_ip={devices}, total_gb={total_gb}, name={client_name}"
+                )
             return True
         except Exception as exception:
             logger.error(
-                f"Error creating client for {user.tg_id}: {exception}"
+                f"Error creating client for {user.tg_id} on inbound {getattr(inbound, 'id', 'unknown')}: {exception}"
             )
             return False
 
@@ -300,146 +248,71 @@ class VPNService:
         flow: str = "xtls-rprx-vision",
         total_gb: int = 0,
     ) -> bool:
-        logger.info(
-            f"Updating client {user.tg_id} | {devices} devices {duration} days | {total_gb} GB."
-        )
+        logger.info(f"Updating client {user.tg_id} | {devices} devices {duration} days | {total_gb} GB.")
         connection = await self.server_pool_service.get_connection(user)
         if not connection:
             return False
 
         try:
-            result = await self._find_client(user)
-            if not result:
-                logger.error(
-                    f"Client {user.tg_id} not found for update on server {connection.server.name}."
-                )
+            matches = await self._find_clients(user)
+            if not matches:
+                logger.error(f"Client {user.tg_id} not found for update on server {connection.server.name}.")
                 return False
 
-            client, inbound = result
-
+            primary_client, _ = matches[0]
             if not replace_devices:
-                current_device_limit = client.limit_ip
-                if current_device_limit is None:
-                    current_device_limit = 0
+                current_device_limit = primary_client.limit_ip or 0
                 devices = current_device_limit + devices
 
             current_time = get_current_timestamp()
+            expiry_time_to_use = max(primary_client.expiry_time, current_time) if not replace_duration else current_time
+            expiry_time = add_days_to_timestamp(timestamp=expiry_time_to_use, days=duration)
 
-            if not replace_duration:
-                expiry_time_to_use = max(client.expiry_time, current_time)
-            else:
-                expiry_time_to_use = current_time
+            for client, inbound in matches:
+                client.enable = enable
+                client.id = client.id or user.vpn_id
+                client.expiry_time = expiry_time
+                client.flow = flow
+                client.limit_ip = devices
+                client.sub_id = user.vpn_id
+                client.total_gb = total_gb
 
-            expiry_time = add_days_to_timestamp(
-                timestamp=expiry_time_to_use,
-                days=duration,
-            )
+                if not client.id:
+                    logger.error(f"Client {user.tg_id} has no UUID; cannot update it on inbound {inbound.id}.")
+                    return False
 
-            client.enable = enable
-            client.id = client.id or user.vpn_id
-            client.expiry_time = expiry_time
-            client.flow = flow
-            client.limit_ip = devices
-            client.sub_id = user.vpn_id
-            client.total_gb = total_gb
-
-            if not client.id:
-                logger.error(
-                    f"Client {user.tg_id} has no UUID; cannot update it."
+                await connection.api.client.update(client_uuid=client.id, client=client)
+                logger.info(
+                    f"Client {user.tg_id} updated successfully on inbound {inbound.id} "
+                    f"with limit_ip={devices}, total_gb={total_gb}."
                 )
-                return False
-
-            await connection.api.client.update(
-                client_uuid=client.id,
-                client=client,
-            )
-            logger.info(
-                f"Client {user.tg_id} updated successfully on inbound {inbound.id} "
-                f"with limit_ip={devices}, total_gb={total_gb}."
-            )
             return True
         except Exception as exception:
-            logger.error(
-                f"Error updating client {user.tg_id}: {exception}"
-            )
+            logger.error(f"Error updating client {user.tg_id}: {exception}")
             return False
 
-    async def create_subscription(
-        self,
-        user: User,
-        devices: int,
-        duration: int,
-        total_gb: int = 0,
-        config_name: str | None = None,
-    ) -> bool:
+    async def create_subscription(self, user: User, devices: int, duration: int, total_gb: int = 0, config_name: str | None = None) -> bool:
         if not await self.is_client_exists(user):
-            return await self.create_client(
-                user=user,
-                devices=devices,
-                duration=duration,
-                total_gb=total_gb,
-                config_name=config_name,
-            )
+            return await self.create_client(user=user, devices=devices, duration=duration, total_gb=total_gb, config_name=config_name)
         return False
 
-    async def extend_subscription(
-        self,
-        user: User,
-        devices: int,
-        duration: int,
-        total_gb: int = 0,
-    ) -> bool:
-        return await self.update_client(
-            user=user,
-            devices=devices,
-            duration=duration,
-            replace_devices=True,
-            total_gb=total_gb,
-        )
+    async def extend_subscription(self, user: User, devices: int, duration: int, total_gb: int = 0) -> bool:
+        return await self.update_client(user=user, devices=devices, duration=duration, replace_devices=True, total_gb=total_gb)
 
-    async def change_subscription(
-        self,
-        user: User,
-        devices: int,
-        duration: int,
-        total_gb: int = 0,
-    ) -> bool:
+    async def change_subscription(self, user: User, devices: int, duration: int, total_gb: int = 0) -> bool:
         if await self.is_client_exists(user):
-            return await self.update_client(
-                user,
-                devices,
-                duration,
-                replace_devices=True,
-                replace_duration=True,
-                total_gb=total_gb,
-            )
+            return await self.update_client(user, devices, duration, replace_devices=True, replace_duration=True, total_gb=total_gb)
         return False
 
-    async def process_bonus_days(
-        self,
-        user: User,
-        duration: int,
-        devices: int,
-    ) -> bool:
+    async def process_bonus_days(self, user: User, duration: int, devices: int) -> bool:
         if await self.is_client_exists(user):
-            updated = await self.update_client(
-                user=user,
-                devices=0,
-                duration=duration,
-            )
+            updated = await self.update_client(user=user, devices=0, duration=duration)
             if updated:
-                logger.info(
-                    f"Updated client {user.tg_id} with additional {duration} day(s)."
-                )
+                logger.info(f"Updated client {user.tg_id} with additional {duration} day(s).")
                 return True
         else:
-            created = await self.create_client(
-                user=user,
-                devices=devices,
-                duration=duration,
-            )
+            created = await self.create_client(user=user, devices=devices, duration=duration)
             if created:
-                logger.info(
-                    f"Created client {user.tg_id} with additional {duration} day(s)"
-                )
+                logger.info(f"Created client {user.tg_id} with additional {duration} day(s)")
                 return True
+        return False
