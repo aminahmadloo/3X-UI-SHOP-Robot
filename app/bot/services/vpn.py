@@ -213,10 +213,34 @@ class VPNService:
 
     async def get_key(self, user: User) -> str | None:
         async with self.session() as session:
-            user = await User.get(session=session, tg_id=user.tg_id)
+            fresh_user = await User.get(
+                session=session,
+                tg_id=user.tg_id,
+            )
 
-        if not user or not user.server_id:
-            logger.debug(f"Server ID for user {user.tg_id} not found.")
+            if not fresh_user:
+                logger.warning(f"User {user.tg_id} not found.")
+                return None
+
+            result = await session.execute(
+                Subscription.__table__.select()
+                .where(
+                    Subscription.user_id == fresh_user.id,
+                    Subscription.status == "active",
+                )
+                .order_by(Subscription.id.desc())
+            )
+
+            row = result.mappings().first()
+
+        if not row:
+            logger.warning(f"No active subscription found for user {user.tg_id}.")
+            return None
+
+        client_id = row["client_id"]
+
+        if not client_id:
+            logger.warning(f"No client_id stored for user {user.tg_id}.")
             return None
 
         subscription = extract_base_url(
@@ -224,8 +248,13 @@ class VPNService:
             port=self.config.xui.SUBSCRIPTION_PORT,
             path="/sub/",
         )
-        key = f"{subscription}{user.vpn_id}"
-        logger.debug(f"Fetched key for {user.tg_id}: {key}.")
+
+        key = f"{subscription}{client_id}"
+
+        logger.info(
+            f"Subscription key generated from database for {user.tg_id}: {key}"
+        )
+
         return key
 
     async def create_client(
@@ -287,11 +316,34 @@ class VPNService:
                     inbound_id=inbound.id,
                     clients=[copy.deepcopy(new_client)],
                 )
+
+                logger.info(
+                    f"CREATED CLIENT DEBUG | id={new_client.id} | sub_id={new_client.sub_id} | email={new_client.email}"
+                )
+
                 created_ids.append(int(inbound.id))
                 logger.info(
                     f"Successfully created client for {user.tg_id} on inbound {inbound.id} "
                     f"with limit_ip={devices}, total_gb={total_gb}, name={client_name}"
                 )
+
+            # Read back created client from XUI to get real subscription id
+            try:
+                refreshed_inbounds = await connection.api.inbound.get_list()
+
+                for refreshed in refreshed_inbounds:
+                    for client in refreshed.settings.clients or []:
+                        if str(client.id) == str(client_uuid):
+                            logger.info(
+                                f"REAL SUB ID FOUND | id={client.id} | sub_id={client.sub_id}"
+                            )
+                            return str(client.sub_id or client.id)
+
+            except Exception as exception:
+                logger.warning(
+                    f"Could not refresh client after creation: {exception}"
+                )
+
             return client_uuid
         except Exception as exception:
             logger.error(
