@@ -35,6 +35,16 @@ class VPNService:
         self.server_pool_service = server_pool_service
         logger.info("VPN Service initialized.")
 
+    @staticmethod
+    def _build_auto_config_name(
+        volume_gb: int,
+        duration_days: int,
+        tg_id: int,
+        sub_number: int = 101,
+    ) -> str:
+        """Build the standard automatic config/client name."""
+        return f"{volume_gb}GB-{duration_days}D-tg{tg_id}-sub{sub_number}"
+
     async def _find_client(self, user: User) -> tuple[Client, Inbound] | None:
         """Find the user's client.
 
@@ -235,7 +245,22 @@ class VPNService:
             )
             return False
 
-        client_name = (config_name or f"tg{user.tg_id}").strip()
+        # The config-name selector is the source of truth. If the caller does
+        # not provide a name, always use the same automatic naming convention
+        # instead of falling back to the old Telegram ID email/name.
+        client_name = (
+            config_name.strip()
+            if config_name and config_name.strip()
+            else self._build_auto_config_name(
+                volume_gb=total_gb,
+                duration_days=duration,
+                tg_id=user.tg_id,
+            )
+        )
+
+        logger.info(
+            f"Using config/client name for {user.tg_id}: {client_name}"
+        )
 
         new_client = Client(
             email=client_name,
@@ -255,7 +280,7 @@ class VPNService:
             )
             logger.info(
                 f"Successfully created client for {user.tg_id} "
-                f"on inbound {selected_inbound_id} with limit_ip={devices}, total_gb={total_gb}"
+                f"on inbound {selected_inbound_id} with limit_ip={devices}, total_gb={total_gb}, name={client_name}"
             )
             return True
         except Exception as exception:
@@ -418,46 +443,3 @@ class VPNService:
                     f"Created client {user.tg_id} with additional {duration} day(s)"
                 )
                 return True
-
-        return False
-
-    async def activate_promocode(
-        self,
-        user: User,
-        promocode: Promocode,
-    ) -> bool:
-        async with self.session() as session:
-            activated = await Promocode.set_activated(
-                session=session,
-                code=promocode.code,
-                user_id=user.tg_id,
-            )
-
-        if not activated:
-            logger.critical(
-                f"Failed to activate promocode {promocode.code} for user {user.tg_id}."
-            )
-            return False
-
-        logger.info(
-            f"Begun applying promocode ({promocode.code}) to a client {user.tg_id}."
-        )
-        success = await self.process_bonus_days(
-            user,
-            duration=promocode.duration,
-            devices=self.config.shop.BONUS_DEVICES_COUNT,
-        )
-
-        if success:
-            return True
-
-        async with self.session() as session:
-            await Promocode.set_deactivated(
-                session=session,
-                code=promocode.code,
-            )
-
-        logger.warning(
-            f"Promocode {promocode.code} not activated due to failure."
-        )
-        return False
