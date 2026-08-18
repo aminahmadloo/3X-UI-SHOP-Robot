@@ -354,28 +354,55 @@ async def redirect_to_main_menu(
 ) -> None:
     logger.info(f"User {user.tg_id} redirected to main menu page.")
 
-    if not state:
-        state: FSMContext = FSMContext(
-            storage=storage,
-            key=StorageKey(bot_id=bot.id, chat_id=user.tg_id, user_id=user.tg_id),
-        )
-
-    main_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
     is_admin = await IsAdmin()(user_id=user.tg_id)
 
+    reply_markup = main_menu_keyboard(
+        is_admin,
+        is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
+        is_trial_available=await services.subscription.is_trial_available(user),
+        is_referred_trial_available=await services.referral.is_referred_trial_available(
+            user
+        ),
+    )
+
+    text = _("main_menu:message:main").format(name=user.first_name)
+
+    # If an FSM context is available, try to edit the existing main-menu message.
+    if state is not None:
+        try:
+            main_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
+
+            if main_message_id:
+                try:
+                    await bot.edit_message_text(
+                        text=text,
+                        chat_id=user.tg_id,
+                        message_id=main_message_id,
+                        reply_markup=reply_markup,
+                    )
+                    return
+                except Exception as exception:
+                    logger.warning(
+                        f"Could not edit existing main menu message for user "
+                        f"{user.tg_id}: {exception}"
+                    )
+        except Exception as exception:
+            logger.warning(
+                f"Could not read FSM main message ID for user "
+                f"{user.tg_id}: {exception}"
+            )
+
+    # No usable FSM/message ID: send a fresh main-menu message.
     try:
-        await bot.edit_message_text(
-            text=_("main_menu:message:main").format(name=user.first_name),
+        await bot.send_message(
             chat_id=user.tg_id,
-            message_id=main_message_id,
-            reply_markup=main_menu_keyboard(
-                is_admin,
-                is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
-                is_trial_available=await services.subscription.is_trial_available(user),
-                is_referred_trial_available=await services.referral.is_referred_trial_available(
-                    user
-                ),
-            ),
+            text=text,
+            reply_markup=reply_markup,
+        )
+        logger.info(
+            f"Sent fresh main menu message to user {user.tg_id}."
         )
     except Exception as exception:
-        logger.error(f"Error redirecting to main menu page: {exception}")
+        logger.error(
+            f"Error sending fresh main menu to user {user.tg_id}: {exception}"
+        )
