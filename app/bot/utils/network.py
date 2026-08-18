@@ -26,9 +26,13 @@ def extract_base_url(url: str, port: int, path: str) -> str:
 
     parsed_url = urlparse(url)
 
-    base_url = f"{parsed_url.scheme}://{parsed_url.hostname}:{port}"
+    if not parsed_url.hostname:
+        raise ValueError("Invalid subscription hostname")
 
-    if not path.startswith("/"):
-        path = "/" + path
+    scheme = parsed_url.scheme or "https"
 
-    return urljoin(base_url + "/", path.rstrip("/") + "/")
+    clean_path = (path or "sub").strip("/")
+
+    base_url = f"{scheme}://{parsed_url.hostname}:{port}"
+
+    return f"{base_url}/{clean_path}/"
