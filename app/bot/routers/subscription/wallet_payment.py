@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.models import ServicesContainer, SubscriptionData
 from app.bot.routers.main_menu.handler import redirect_to_main_menu
 from app.bot.utils.constants import TransactionStatus
+from app.bot.utils.navigation import NavSubscription
 from app.config import Config
 from app.db.models import ServicePurchasePlan, Transaction, User
 
@@ -26,7 +27,7 @@ def _subscription_from_state(data: dict, user_tg_id: int) -> SubscriptionData | 
 
     try:
         subscription = SubscriptionData(
-            state=packed.get("state", "config_name"),
+            state=NavSubscription.CONFIG_NAME,
             is_extend=packed.get("is_extend", False),
             is_change=packed.get("is_change", False),
             user_id=packed.get("user_id", user_tg_id),
@@ -121,15 +122,23 @@ async def managed_wallet_payment(
         await callback.answer("❌ پرداخت کیف پول انجام نشد.", show_alert=True)
         return
 
-    await Transaction.update(
-        session=session,
-        payment_id=payment_id,
-        status=TransactionStatus.PENDING,
-    )
-
     service_user = await User.get(session=session, tg_id=user.tg_id)
-    success = False
+    if service_user is None:
+        try:
+            await services.wallet.credit(
+                user_tg_id=user.tg_id,
+                amount=int(subscription.price),
+                transaction_type="purchase_refund",
+                description="بازگشت وجه به علت پیدا نشدن کاربر",
+                reference_id=f"{payment_id}:refund",
+            )
+        except Exception:
+            logger.exception("CRITICAL: failed to refund missing-user wallet payment %s", payment_id)
+        await Transaction.update(session=session, payment_id=payment_id, status=TransactionStatus.CANCELED)
+        await callback.answer("❌ کاربر سفارش پیدا نشد؛ مبلغ بازگردانده شد.", show_alert=True)
+        return
 
+    success = False
     try:
         if subscription.is_extend:
             success = await services.vpn.extend_subscription(
@@ -155,7 +164,6 @@ async def managed_wallet_payment(
             )
     except Exception:
         logger.exception("VPN provisioning failed after wallet debit for %s", user.tg_id)
-        success = False
 
     if not success:
         try:
