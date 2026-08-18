@@ -65,6 +65,7 @@ class NavAdminTools(str, Enum):
     MAIN = "admin_tools"
     TEST = "test"
     SERVER_MANAGEMENT = "server_management"
+    INBOUND_MANAGEMENT = "inbound_management"
     SHOW_SERVER = "show_server"
     PING_SERVER = "ping_server"
     ADD_SERVER = "add_server"
