@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any, Self
 
@@ -17,14 +18,9 @@ class Server(Base):
     """
     Represents a VPN server in the database.
 
-    Attributes:
-        id (int): Unique identifier for the server.
-        name (str): Unique server name.
-        host (str): Server host address or IP.
-        max_clients (int): Maximum allowed number of clients.
-        location (str | None): Server location if available.
-        online (bool): Indicates whether the server is online.
-        users (list[User]): List of users associated with the server.
+    selected_inbound_ids stores the inbound IDs that should receive newly
+    created clients on this server. An empty list keeps the legacy behavior:
+    use the first available inbound.
     """
 
     __tablename__ = "servers"
@@ -35,6 +31,7 @@ class Server(Base):
     max_clients: Mapped[int] = mapped_column(Integer, nullable=False)
     location: Mapped[str | None] = mapped_column(String(32), nullable=True)
     online: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    selected_inbound_ids: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     users: Mapped[list["User"]] = relationship("User", back_populates="server")  # type: ignore
 
     @hybrid_property
@@ -46,6 +43,18 @@ class Server(Base):
         return (
             select(func.count(User.id)).where(User.server_id == Server.id).label("current_clients")
         )
+
+    @property
+    def configured_inbound_ids(self) -> list[int]:
+        try:
+            values = json.loads(self.selected_inbound_ids or "[]")
+            return [int(value) for value in values]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            logger.warning(
+                "Invalid selected inbound IDs for server %s; treating as empty.",
+                self.name,
+            )
+            return []
 
     def __repr__(self) -> str:
         return (
