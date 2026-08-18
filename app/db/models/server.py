@@ -33,6 +33,10 @@ class Server(Base):
     online: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     selected_inbound_ids: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     users: Mapped[list["User"]] = relationship("User", back_populates="server")  # type: ignore
+    subscriptions: Mapped[list["Subscription"]] = relationship(
+        "Subscription",
+        back_populates="server",
+    )  # type: ignore
 
     @hybrid_property
     def current_clients(self) -> int:

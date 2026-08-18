@@ -51,6 +51,11 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(default=func.now(), nullable=False)
     server: Mapped["Server | None"] = relationship("Server", back_populates="users", uselist=False)  # type: ignore
     transactions: Mapped[list["Transaction"]] = relationship("Transaction", back_populates="user")  # type: ignore
+    subscriptions: Mapped[list["Subscription"]] = relationship(
+        "Subscription",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )  # type: ignore
     activated_promocodes: Mapped[list["Promocode"]] = relationship(  # type: ignore
         "Promocode", back_populates="activated_user"
     )
