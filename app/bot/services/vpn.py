@@ -219,7 +219,11 @@ class VPNService:
             logger.debug(f"Server ID for user {user.tg_id} not found.")
             return None
 
-        subscription = extract_base_url(url=user.server.host, port=self.config.xui.SUBSCRIPTION_PORT, path=self.config.xui.SUBSCRIPTION_PATH)
+        subscription = extract_base_url(
+            url=user.server.host,
+            port=self.config.xui.SUBSCRIPTION_PORT,
+            path="/sub/",
+        )
         key = f"{subscription}{user.vpn_id}"
         logger.debug(f"Fetched key for {user.tg_id}: {key}.")
         return key
