@@ -26,6 +26,7 @@ async def _show_server_inbounds(
     callback: CallbackQuery,
     server: Server,
     services: ServicesContainer,
+    session: AsyncSession,
 ) -> None:
     inbounds = await services.server_pool.get_inbounds_for_server(server)
     if not inbounds:
@@ -44,17 +45,15 @@ async def _show_server_inbounds(
         )
         return
 
-    # The first live inbound is the default service inbound. Persist that
-    # default as an explicit selection so it remains selected when the admin
-    # adds other inbounds one-by-one. Without this, the first inbound was only
-    # an implicit fallback and could disappear from the saved selection after
-    # the next toggle.
+    # Persist the first live inbound as the explicit default selection.
+    # This prevents it from disappearing when the admin selects additional
+    # inbounds one-by-one.
     configured = server.configured_inbound_ids
     if not configured:
         first_inbound_id = int(inbounds[0].id)
         configured = [first_inbound_id]
         await Server.update(
-            session=services.session,
+            session=session,
             name=server.name,
             selected_inbound_ids=json.dumps(configured),
         )
@@ -112,7 +111,7 @@ async def callback_inbound_server(
     if not server:
         await callback.answer("سرور پیدا نشد.", show_alert=True)
         return
-    await _show_server_inbounds(callback, server, services)
+    await _show_server_inbounds(callback, server, services, session)
     await callback.answer()
 
 
@@ -128,7 +127,7 @@ async def callback_inbound_refresh(
         await callback.answer("سرور پیدا نشد.", show_alert=True)
         return
     await services.server_pool.refresh_server(server)
-    await _show_server_inbounds(callback, server, services)
+    await _show_server_inbounds(callback, server, services, session)
     await callback.answer("اینباندها بازخوانی شدند.")
 
 
@@ -172,5 +171,5 @@ async def callback_inbound_toggle(
     )
 
     server.selected_inbound_ids = json.dumps(selected_ids)
-    await _show_server_inbounds(callback, server, services)
+    await _show_server_inbounds(callback, server, services, session)
     await callback.answer(f"اینباند #{inbound_id} {action}.")
