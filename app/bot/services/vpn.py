@@ -22,11 +22,21 @@ logger = logging.getLogger(__name__)
 
 
 class VPNService:
+    DEFAULT_FLOW = "xtls-rprx-vision"
+    BYTES_PER_GB = 1024 ** 3
+
     def __init__(self, config: Config, session: async_sessionmaker, server_pool_service: ServerPoolService) -> None:
         self.config = config
         self.session = session
         self.server_pool_service = server_pool_service
         logger.info("VPN Service initialized.")
+
+    @classmethod
+    def _gb_to_bytes(cls, total_gb: int) -> int:
+        """Convert the user-facing traffic quota in GiB to the bytes expected by 3X-UI."""
+        if total_gb <= 0:
+            return 0
+        return int(total_gb) * cls.BYTES_PER_GB
 
     @staticmethod
     def _build_auto_config_name(volume_gb: int, duration_days: int, tg_id: int, sub_number: int = 101) -> str:
@@ -266,12 +276,16 @@ class VPNService:
         devices: int,
         duration: int,
         enable: bool = True,
-        flow: str = "xtls-rprx-vision",
+        flow: str = DEFAULT_FLOW,
         total_gb: int = 0,
         inbound_id: int = 1,
         config_name: str | None = None,
     ) -> str | None:
-        logger.info(f"Creating new client {user.tg_id} | {devices} devices {duration} days | {total_gb} GB.")
+        total_bytes = self._gb_to_bytes(total_gb)
+        logger.info(
+            f"Creating new client {user.tg_id} | {devices} devices {duration} days | "
+            f"{total_gb} GB ({total_bytes} bytes)."
+        )
 
         if not await self.server_pool_service.assign_server_to_user(user):
             logger.error(f"Could not assign a server to user {user.tg_id}.")
@@ -306,10 +320,11 @@ class VPNService:
             enable=enable,
             id=client_uuid,
             expiry_time=days_to_timestamp(duration),
-            flow=flow,
+            flow=flow or self.DEFAULT_FLOW,
             limit_ip=devices,
             sub_id=client_uuid,
-            total_gb=total_gb,
+            tg_id=user.tg_id,
+            total_gb=total_bytes,
         )
 
         created_ids: list[int] = []
@@ -321,13 +336,15 @@ class VPNService:
                 )
 
                 logger.info(
-                    f"CREATED CLIENT DEBUG | id={new_client.id} | sub_id={new_client.sub_id} | email={new_client.email}"
+                    f"CREATED CLIENT DEBUG | id={new_client.id} | sub_id={new_client.sub_id} | "
+                    f"tg_id={new_client.tg_id} | flow={new_client.flow} | total_gb={new_client.total_gb}"
                 )
 
                 created_ids.append(int(inbound.id))
                 logger.info(
                     f"Successfully created client for {user.tg_id} on inbound {inbound.id} "
-                    f"with limit_ip={devices}, total_gb={total_gb}, name={client_name}"
+                    f"with limit_ip={devices}, total_gb={total_bytes}, tg_id={user.tg_id}, "
+                    f"flow={new_client.flow}, name={client_name}"
                 )
 
             # Read back created client from XUI to get real subscription id
@@ -362,10 +379,14 @@ class VPNService:
         replace_devices: bool = False,
         replace_duration: bool = False,
         enable: bool = True,
-        flow: str = "xtls-rprx-vision",
+        flow: str = DEFAULT_FLOW,
         total_gb: int = 0,
     ) -> bool:
-        logger.info(f"Updating client {user.tg_id} | {devices} devices {duration} days | {total_gb} GB.")
+        total_bytes = self._gb_to_bytes(total_gb)
+        logger.info(
+            f"Updating client {user.tg_id} | {devices} devices {duration} days | "
+            f"{total_gb} GB ({total_bytes} bytes)."
+        )
         connection = await self.server_pool_service.get_connection(user)
         if not connection:
             return False
@@ -389,10 +410,11 @@ class VPNService:
                 client.enable = enable
                 client.id = client.id or user.vpn_id
                 client.expiry_time = expiry_time
-                client.flow = flow
+                client.flow = flow or self.DEFAULT_FLOW
                 client.limit_ip = devices
                 client.sub_id = user.vpn_id
-                client.total_gb = total_gb
+                client.tg_id = user.tg_id
+                client.total_gb = total_bytes
 
                 if not client.id:
                     logger.error(f"Client {user.tg_id} has no UUID; cannot update it on inbound {inbound.id}.")
@@ -401,7 +423,8 @@ class VPNService:
                 await connection.api.client.update(client_uuid=client.id, client=client)
                 logger.info(
                     f"Client {user.tg_id} updated successfully on inbound {inbound.id} "
-                    f"with limit_ip={devices}, total_gb={total_gb}."
+                    f"with limit_ip={devices}, total_gb={total_bytes}, tg_id={user.tg_id}, "
+                    f"flow={client.flow}."
                 )
             return True
         except Exception as exception:
