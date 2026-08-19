@@ -41,6 +41,7 @@ async def managed_card_payment(
             plan_id=packed.get("plan_id", 0),
             volume_gb=packed.get("volume_gb", 0),
             config_name=packed.get("config_name", ""),
+            subscription_id=packed.get("subscription_id", 0),
         )
     except (TypeError, ValueError):
         await state.clear()
@@ -55,9 +56,6 @@ async def managed_card_payment(
         await callback.answer("❌ اطلاعات مبلغ یا نام کانفیگ سفارش نامعتبر است.", show_alert=True)
         return
 
-    # Do not use CallbackData.pack() for persisted card-payment state. The
-    # Telegram callback limit is 64 bytes and the full subscription payload
-    # can legitimately be longer than that.
     await state.update_data(
         custom_service_days=subscription_data.duration,
         custom_service_gigabytes=subscription_data.volume_gb,
@@ -68,6 +66,7 @@ async def managed_card_payment(
         custom_service_is_change=subscription_data.is_change,
         custom_service_user_id=subscription_data.user_id,
         custom_service_plan_id=subscription_data.plan_id,
+        custom_service_subscription_id=subscription_data.subscription_id,
     )
     await custom_service_payment_card(
         callback=callback,
