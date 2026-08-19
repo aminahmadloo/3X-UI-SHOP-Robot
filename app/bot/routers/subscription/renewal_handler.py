@@ -222,8 +222,8 @@ async def callback_renewal_plan_selected(
         plan_id=plan.id,
         volume_gb=subscription.volume_gb,
         config_name=subscription.config_name,
-        subscription_id=subscription.id,
     )
+    data.subscription_id = subscription.id
     await state.update_data(subscription_data={
         "state": NavSubscription.PAY.value,
         "is_extend": True,
