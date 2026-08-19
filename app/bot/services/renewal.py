@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 
 from py3xui import Client
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.bot.models import ServicesContainer
@@ -47,12 +46,12 @@ async def extend_existing_subscription(
         except Exception:
             return False
 
-        target: tuple[Client, object] | None = None
+        target: Client | None = None
         target_client_id = str(subscription.client_id).strip()
         for inbound in inbounds:
             for client in inbound.settings.clients or []:
                 if str(client.id or "").strip() == target_client_id or str(client.sub_id or "").strip() == target_client_id:
-                    target = (client, inbound)
+                    target = client
                     break
             if target:
                 break
@@ -60,7 +59,7 @@ async def extend_existing_subscription(
         if target is None:
             return False
 
-        client, inbound = target
+        client = target
         now_ms = get_current_timestamp()
         current_expiry_ms = int(client.expiry_time or 0)
         base_expiry_ms = max(current_expiry_ms, now_ms)
