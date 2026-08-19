@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ServicesContainer, SubscriptionData
+from app.bot.services.renewal import extend_existing_subscription
 from app.bot.utils.constants import TransactionStatus
 from app.bot.utils.navigation import NavSubscription
 from app.config import Config
@@ -35,6 +36,7 @@ def _subscription_from_state(data: dict, user_tg_id: int) -> SubscriptionData | 
             plan_id=int(packed.get("plan_id", 0)),
             volume_gb=int(packed.get("volume_gb", 0)),
             config_name=str(packed.get("config_name", "")),
+            subscription_id=int(packed.get("subscription_id", 0)),
         )
     except (TypeError, ValueError):
         return None
@@ -138,12 +140,21 @@ async def managed_wallet_payment(
     success = False
     try:
         if subscription.is_extend:
-            success = await services.vpn.extend_subscription(
-                user=service_user,
-                devices=subscription.devices,
-                duration=subscription.duration,
-                total_gb=subscription.volume_gb,
-            )
+            if subscription.subscription_id:
+                success = await extend_existing_subscription(
+                    services=services,
+                    user=service_user,
+                    subscription_id=subscription.subscription_id,
+                    duration_days=subscription.duration,
+                    plan_id=subscription.plan_id,
+                )
+            else:
+                success = await services.vpn.extend_subscription(
+                    user=service_user,
+                    devices=subscription.devices,
+                    duration=subscription.duration,
+                    total_gb=subscription.volume_gb,
+                )
         elif subscription.is_change:
             success = await services.vpn.change_subscription(
                 user=service_user,
@@ -205,8 +216,6 @@ async def managed_wallet_payment(
             data=subscription,
         )
     else:
-        # Remove the payment-method selection message before sending
-        # the final successful-payment message.
         try:
             if callback.message:
                 await callback.message.delete()
