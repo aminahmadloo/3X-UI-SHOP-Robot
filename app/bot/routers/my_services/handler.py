@@ -25,7 +25,6 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def _effective_start_date(subscription: Subscription) -> datetime | None:
-    """Return the best available start date for time-limited subscriptions."""
     if subscription.start_date:
         return _as_utc(subscription.start_date)
     if subscription.duration_days > 0 and subscription.created_at:
@@ -34,7 +33,6 @@ def _effective_start_date(subscription: Subscription) -> datetime | None:
 
 
 def _effective_expire_date(subscription: Subscription) -> datetime | None:
-    """Use stored expiry, or derive it from start/creation date + duration."""
     if subscription.expire_date:
         return _as_utc(subscription.expire_date)
     if subscription.duration_days <= 0:
@@ -46,15 +44,14 @@ def _effective_expire_date(subscription: Subscription) -> datetime | None:
 
 
 def _status(subscription: Subscription) -> tuple[str, str]:
-    now = datetime.now(timezone.utc)
-    if subscription.status != "active":
-        return "🔴", "منقضی / غیرفعال"
-
+    """Return the user-facing status, with expiry taking priority over disabled."""
     expire = _effective_expire_date(subscription)
+    if expire and (expire - datetime.now(timezone.utc)).total_seconds() <= 0:
+        return "🔴", "منقضی شده"
+    if subscription.status != "active":
+        return "⚫", "غیرفعال"
     if expire:
-        days_left = (expire - now).total_seconds() / 86400
-        if days_left <= 0:
-            return "🔴", "منقضی شده"
+        days_left = (expire - datetime.now(timezone.utc)).total_seconds() / 86400
         if days_left <= 3:
             return "🟠", "رو به اتمام"
     return "🟢", "فعال"
@@ -108,7 +105,6 @@ def _main_keyboard() -> InlineKeyboardMarkup:
 
 
 async def _get_subscriptions(session: AsyncSession, user: User) -> list[Subscription]:
-    """Return database subscriptions whose server still exists."""
     result = await session.execute(
         select(Subscription)
         .join(Server, Subscription.server_id == Server.id)
@@ -127,17 +123,7 @@ async def _sync_subscriptions_with_xui(
     subscriptions: list[Subscription],
     services: ServicesContainer,
 ) -> list[Subscription]:
-    """Synchronize My Services with the live clients currently present in 3X-UI.
-
-    A subscription is a real service only while its stored client_id exists on
-    its assigned server. Missing clients are removed from the experimental
-    subscription table. Existing disabled clients remain visible but are
-    marked inactive by setting subscription.status to ``inactive``.
-
-    If a server/XUI API cannot be reached, no subscriptions for that server are
-    deleted or changed because an API failure must never be mistaken for a
-    deleted client.
-    """
+    """Synchronize database subscriptions with clients currently present in 3X-UI."""
     subscriptions_by_server: dict[int, list[Subscription]] = {}
     for subscription in subscriptions:
         if subscription.server_id is not None:
@@ -154,8 +140,7 @@ async def _sync_subscriptions_with_xui(
         connection = await services.server_pool.get_connection_for_server(server)
         if connection is None:
             logger.warning(
-                "Could not connect to XUI server %s while synchronizing My Services; "
-                "leaving its subscriptions unchanged.",
+                "Could not connect to XUI server %s while synchronizing My Services; leaving subscriptions unchanged.",
                 server.name,
             )
             continue
@@ -176,24 +161,17 @@ async def _sync_subscriptions_with_xui(
                 client_id = str(client.id or "").strip()
                 if not client_id:
                     continue
-                # A client is represented in multiple attached inbounds. Treat
-                # it as enabled if at least one live copy is enabled.
                 live_clients[client_id] = live_clients.get(client_id, False) or bool(client.enable)
 
         for subscription in server_subscriptions:
             client_id = str(subscription.client_id or "").strip()
             if not client_id:
-                logger.warning(
-                    "Subscription %s has no client_id; keeping it unchanged for safety.",
-                    subscription.id,
-                )
+                logger.warning("Subscription %s has no client_id; keeping it unchanged for safety.", subscription.id)
                 continue
 
             if client_id not in live_clients:
                 deleted_ids.add(subscription.id)
-                await session.execute(
-                    delete(Subscription).where(Subscription.id == subscription.id)
-                )
+                await session.execute(delete(Subscription).where(Subscription.id == subscription.id))
                 changed = True
                 logger.info(
                     "Removed orphan subscription %s (%s): client %s no longer exists on XUI server %s.",
@@ -235,8 +213,17 @@ async def callback_my_services(
     subscriptions = await _get_subscriptions(session, user)
     subscriptions = await _sync_subscriptions_with_xui(session, subscriptions, services)
 
-    active_count = sum(1 for item in subscriptions if _status(item)[1] in {"فعال", "رو به اتمام"})
-    expired_count = len(subscriptions) - active_count
+    active_count = 0
+    expired_count = 0
+    disabled_count = 0
+    for item in subscriptions:
+        _, status_text = _status(item)
+        if status_text in {"فعال", "رو به اتمام"}:
+            active_count += 1
+        elif status_text == "منقضی شده":
+            expired_count += 1
+        elif status_text == "غیرفعال":
+            disabled_count += 1
 
     if not subscriptions:
         text = (
@@ -251,14 +238,16 @@ async def callback_my_services(
     lines = [
         "📦 <b>سرویس‌های من</b>",
         "",
-        f"🟢 فعال: <b>{active_count}</b>   🔴 منقضی/غیرفعال: <b>{expired_count}</b>",
+        f"🟢 فعال: <b>{active_count}</b>   🔴 منقضی‌شده: <b>{expired_count}</b>   ⚫ غیرفعال: <b>{disabled_count}</b>",
         "",
     ]
 
     for subscription in subscriptions[:8]:
         icon, status_text = _status(subscription)
         days = _days_left(subscription)
-        if subscription.duration_days > 0 and days is not None:
+        if status_text == "منقضی شده":
+            remaining = "به پایان رسیده"
+        elif subscription.duration_days > 0 and days is not None:
             remaining = f"{days} روز باقی‌مانده"
         elif subscription.duration_days <= 0:
             remaining = "♾️ بدون محدودیت زمانی"
@@ -352,7 +341,7 @@ async def callback_my_service_details(
     elif subscription.duration_days <= 0:
         text += "♾️ <b>بدون محدودیت زمانی</b>\n"
 
-    if subscription.status == "active":
+    if subscription.status == "active" and status_text not in {"منقضی شده", "غیرفعال"}:
         client_data = await services.vpn.get_client_data(user)
         if client_data and client_data.traffic_total > 0:
             used = client_data.traffic_used
@@ -367,19 +356,9 @@ async def callback_my_service_details(
             )
 
     builder = InlineKeyboardBuilder()
-    if subscription.status == "active":
-        builder.row(
-            InlineKeyboardButton(
-                text="🔗 دریافت لینک اتصال",
-                callback_data=f"my_services:key:{subscription.id}",
-            )
-        )
-        builder.row(
-            InlineKeyboardButton(
-                text="🔄 تمدید سرویس",
-                callback_data=NavSubscription.RENEW_SERVICE,
-            )
-        )
+    if subscription.status == "active" and status_text not in {"منقضی شده", "غیرفعال"}:
+        builder.row(InlineKeyboardButton(text="🔗 دریافت لینک اتصال", callback_data=f"my_services:key:{subscription.id}"))
+        builder.row(InlineKeyboardButton(text="🔄 تمدید سرویس", callback_data=NavSubscription.RENEW_SERVICE))
     builder.row(InlineKeyboardButton(text="🛒 خرید سرویس جدید", callback_data=NavSubscription.BUY))
     builder.row(InlineKeyboardButton(text="⬅️ بازگشت به سرویس‌های من", callback_data=NavMain.MY_SERVICES))
     builder.row(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU))
@@ -414,7 +393,7 @@ async def callback_my_service_key(
         return
     subscription = synced[0]
 
-    key = await services.vpn.get_key(user)
+    key = await services.vpn.get_key(user, subscription_id=subscription.id)
     if not key:
         await callback.answer("لینک اتصال سرویس در حال حاضر در دسترس نیست.", show_alert=True)
         return
