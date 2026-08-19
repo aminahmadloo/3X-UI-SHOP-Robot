@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
@@ -18,14 +18,45 @@ logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 
 
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _effective_start_date(subscription: Subscription) -> datetime | None:
+    """Return the best available start date for time-limited subscriptions."""
+    if subscription.start_date:
+        return _as_utc(subscription.start_date)
+    if subscription.duration_days > 0 and subscription.created_at:
+        return _as_utc(subscription.created_at)
+    return None
+
+
+def _effective_expire_date(subscription: Subscription) -> datetime | None:
+    """Use stored expiry, or derive it from start/creation date + duration.
+
+    Older subscriptions may have duration_days populated while expire_date is
+    NULL. In that case the UI should still honor the purchased duration instead
+    of incorrectly showing "بدون محدودیت زمانی".
+    """
+    if subscription.expire_date:
+        return _as_utc(subscription.expire_date)
+    if subscription.duration_days <= 0:
+        return None
+    start = _effective_start_date(subscription)
+    if not start:
+        return None
+    return start + timedelta(days=subscription.duration_days)
+
+
 def _status(subscription: Subscription) -> tuple[str, str]:
     now = datetime.now(timezone.utc)
     if subscription.status != "active":
         return "🔴", "منقضی / غیرفعال"
-    if subscription.expire_date:
-        expire = subscription.expire_date
-        if expire.tzinfo is None:
-            expire = expire.replace(tzinfo=timezone.utc)
+
+    expire = _effective_expire_date(subscription)
+    if expire:
         days_left = (expire - now).total_seconds() / 86400
         if days_left <= 0:
             return "🔴", "منقضی شده"
@@ -35,11 +66,9 @@ def _status(subscription: Subscription) -> tuple[str, str]:
 
 
 def _days_left(subscription: Subscription) -> int | None:
-    if not subscription.expire_date:
+    expire = _effective_expire_date(subscription)
+    if not expire:
         return None
-    expire = subscription.expire_date
-    if expire.tzinfo is None:
-        expire = expire.replace(tzinfo=timezone.utc)
     seconds = (expire - datetime.now(timezone.utc)).total_seconds()
     return max(0, int(seconds // 86400))
 
@@ -58,6 +87,18 @@ def _progress(used: int, total: int, width: int = 14) -> str:
     if total <= 0:
         return "▫️" * width
     ratio = max(0.0, min(1.0, used / total))
+    filled = round(ratio * width)
+    return "█" * filled + "░" * (width - filled)
+
+
+def _time_progress(subscription: Subscription, width: int = 14) -> str | None:
+    start = _effective_start_date(subscription)
+    expire = _effective_expire_date(subscription)
+    if not start or not expire or expire <= start:
+        return None
+    now = datetime.now(timezone.utc)
+    ratio = (now - start).total_seconds() / (expire - start).total_seconds()
+    ratio = max(0.0, min(1.0, ratio))
     filled = round(ratio * width)
     return "█" * filled + "░" * (width - filled)
 
@@ -115,7 +156,12 @@ async def callback_my_services(
     for subscription in subscriptions[:8]:
         icon, status_text = _status(subscription)
         days = _days_left(subscription)
-        remaining = f"{days} روز باقی‌مانده" if days is not None else "بدون محدودیت زمانی"
+        if subscription.duration_days > 0 and days is not None:
+            remaining = f"{days} روز باقی‌مانده"
+        elif subscription.duration_days <= 0:
+            remaining = "♾️ بدون محدودیت زمانی"
+        else:
+            remaining = f"{subscription.duration_days} روزه"
         lines.extend(
             [
                 "━━━━━━━━━━━━━━━━━━",
@@ -165,6 +211,8 @@ async def callback_my_service_details(
     icon, status_text = _status(subscription)
     days = _days_left(subscription)
     server_name = subscription.server.name if subscription.server else "نامشخص"
+    expire = _effective_expire_date(subscription)
+    time_bar = _time_progress(subscription)
 
     text = (
         "📦 <b>جزئیات سرویس</b>\n\n"
@@ -177,11 +225,22 @@ async def callback_my_service_details(
         f"🖥 <b>سرور:</b> {server_name}\n"
     )
 
-    if subscription.start_date:
-        text += f"🗓 <b>شروع:</b> {subscription.start_date.strftime('%Y/%m/%d %H:%M')}\n"
-    if subscription.expire_date:
-        text += f"⏳ <b>انقضا:</b> {subscription.expire_date.strftime('%Y/%m/%d %H:%M')}\n"
-        text += f"📆 <b>باقی‌مانده:</b> {days} روز\n"
+    start = _effective_start_date(subscription)
+    if start:
+        text += f"🗓 <b>شروع:</b> {start.strftime('%Y/%m/%d %H:%M')}\n"
+    if expire:
+        text += f"⏳ <b>انقضا:</b> {expire.strftime('%Y/%m/%d %H:%M')}\n"
+        if days is not None:
+            if days <= 3 and days > 0:
+                text += f"🟠 <b>فقط {days} روز باقی‌مانده</b>\n"
+            elif days == 0:
+                text += "🔴 <b>سرویس منقضی شده</b>\n"
+            else:
+                text += f"📆 <b>باقی‌مانده:</b> {days} روز\n"
+        if time_bar:
+            text += f"\n⏳ <b>اعتبار سرویس</b>\n{time_bar}\n"
+    elif subscription.duration_days <= 0:
+        text += "♾️ <b>بدون محدودیت زمانی</b>\n"
 
     if subscription.status == "active":
         client_data = await services.vpn.get_client_data(user)
@@ -189,9 +248,10 @@ async def callback_my_service_details(
             used = client_data.traffic_used
             total = client_data.traffic_total
             remaining = max(0, total - used)
+            used_percent = round((used / total) * 100) if total else 0
             text += (
                 "\n📊 <b>مصرف ترافیک</b>\n"
-                f"{_progress(used, total)}\n"
+                f"{_progress(used, total)}  <b>{used_percent}%</b>\n"
                 f"مصرف‌شده: <b>{_format_bytes(used)}</b> از <b>{_format_bytes(total)}</b>\n"
                 f"باقی‌مانده: <b>{_format_bytes(remaining)}</b>\n"
             )
