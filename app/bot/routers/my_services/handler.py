@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.bot.models import ServicesContainer
 from app.bot.utils.navigation import NavMain, NavSubscription
-from app.db.models import Subscription, User
+from app.db.models import Server, Subscription, User
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -113,10 +113,20 @@ def _main_keyboard() -> InlineKeyboardMarkup:
 
 
 async def _get_subscriptions(session: AsyncSession, user: User) -> list[Subscription]:
+    """Return only subscriptions attached to servers that still exist.
+
+    Deleting a server sets Subscription.server_id to NULL because of the
+    database FK's ON DELETE SET NULL behavior. Those orphaned subscriptions
+    must not appear in My Services and must not affect its counters.
+    """
     result = await session.execute(
         select(Subscription)
+        .join(Server, Subscription.server_id == Server.id)
         .options(selectinload(Subscription.server))
-        .where(Subscription.user_id == user.id)
+        .where(
+            Subscription.user_id == user.id,
+            Subscription.server_id.is_not(None),
+        )
         .order_by(Subscription.id.desc())
     )
     return list(result.scalars().all())
@@ -197,15 +207,17 @@ async def callback_my_service_details(
     subscription_id = int(callback.data.rsplit(":", 1)[1])
     result = await session.execute(
         select(Subscription)
+        .join(Server, Subscription.server_id == Server.id)
         .options(selectinload(Subscription.server))
         .where(
             Subscription.id == subscription_id,
             Subscription.user_id == user.id,
+            Subscription.server_id.is_not(None),
         )
     )
     subscription = result.scalar_one_or_none()
     if not subscription:
-        await callback.answer("سرویس پیدا نشد.", show_alert=True)
+        await callback.answer("سرویس پیدا نشد یا سرور آن دیگر فعال نیست.", show_alert=True)
         return
 
     icon, status_text = _status(subscription)
