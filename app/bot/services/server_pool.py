@@ -119,6 +119,38 @@ class ServerPoolService:
             logger.error(f"Failed to fetch inbounds for server {server.name}: {exception}")
             return []
 
+    async def get_connection_for_server(self, server: Server) -> Connection | None:
+        """Return a live 3X-UI connection for a specific server."""
+        connection = self._servers.get(server.id)
+        if connection is None:
+            if not await self._add_server(server):
+                return None
+            connection = self._servers.get(server.id)
+            if connection is None:
+                return None
+
+        async with self.session() as session:
+            fresh_server = await Server.get_by_id(session=session, id=server.id)
+
+        if fresh_server is None:
+            self._remove_server(connection.server)
+            logger.error(f"Server {server.id} disappeared from database.")
+            return None
+
+        if connection.server.host != fresh_server.host:
+            logger.info(
+                f"Server {fresh_server.name} host changed from {connection.server.host} to {fresh_server.host}; refreshing connection."
+            )
+            if not await self.refresh_server(fresh_server):
+                return None
+            connection = self._servers.get(fresh_server.id)
+            if connection is None:
+                return None
+        else:
+            connection.server = fresh_server
+
+        return connection
+
     async def get_selected_inbounds(self, server: Server, api: AsyncApi):
         """Return configured live inbounds, preserving legacy fallback when none are configured."""
         try:

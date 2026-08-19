@@ -221,7 +221,7 @@ class VPNService:
             logger.error(f"Error retrieving client data for {user.tg_id}: {exception}")
             return None
 
-    async def get_key(self, user: User) -> str | None:
+    async def get_key(self, user: User, subscription_id: int | None = None) -> str | None:
         async with self.session() as session:
             fresh_user = await User.get(
                 session=session,
@@ -232,19 +232,23 @@ class VPNService:
                 logger.warning(f"User {user.tg_id} not found.")
                 return None
 
-            result = await session.execute(
-                Subscription.__table__.select()
-                .where(
-                    Subscription.user_id == fresh_user.id,
-                    Subscription.status == "active",
-                )
-                .order_by(Subscription.id.desc())
+            query = Subscription.__table__.select().where(
+                Subscription.user_id == fresh_user.id,
+                Subscription.status == "active",
             )
+            if subscription_id is not None:
+                query = query.where(Subscription.id == subscription_id)
+            else:
+                query = query.order_by(Subscription.id.desc())
 
+            result = await session.execute(query)
             row = result.mappings().first()
 
         if not row:
-            logger.warning(f"No active subscription found for user {user.tg_id}.")
+            logger.warning(
+                f"No active subscription found for user {user.tg_id}"
+                + (f" with id {subscription_id}." if subscription_id is not None else ".")
+            )
             return None
 
         client_id = row["client_id"]
@@ -347,7 +351,6 @@ class VPNService:
                     f"flow={new_client.flow}, name={client_name}"
                 )
 
-            # Read back created client from XUI to get real subscription id
             try:
                 refreshed_inbounds = await connection.api.inbound.get_list()
 

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -34,12 +34,7 @@ def _effective_start_date(subscription: Subscription) -> datetime | None:
 
 
 def _effective_expire_date(subscription: Subscription) -> datetime | None:
-    """Use stored expiry, or derive it from start/creation date + duration.
-
-    Older subscriptions may have duration_days populated while expire_date is
-    NULL. In that case the UI should still honor the purchased duration instead
-    of incorrectly showing "بدون محدودیت زمانی".
-    """
+    """Use stored expiry, or derive it from start/creation date + duration."""
     if subscription.expire_date:
         return _as_utc(subscription.expire_date)
     if subscription.duration_days <= 0:
@@ -113,12 +108,7 @@ def _main_keyboard() -> InlineKeyboardMarkup:
 
 
 async def _get_subscriptions(session: AsyncSession, user: User) -> list[Subscription]:
-    """Return only subscriptions attached to servers that still exist.
-
-    Deleting a server sets Subscription.server_id to NULL because of the
-    database FK's ON DELETE SET NULL behavior. Those orphaned subscriptions
-    must not appear in My Services and must not affect its counters.
-    """
+    """Return database subscriptions whose server still exists."""
     result = await session.execute(
         select(Subscription)
         .join(Server, Subscription.server_id == Server.id)
@@ -132,6 +122,106 @@ async def _get_subscriptions(session: AsyncSession, user: User) -> list[Subscrip
     return list(result.scalars().all())
 
 
+async def _sync_subscriptions_with_xui(
+    session: AsyncSession,
+    subscriptions: list[Subscription],
+    services: ServicesContainer,
+) -> list[Subscription]:
+    """Synchronize My Services with the live clients currently present in 3X-UI.
+
+    A subscription is a real service only while its stored client_id exists on
+    its assigned server. Missing clients are removed from the experimental
+    subscription table. Existing disabled clients remain visible but are
+    marked inactive by setting subscription.status to ``inactive``.
+
+    If a server/XUI API cannot be reached, no subscriptions for that server are
+    deleted or changed because an API failure must never be mistaken for a
+    deleted client.
+    """
+    subscriptions_by_server: dict[int, list[Subscription]] = {}
+    for subscription in subscriptions:
+        if subscription.server_id is not None:
+            subscriptions_by_server.setdefault(subscription.server_id, []).append(subscription)
+
+    deleted_ids: set[int] = set()
+    changed = False
+
+    for server_id, server_subscriptions in subscriptions_by_server.items():
+        server = server_subscriptions[0].server
+        if server is None:
+            continue
+
+        connection = await services.server_pool.get_connection_for_server(server)
+        if connection is None:
+            logger.warning(
+                "Could not connect to XUI server %s while synchronizing My Services; "
+                "leaving its subscriptions unchanged.",
+                server.name,
+            )
+            continue
+
+        try:
+            inbounds = await connection.api.inbound.get_list()
+        except Exception as exception:
+            logger.warning(
+                "Could not read XUI clients from server %s while synchronizing My Services: %s",
+                server.name,
+                exception,
+            )
+            continue
+
+        live_clients: dict[str, bool] = {}
+        for inbound in inbounds:
+            for client in inbound.settings.clients or []:
+                client_id = str(client.id or "").strip()
+                if not client_id:
+                    continue
+                # A client is represented in multiple attached inbounds. Treat
+                # it as enabled if at least one live copy is enabled.
+                live_clients[client_id] = live_clients.get(client_id, False) or bool(client.enable)
+
+        for subscription in server_subscriptions:
+            client_id = str(subscription.client_id or "").strip()
+            if not client_id:
+                logger.warning(
+                    "Subscription %s has no client_id; keeping it unchanged for safety.",
+                    subscription.id,
+                )
+                continue
+
+            if client_id not in live_clients:
+                deleted_ids.add(subscription.id)
+                await session.execute(
+                    delete(Subscription).where(Subscription.id == subscription.id)
+                )
+                changed = True
+                logger.info(
+                    "Removed orphan subscription %s (%s): client %s no longer exists on XUI server %s.",
+                    subscription.id,
+                    subscription.config_name,
+                    client_id,
+                    server.name,
+                )
+                continue
+
+            new_status = "active" if live_clients[client_id] else "inactive"
+            if subscription.status != new_status:
+                subscription.status = new_status
+                changed = True
+                logger.info(
+                    "Synchronized subscription %s (%s) with XUI client %s: status=%s.",
+                    subscription.id,
+                    subscription.config_name,
+                    client_id,
+                    new_status,
+                )
+
+    if changed:
+        await session.commit()
+
+    return [subscription for subscription in subscriptions if subscription.id not in deleted_ids]
+
+
 @router.callback_query(F.data == NavMain.MY_SERVICES)
 async def callback_my_services(
     callback: CallbackQuery,
@@ -143,6 +233,8 @@ async def callback_my_services(
     await callback.answer()
 
     subscriptions = await _get_subscriptions(session, user)
+    subscriptions = await _sync_subscriptions_with_xui(session, subscriptions, services)
+
     active_count = sum(1 for item in subscriptions if _status(item)[1] in {"فعال", "رو به اتمام"})
     expired_count = len(subscriptions) - active_count
 
@@ -219,6 +311,12 @@ async def callback_my_service_details(
     if not subscription:
         await callback.answer("سرویس پیدا نشد یا سرور آن دیگر فعال نیست.", show_alert=True)
         return
+
+    subscriptions = await _sync_subscriptions_with_xui(session, [subscription], services)
+    if not subscriptions:
+        await callback.answer("این سرویس دیگر در 3X-UI وجود ندارد.", show_alert=True)
+        return
+    subscription = subscriptions[0]
 
     icon, status_text = _status(subscription)
     days = _days_left(subscription)
@@ -309,6 +407,12 @@ async def callback_my_service_key(
     if not subscription:
         await callback.answer("این سرویس فعال نیست.", show_alert=True)
         return
+
+    synced = await _sync_subscriptions_with_xui(session, [subscription], services)
+    if not synced or synced[0].status != "active":
+        await callback.answer("این سرویس در 3X-UI فعال نیست.", show_alert=True)
+        return
+    subscription = synced[0]
 
     key = await services.vpn.get_key(user)
     if not key:
