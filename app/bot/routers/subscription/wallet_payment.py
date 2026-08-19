@@ -36,8 +36,8 @@ def _subscription_from_state(data: dict, user_tg_id: int) -> SubscriptionData | 
             plan_id=int(packed.get("plan_id", 0)),
             volume_gb=int(packed.get("volume_gb", 0)),
             config_name=str(packed.get("config_name", "")),
-            subscription_id=int(packed.get("subscription_id", 0)),
         )
+        subscription.subscription_id = int(packed.get("subscription_id", 0))
     except (TypeError, ValueError):
         return None
 
