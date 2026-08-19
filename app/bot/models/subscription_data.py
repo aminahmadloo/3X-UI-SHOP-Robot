@@ -16,6 +16,7 @@ class SubscriptionData(CallbackData, prefix="subscription"):
     plan_id: int = 0
     volume_gb: int = 0
     config_name: str = ""
+    subscription_id: int = 0
 
     def serialize(self) -> str:
         """Serialize subscription data for FSM/database storage.
@@ -36,6 +37,7 @@ class SubscriptionData(CallbackData, prefix="subscription"):
                 "plan_id": self.plan_id,
                 "volume_gb": self.volume_gb,
                 "config_name": self.config_name,
+                "subscription_id": self.subscription_id,
             },
             ensure_ascii=False,
             separators=(",", ":"),
@@ -67,4 +69,5 @@ class SubscriptionData(CallbackData, prefix="subscription"):
             plan_id=payload.get("plan_id", 0),
             volume_gb=payload.get("volume_gb", 0),
             config_name=payload.get("config_name", ""),
+            subscription_id=payload.get("subscription_id", 0),
         )
