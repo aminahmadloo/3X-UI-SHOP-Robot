@@ -4,10 +4,12 @@ from datetime import datetime, timedelta, timezone
 from aiogram.utils.i18n import I18n
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from redis.asyncio.client import Redis
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import selectinload
 
 from app.bot.services import NotificationService, VPNService
-from app.db.models import User
+from app.db.models import Subscription
 
 logger = logging.getLogger(__name__)
 
@@ -21,37 +23,49 @@ async def notify_users_with_expiring_subscription(
 ) -> None:
     session: AsyncSession
     async with session_factory() as session:
-        users = await User.get_all(session=session)
+        result = await session.execute(
+            select(Subscription)
+            .options(selectinload(Subscription.user))
+            .where(
+                Subscription.status == "active",
+                Subscription.server_id.is_not(None),
+            )
+            .order_by(Subscription.id.asc())
+        )
+        subscriptions = list(result.scalars().all())
 
         logger.info(
-            f"[Background task] Starting subscription expiration check for {len(users)} users."
+            "[Background task] Starting subscription expiration check for %s subscriptions.",
+            len(subscriptions),
         )
 
-        for user in users:
-            user_notified_key = f"user:notified:{user.tg_id}"
-
-            # Check if user was recently notified
-            if await redis.get(user_notified_key):
+        for subscription in subscriptions:
+            user = subscription.user
+            if user is None:
                 continue
 
-            client_data = await vpn_service.get_client_data(user)
+            notification_key = f"subscription:notified:{subscription.id}"
+            if await redis.get(notification_key):
+                continue
 
-            # Skip if no client data or subscription is unlimited
+            client_data = await vpn_service.get_client_data(
+                user,
+                subscription_id=subscription.id,
+            )
+
             if not client_data or client_data._expiry_time == -1:
                 continue
 
             now = datetime.now(timezone.utc)
             expiry_datetime = datetime.fromtimestamp(
-                client_data._expiry_time / 1000, timezone.utc
+                client_data._expiry_time / 1000,
+                timezone.utc,
             )
             time_left = expiry_datetime - now
 
-            # Skip if not within the notification threshold
             if not (timedelta(0) < time_left <= timedelta(hours=24)):
                 continue
 
-            # BUG: The button and expiry_time will not be translated
-            # (the translation logic needs to be changed outside the current context)
             await notification_service.notify_by_id(
                 chat_id=user.tg_id,
                 text=i18n.gettext(
@@ -61,13 +75,15 @@ async def notify_users_with_expiring_subscription(
                     devices=client_data.max_devices,
                     expiry_time=client_data.expiry_time,
                 ),
-                # reply_markup=keyboard_extend
             )
 
-            await redis.set(user_notified_key, "true", ex=timedelta(hours=24))
+            await redis.set(notification_key, "true", ex=timedelta(hours=24))
             logger.info(
-                f"[Background task] Sent expiry notification to user {user.tg_id}."
+                "[Background task] Sent expiry notification for subscription %s to user %s.",
+                subscription.id,
+                user.tg_id,
             )
+
         logger.info("[Background task] Subscription check finished.")
 
 
