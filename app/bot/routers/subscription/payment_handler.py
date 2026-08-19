@@ -55,8 +55,6 @@ async def callback_payment_method_selected(
         gateway = gateway_factory.get_gateway(method)
 
         if callback_data.plan_id:
-            # Managed service purchase: the price selected by the admin is
-            # already stored in SubscriptionData and must be preserved exactly.
             price = callback_data.price
         else:
             plan = services.plan.get_plan(devices)
@@ -116,10 +114,24 @@ async def successful_payment(
     transaction = await Transaction.create(
         session=session,
         tg_id=user.tg_id,
-        subscription=data.pack(),
+        subscription=data.serialize(),
         payment_id=message.successful_payment.telegram_payment_charge_id,
-        status=TransactionStatus.COMPLETED,
+        status=TransactionStatus.PENDING,
     )
 
+    if transaction is None:
+        logger.error(
+            "Could not create Telegram Stars transaction for user %s, payment=%s",
+            user.tg_id,
+            message.successful_payment.telegram_payment_charge_id,
+        )
+        return
+
     gateway = gateway_factory.get_gateway(NavSubscription.PAY_TELEGRAM_STARS)
-    await gateway.handle_payment_succeeded(payment_id=transaction.payment_id)
+    try:
+        await gateway.handle_payment_succeeded(payment_id=transaction.payment_id)
+    except Exception:
+        logger.exception(
+            "Telegram Stars payment %s was received but provisioning failed; transaction remains pending.",
+            transaction.payment_id,
+        )

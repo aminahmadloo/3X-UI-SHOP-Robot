@@ -349,6 +349,7 @@ async def callback_managed_payment(
         volume_gb=packed.get("volume_gb", 0),
         config_name=packed.get("config_name", ""),
     )
+    subscription_data.subscription_id = packed.get("subscription_id", 0)
 
     if subscription_data.user_id != user.tg_id:
         await callback.answer("خطا در اطلاعات سفارش.", show_alert=True)
@@ -395,8 +396,6 @@ async def callback_managed_payment(
         return
 
     finally:
-        # Keep the managed order in FSM so "تغییر روش پرداخت"
-        # can restore the exact order and config name.
         await state.set_state(PurchaseConfigState.selecting_payment)
 
 
@@ -429,6 +428,7 @@ async def callback_managed_payment_back(
         volume_gb=packed.get("volume_gb", 0),
         config_name=packed.get("config_name", ""),
     )
+    subscription_data.subscription_id = packed.get("subscription_id", 0)
 
     if not subscription_data.plan_id:
         await callback.answer(

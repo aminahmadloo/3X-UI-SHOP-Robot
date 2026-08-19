@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer, SubscriptionData
 from app.bot.routers.wallet.handler import card_text, generate_tracking_code, has_pending_payment
+from app.bot.services.renewal import extend_existing_subscription
 from app.bot.utils.constants import TransactionStatus
 from app.bot.utils.navigation import NavSubscription
 from app.config import Config
@@ -56,7 +57,7 @@ def _build_subscription_data(data: dict, user_tg_id: int) -> SubscriptionData | 
         return None
 
     config_name = data.get("custom_service_config_name") or f"{gigabytes}GB-{days}D-tg{user_tg_id}-sub101-custom"
-    return SubscriptionData(
+    subscription_data = SubscriptionData(
         state=NavSubscription.CONFIG_NAME,
         is_extend=data.get("custom_service_is_extend", False),
         is_change=data.get("custom_service_is_change", False),
@@ -68,6 +69,8 @@ def _build_subscription_data(data: dict, user_tg_id: int) -> SubscriptionData | 
         volume_gb=gigabytes,
         config_name=config_name,
     )
+    subscription_data.subscription_id = data.get("custom_service_subscription_id", 0)
+    return subscription_data
 
 
 def _service_card_keyboard(card_number: str, amount: int) -> InlineKeyboardMarkup:
@@ -202,20 +205,22 @@ async def receive_custom_service_receipt(
     )
     await state.clear()
 
+    action_text = "تمدید سرویس" if subscription_data.is_extend else "خرید سرویس"
     await message.answer(
-        "✅ <b>درخواست خرید سرویس ثبت شد.</b>\n\n"
+        f"✅ <b>درخواست {action_text} ثبت شد.</b>\n\n"
         f"🆔 کد پیگیری: <code>{payment.tracking_code}</code>\n"
         f"📦 سرویس: <b>{subscription_data.volume_gb} گیگ | {subscription_data.duration} روز | {subscription_data.devices} کاربر</b>\n"
         f"💰 مبلغ: <b>{amount:,} تومان</b>\n\n"
-        "📌 پس از تأیید پرداخت توسط مدیریت، <b>همین سرویس مستقیماً ساخته و تحویل شما می‌شود</b>."
+        "📌 پس از تأیید پرداخت توسط مدیریت، درخواست شما پردازش می‌شود."
     )
 
     settings = await CardSettings.get_or_create(
         session,
         card_number=config.shop.CARD_NUMBER or "",
     )
+    admin_action = "تمدید سرویس" if subscription_data.is_extend else "خرید سرویس"
     admin_text = (
-        "🛒 <b>درخواست جدید خرید سرویس با کارت به کارت</b>\n\n"
+        f"🛒 <b>درخواست جدید {admin_action} با کارت به کارت</b>\n\n"
         f"🆔 کد پیگیری: <code>{payment.tracking_code}</code>\n"
         f"👤 آیدی تلگرام: <code>{user.tg_id}</code>\n"
         f"📦 سرویس: <b>{subscription_data.volume_gb} گیگ | {subscription_data.duration} روز | {subscription_data.devices} کاربر</b>\n"
@@ -267,12 +272,13 @@ async def service_card_payment_view(callback: CallbackQuery, session: AsyncSessi
         await callback.answer("❌ اطلاعات سفارش سرویس خراب یا نامعتبر است.", show_alert=True)
         return None
 
+    action_text = "تمدید سرویس" if subscription_data.is_extend else "خرید سرویس"
     await callback.answer()
     await callback.message.bot.send_photo(
         callback.from_user.id,
         payment.receipt_file_id,
         caption=(
-            "🛒 <b>درخواست خرید سرویس با کارت به کارت</b>\n\n"
+            f"🛒 <b>درخواست {action_text} با کارت به کارت</b>\n\n"
             f"🆔 کد پیگیری: <code>{payment.tracking_code or f'#{payment.id}'}</code>\n"
             f"👤 آیدی تلگرام: <code>{payment.user_tg_id}</code>\n"
             f"📦 سرویس: <b>{subscription_data.volume_gb} گیگ | {subscription_data.duration} روز | {subscription_data.devices} کاربر</b>\n"
@@ -282,7 +288,7 @@ async def service_card_payment_view(callback: CallbackQuery, session: AsyncSessi
         ),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="✅ تأیید و ایجاد سرویس", callback_data=f"service_cardpay:approve:{payment.id}")],
+                [InlineKeyboardButton(text="✅ تأیید و پردازش سفارش", callback_data=f"service_cardpay:approve:{payment.id}")],
                 [InlineKeyboardButton(text="❌ رد پرداخت", callback_data=f"service_cardpay:reject:{payment.id}")],
             ]
         ),
@@ -324,7 +330,7 @@ async def service_card_payment_reject(
     try:
         await bot.send_message(
             payment.user_tg_id,
-            "❌ <b>پرداخت خرید سرویس شما تأیید نشد.</b>\n\n"
+            "❌ <b>پرداخت خرید/تمدید سرویس شما تأیید نشد.</b>\n\n"
             f"🆔 کد پیگیری: <code>{payment.tracking_code or payment.id}</code>\n"
             f"💰 مبلغ: <b>{payment.amount:,} تومان</b>\n\n"
             "رسید پرداخت شما توسط مدیریت تأیید نشد. "
@@ -373,20 +379,20 @@ async def service_card_payment_approve(
     payment.status = "processing"
     payment.admin_tg_id = user.tg_id
 
-    payment_id = f"card_payment:{payment.id}"
+    transaction_id = f"card_payment:{payment.id}"
     try:
         async with db.session() as transaction_session:
             transaction = await Transaction.create(
                 session=transaction_session,
                 tg_id=payment.user_tg_id,
                 subscription=subscription_data.serialize(),
-                payment_id=payment_id,
+                payment_id=transaction_id,
                 status=TransactionStatus.PENDING,
             )
             if transaction is None:
                 transaction = await Transaction.get_by_id(
                     session=transaction_session,
-                    payment_id=payment_id,
+                    payment_id=transaction_id,
                 )
             if transaction is None:
                 raise RuntimeError("Unable to create or recover service transaction")
@@ -395,29 +401,40 @@ async def service_card_payment_approve(
             session=session,
             tg_id=subscription_data.user_id,
         )
-
-        await Transaction.update(
-            session=session,
-            payment_id=payment_id,
-            status=TransactionStatus.COMPLETED,
-        )
+        if service_user is None:
+            raise RuntimeError(f"User {subscription_data.user_id} not found")
 
         if subscription_data.is_extend:
-            await services.vpn.extend_subscription(
-                user=service_user,
-                devices=subscription_data.devices,
-                duration=subscription_data.duration,
-                total_gb=subscription_data.volume_gb,
-            )
+            if subscription_data.subscription_id:
+                success = await extend_existing_subscription(
+                    services=services,
+                    user=service_user,
+                    subscription_id=subscription_data.subscription_id,
+                    duration_days=subscription_data.duration,
+                    plan_id=subscription_data.plan_id,
+                )
+            else:
+                success = await services.vpn.extend_subscription(
+                    user=service_user,
+                    devices=subscription_data.devices,
+                    duration=subscription_data.duration,
+                    total_gb=subscription_data.volume_gb,
+                )
+            if not success:
+                raise RuntimeError(
+                    f"Failed to extend subscription {subscription_data.subscription_id}"
+                )
             logger.info(f"Subscription extended for user {service_user.tg_id}")
 
         elif subscription_data.is_change:
-            await services.vpn.change_subscription(
+            success = await services.vpn.change_subscription(
                 user=service_user,
                 devices=subscription_data.devices,
                 duration=subscription_data.duration,
                 total_gb=subscription_data.volume_gb,
             )
+            if not success:
+                raise RuntimeError(f"Failed to change subscription for user {service_user.tg_id}")
             logger.info(f"Subscription changed for user {service_user.tg_id}")
 
         else:
@@ -443,20 +460,27 @@ async def service_card_payment_approve(
                 key=key,
             )
 
+        await Transaction.update(
+            session=session,
+            payment_id=transaction_id,
+            status=TransactionStatus.COMPLETED,
+        )
+
         payment.status = "approved"
         payment.reviewed_at = datetime.now()
         await session.commit()
     except Exception as exc:
         await session.rollback()
-        logger.exception("Failed to fulfill custom service card payment %s: %s", payment_id, exc)
-        await callback.answer("❌ ساخت یا تحویل سرویس انجام نشد؛ درخواست به حالت بررسی برگشت.", show_alert=True)
+        logger.exception("Failed to fulfill custom service card payment %s: %s", transaction_id, exc)
+        await callback.answer("❌ پردازش سرویس انجام نشد؛ درخواست به حالت بررسی برگشت.", show_alert=True)
         return None
 
-    await callback.answer("✅ پرداخت تأیید و سرویس مستقیماً ساخته و تحویل شد.", show_alert=True)
+    success_text = "تمدید سرویس" if subscription_data.is_extend else "خرید سرویس"
+    await callback.answer(f"✅ پرداخت تأیید و {success_text} انجام شد.", show_alert=True)
     if callback.message and callback.message.photo:
         await callback.message.edit_caption(
             caption=(callback.message.caption or "")
-            + f"\n\n✅ <b>تأیید و سرویس ایجاد شد</b> توسط <code>{user.tg_id}</code>"
+            + f"\n\n✅ <b>پردازش {success_text} انجام شد</b> توسط <code>{user.tg_id}</code>"
         )
     return None
 

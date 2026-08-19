@@ -41,6 +41,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         referral.handler.router,
         support.handler.router,
         download.handler.router,
+        subscription.renewal_handler.router,
         subscription.subscription_handler.router,
         subscription.payment_handler.router,
         subscription.promocode_handler.router,
