@@ -8,6 +8,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.bot.models import ServicesContainer
 from app.bot.utils.navigation import NavMain, NavSubscription
@@ -73,18 +74,23 @@ def _main_keyboard() -> InlineKeyboardMarkup:
 async def _get_subscriptions(session: AsyncSession, user: User) -> list[Subscription]:
     result = await session.execute(
         select(Subscription)
+        .options(selectinload(Subscription.server))
         .where(Subscription.user_id == user.id)
         .order_by(Subscription.id.desc())
     )
     return list(result.scalars().all())
 
 
-async def _render_my_services(
+@router.callback_query(F.data == NavMain.MY_SERVICES)
+async def callback_my_services(
     callback: CallbackQuery,
     user: User,
     session: AsyncSession,
     services: ServicesContainer,
 ) -> None:
+    logger.info("User %s opened My Services dashboard.", user.tg_id)
+    await callback.answer()
+
     subscriptions = await _get_subscriptions(session, user)
     active_count = sum(1 for item in subscriptions if _status(item)[1] in {"فعال", "رو به اتمام"})
     expired_count = len(subscriptions) - active_count
@@ -135,18 +141,6 @@ async def _render_my_services(
     await callback.message.edit_text(text="\n".join(lines), reply_markup=builder.as_markup())
 
 
-@router.callback_query(F.data == NavMain.MY_SERVICES)
-async def callback_my_services(
-    callback: CallbackQuery,
-    user: User,
-    session: AsyncSession,
-    services: ServicesContainer,
-) -> None:
-    logger.info("User %s opened My Services dashboard.", user.tg_id)
-    await callback.answer()
-    await _render_my_services(callback, user, session, services)
-
-
 @router.callback_query(F.data.regexp(r"^my_services:view:\d+$"))
 async def callback_my_service_details(
     callback: CallbackQuery,
@@ -156,7 +150,9 @@ async def callback_my_service_details(
 ) -> None:
     subscription_id = int(callback.data.rsplit(":", 1)[1])
     result = await session.execute(
-        select(Subscription).where(
+        select(Subscription)
+        .options(selectinload(Subscription.server))
+        .where(
             Subscription.id == subscription_id,
             Subscription.user_id == user.id,
         )
