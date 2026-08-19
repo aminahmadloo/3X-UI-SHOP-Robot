@@ -57,7 +57,7 @@ def _build_subscription_data(data: dict, user_tg_id: int) -> SubscriptionData | 
         return None
 
     config_name = data.get("custom_service_config_name") or f"{gigabytes}GB-{days}D-tg{user_tg_id}-sub101-custom"
-    return SubscriptionData(
+    subscription_data = SubscriptionData(
         state=NavSubscription.CONFIG_NAME,
         is_extend=data.get("custom_service_is_extend", False),
         is_change=data.get("custom_service_is_change", False),
@@ -68,8 +68,9 @@ def _build_subscription_data(data: dict, user_tg_id: int) -> SubscriptionData | 
         plan_id=data.get("custom_service_plan_id", 0),
         volume_gb=gigabytes,
         config_name=config_name,
-        subscription_id=data.get("custom_service_subscription_id", 0),
     )
+    subscription_data.subscription_id = data.get("custom_service_subscription_id", 0)
+    return subscription_data
 
 
 def _service_card_keyboard(card_number: str, amount: int) -> InlineKeyboardMarkup:
