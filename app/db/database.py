@@ -15,6 +15,7 @@ class Database:
         self.engine = create_async_engine(
             url=config.url(),
             pool_pre_ping=True,
+            connect_args={"timeout": 30},
         )
         self.session = async_sessionmaker(
             bind=self.engine,
@@ -25,6 +26,12 @@ class Database:
 
     async def initialize(self) -> Self:
         try:
+            async with self.engine.connect() as connection:
+                await connection.exec_driver_sql("PRAGMA journal_mode=WAL")
+                await connection.exec_driver_sql("PRAGMA synchronous=NORMAL")
+                await connection.exec_driver_sql("PRAGMA busy_timeout=30000")
+                await connection.commit()
+
             async with self.engine.begin() as connection:
                 await connection.run_sync(models.Base.metadata.create_all)
             logger.debug("Database schema initialized successfully.")
