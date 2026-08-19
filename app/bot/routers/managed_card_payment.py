@@ -41,8 +41,8 @@ async def managed_card_payment(
             plan_id=packed.get("plan_id", 0),
             volume_gb=packed.get("volume_gb", 0),
             config_name=packed.get("config_name", ""),
-            subscription_id=packed.get("subscription_id", 0),
         )
+        subscription_data.subscription_id = int(packed.get("subscription_id", 0))
     except (TypeError, ValueError):
         await state.clear()
         await callback.answer("❌ اطلاعات سفارش نامعتبر است.", show_alert=True)
