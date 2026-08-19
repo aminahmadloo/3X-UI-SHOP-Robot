@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 
@@ -12,7 +13,8 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
@@ -346,6 +348,99 @@ async def service_card_payment_reject(
     return None
 
 
+async def _claim_service_card_payment(
+    session: AsyncSession,
+    payment_id: int,
+    admin_tg_id: int,
+) -> CardPayment | None:
+    result = await session.execute(
+        update(CardPayment)
+        .where(
+            CardPayment.id == payment_id,
+            CardPayment.payment_type == SERVICE_PAYMENT_TYPE,
+            CardPayment.status == "pending",
+        )
+        .values(
+            status="processing",
+            admin_tg_id=admin_tg_id,
+        )
+    )
+    if result.rowcount != 1:
+        await session.rollback()
+        return None
+
+    await session.commit()
+    payment = await CardPayment.get(session, payment_id)
+    await session.commit()
+    return payment
+
+
+async def _ensure_service_transaction(
+    db,
+    transaction_id: str,
+    payment_user_tg_id: int,
+    subscription_data: SubscriptionData,
+) -> Transaction:
+    async with db.session() as transaction_session:
+        transaction = await Transaction.get_by_id(
+            session=transaction_session,
+            payment_id=transaction_id,
+        )
+        if transaction is None:
+            transaction = await Transaction.create(
+                session=transaction_session,
+                tg_id=payment_user_tg_id,
+                subscription=subscription_data.serialize(),
+                payment_id=transaction_id,
+                status=TransactionStatus.PENDING,
+            )
+            if transaction is None:
+                transaction = await Transaction.get_by_id(
+                    session=transaction_session,
+                    payment_id=transaction_id,
+                )
+        if transaction is None:
+            raise RuntimeError("Unable to create or recover service transaction")
+        return transaction
+
+
+async def _finalize_service_card_payment(
+    db,
+    payment_id: int,
+    transaction_id: str,
+) -> None:
+    last_exception: Exception | None = None
+    for attempt in range(1, 6):
+        try:
+            async with db.session() as finalize_session:
+                await finalize_session.execute(
+                    update(Transaction)
+                    .where(Transaction.payment_id == transaction_id)
+                    .values(status=TransactionStatus.COMPLETED)
+                )
+                await finalize_session.execute(
+                    update(CardPayment)
+                    .where(
+                        CardPayment.id == payment_id,
+                        CardPayment.status == "processing",
+                    )
+                    .values(
+                        status="approved",
+                        reviewed_at=datetime.now(),
+                    )
+                )
+                await finalize_session.commit()
+            return
+        except OperationalError as exc:
+            last_exception = exc
+            if "database is locked" not in str(exc).lower() or attempt == 5:
+                raise
+            await asyncio.sleep(0.5 * attempt)
+
+    if last_exception is not None:
+        raise last_exception
+
+
 @router.callback_query(F.data.regexp(r"^service_cardpay:approve:\d+$"), IsAdmin())
 async def service_card_payment_approve(
     callback: CallbackQuery,
@@ -355,11 +450,9 @@ async def service_card_payment_approve(
     services: ServicesContainer,
 ) -> object:
     payment_id = int((callback.data or "").rsplit(":", 1)[1])
-    locked_result = await session.execute(
-        select(CardPayment).where(CardPayment.id == payment_id).with_for_update()
-    )
-    payment = locked_result.scalar_one_or_none()
-    if not payment or payment.payment_type != SERVICE_PAYMENT_TYPE or not payment.order_data:
+
+    payment = await _get_service_payment(session, callback.data or "")
+    if not payment:
         return UNHANDLED
 
     if payment.status != "pending":
@@ -376,31 +469,29 @@ async def service_card_payment_approve(
         await callback.answer("❌ مبلغ یا مالک سفارش با درخواست پرداخت مطابقت ندارد.", show_alert=True)
         return None
 
-    payment.status = "processing"
-    payment.admin_tg_id = user.tg_id
-
     transaction_id = f"card_payment:{payment.id}"
     try:
-        async with db.session() as transaction_session:
-            transaction = await Transaction.create(
-                session=transaction_session,
-                tg_id=payment.user_tg_id,
-                subscription=subscription_data.serialize(),
-                payment_id=transaction_id,
-                status=TransactionStatus.PENDING,
-            )
-            if transaction is None:
-                transaction = await Transaction.get_by_id(
-                    session=transaction_session,
-                    payment_id=transaction_id,
-                )
-            if transaction is None:
-                raise RuntimeError("Unable to create or recover service transaction")
+        claimed_payment = await _claim_service_card_payment(
+            session=session,
+            payment_id=payment_id,
+            admin_tg_id=user.tg_id,
+        )
+        if claimed_payment is None:
+            await callback.answer("⚠️ این درخواست قبلاً توسط مدیریت در حال پردازش یا بررسی است.", show_alert=True)
+            return None
+
+        await _ensure_service_transaction(
+            db=db,
+            transaction_id=transaction_id,
+            payment_user_tg_id=payment.user_tg_id,
+            subscription_data=subscription_data,
+        )
 
         service_user = await User.get(
             session=session,
             tg_id=subscription_data.user_id,
         )
+        await session.commit()
         if service_user is None:
             raise RuntimeError(f"User {subscription_data.user_id} not found")
 
@@ -460,15 +551,11 @@ async def service_card_payment_approve(
                 key=key,
             )
 
-        await Transaction.update(
-            session=session,
-            payment_id=transaction_id,
-            status=TransactionStatus.COMPLETED,
+        await _finalize_service_card_payment(
+            db=db,
+            payment_id=payment.id,
+            transaction_id=transaction_id,
         )
-
-        payment.status = "approved"
-        payment.reviewed_at = datetime.now()
-        await session.commit()
     except Exception as exc:
         await session.rollback()
         logger.exception("Failed to fulfill custom service card payment %s: %s", transaction_id, exc)
@@ -483,12 +570,3 @@ async def service_card_payment_approve(
             + f"\n\n✅ <b>پردازش {success_text} انجام شد</b> توسط <code>{user.tg_id}</code>"
         )
     return None
-
-
-@router.callback_query(F.data == "custom_service:back")
-async def custom_service_card_back(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.clear()
-    await callback.answer()
-    await callback.message.edit_text(
-        "🛒 <b>خرید سرویس اختصاصی</b>\n\nبرای ادامه، دوباره مشخصات سرویس را وارد کنید."
-    )
