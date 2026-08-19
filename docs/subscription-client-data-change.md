@@ -1,1 +1,0 @@
-Subscription-specific client data is now used by My Services, client control, renewal display, and expiry notifications. The selected subscription's client_id and server are used to read XUI client data, and ClientData exposes client_id, sub_id, Telegram user ID, flow, and inbound ID.
