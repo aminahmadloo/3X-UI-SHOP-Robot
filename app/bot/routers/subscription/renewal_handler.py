@@ -103,6 +103,34 @@ def _format_expire(value: datetime | None) -> str:
     return value.astimezone(timezone.utc).strftime("%Y/%m/%d %H:%M")
 
 
+def _format_remaining_time(value: datetime | None) -> str:
+    if not value:
+        return "نامحدود"
+
+    remaining = value - datetime.now(timezone.utc)
+    total_seconds = int(remaining.total_seconds())
+
+    if total_seconds <= 0:
+        return "منقضی شده"
+
+    days, remainder = divmod(total_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes = remainder // 60
+
+    parts = []
+
+    if days:
+        parts.append(f"{days} روز")
+
+    if hours:
+        parts.append(f"{hours} ساعت")
+
+    if not days and not hours and minutes:
+        parts.append(f"{minutes} دقیقه")
+
+    return " و ".join(parts) if parts else "کمتر از ۱ دقیقه"
+
+
 @router.callback_query(F.data == NavSubscription.RENEW_SERVICE)
 async def callback_renew_service(
     callback: CallbackQuery,
@@ -184,10 +212,21 @@ async def callback_renewal_service_selected(
         return
 
     icon, status_text = _status(subscription)
+    current_expire = _effective_expire_date(subscription)
+    remaining_time = _format_remaining_time(current_expire)
+
+    client_data = await services.vpn.get_client_data(user)
+    if client_data:
+        traffic_remaining = client_data.traffic_remaining
+    else:
+        traffic_remaining = "در دسترس نیست"
+
     await callback.message.edit_text(
         "🔄 <b>انتخاب مدت تمدید</b>\n\n"
         f"{icon} <b>سرویس:</b> <code>{subscription.config_name}</code>\n"
-        f"💾 <b>حجم:</b> {subscription.volume_gb} GB\n"
+        f"💾 <b>حجم کل:</b> {subscription.volume_gb} GB\n"
+        f"📊 <b>حجم باقی‌مانده:</b> {traffic_remaining}\n"
+        f"⏳ <b>زمان باقی‌مانده:</b> {remaining_time}\n"
         f"📌 <b>وضعیت:</b> {status_text}\n\n"
         "مدت تمدید را انتخاب کنید:",
         reply_markup=_duration_keyboard(subscription, plans),
@@ -242,13 +281,23 @@ async def callback_renewal_plan_selected(
     base = current_expire if current_expire and current_expire > datetime.now(timezone.utc) else datetime.now(timezone.utc)
     new_expire = base + timedelta(days=plan.duration_days)
 
+    client_data = await services.vpn.get_client_data(user)
+    if client_data:
+        traffic_remaining = client_data.traffic_remaining
+    else:
+        traffic_remaining = "در دسترس نیست"
+
+    remaining_time = _format_remaining_time(current_expire)
+
     await callback.answer()
     await callback.message.edit_text(
         "🧾 <b>خلاصه سفارش تمدید</b>\n\n"
         f"📦 <b>سرویس:</b> <code>{subscription.config_name}</code>\n"
-        f"💾 <b>حجم:</b> {subscription.volume_gb} GB\n"
+        f"💾 <b>حجم کل:</b> {subscription.volume_gb} GB\n"
+        f"📊 <b>حجم باقی‌مانده:</b> {traffic_remaining}\n"
+        f"⏳ <b>زمان باقی‌مانده:</b> {remaining_time}\n"
         f"📅 <b>مدت تمدید:</b> {plan.duration_days} روز\n"
-        f"⏳ <b>انقضای فعلی:</b> {_format_expire(current_expire)}\n"
+        f"⏱ <b>انقضای فعلی:</b> {_format_expire(current_expire)}\n"
         f"🆕 <b>انقضای جدید:</b> {_format_expire(new_expire)}\n"
         f"💰 <b>مبلغ:</b> {plan.price_toman:,} تومان\n\n"
         "حجم، سرور و مشخصات سرویس فعلی تغییر نمی‌کند.",
