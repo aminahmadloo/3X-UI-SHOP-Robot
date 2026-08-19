@@ -44,19 +44,35 @@ async def _show_server_inbounds(
         )
         return
 
+    # The first live inbound is the default service inbound. Persist that
+    # default as an explicit selection so it remains selected when the admin
+    # adds other inbounds one-by-one. Without this, the first inbound was only
+    # an implicit fallback and could disappear from the saved selection after
+    # the next toggle.
     configured = server.configured_inbound_ids
-    configured_text = (
-        "، ".join(str(value) for value in configured)
-        if configured
-        else "حالت پیش‌فرض (اولین اینباند)"
-    )
+    if not configured:
+        first_inbound_id = int(inbounds[0].id)
+        configured = [first_inbound_id]
+        await Server.update(
+            session=services.session,
+            name=server.name,
+            selected_inbound_ids=json.dumps(configured),
+        )
+        server.selected_inbound_ids = json.dumps(configured)
+        logger.info(
+            "Initialized default inbound selection for server %s to inbound %s.",
+            server.name,
+            first_inbound_id,
+        )
+
+    configured_text = "، ".join(str(value) for value in configured)
     text = (
         "🎯 <b>مدیریت اینباندهای سرویس</b>\n\n"
         f"🖥 سرور: <b>{server.name}</b>\n"
         f"📌 انتخاب فعلی: <b>{configured_text}</b>\n\n"
         "اینباندهایی را که باید هنگام ساخت سرویس برای کلاینت استفاده شوند تیک بزنید.\n"
         "تغییرات به‌صورت لحظه‌ای ذخیره می‌شوند.\n\n"
-        "اگر هیچ اینباندی انتخاب نشده باشد، رفتار قبلی حفظ می‌شود و اولین اینباند استفاده خواهد شد."
+        "اینباند اول به‌صورت پیش‌فرض انتخاب شده است و می‌توانید آن را همراه با سایر اینباندها تغییر دهید."
     )
     await callback.message.edit_text(
         text=text,
@@ -138,6 +154,9 @@ async def callback_inbound_toggle(
         return
 
     selected = set(server.configured_inbound_ids)
+    if not selected:
+        selected.add(int(inbounds[0].id))
+
     if inbound_id in selected:
         selected.remove(inbound_id)
         action = "حذف شد"
