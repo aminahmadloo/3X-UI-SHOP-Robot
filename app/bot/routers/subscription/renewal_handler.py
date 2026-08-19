@@ -77,12 +77,7 @@ def _duration_keyboard(subscription: Subscription, plans: list[ServicePurchasePl
                 callback_data=f"renewal:plan:{subscription.id}:{plan.id}",
             )
         )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 تغییر سرویس",
-            callback_data=NavSubscription.RENEW_SERVICE,
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🔙 تغییر سرویس", callback_data=NavSubscription.RENEW_SERVICE))
     builder.row(_main_menu_button())
     return builder.as_markup()
 
@@ -109,25 +104,19 @@ def _format_remaining_time(value: datetime | None) -> str:
 
     remaining = value - datetime.now(timezone.utc)
     total_seconds = int(remaining.total_seconds())
-
     if total_seconds <= 0:
         return "منقضی شده"
 
     days, remainder = divmod(total_seconds, 86400)
     hours, remainder = divmod(remainder, 3600)
     minutes = remainder // 60
-
     parts = []
-
     if days:
         parts.append(f"{days} روز")
-
     if hours:
         parts.append(f"{hours} ساعت")
-
     if not days and not hours and minutes:
         parts.append(f"{minutes} دقیقه")
-
     return " و ".join(parts) if parts else "کمتر از ۱ دقیقه"
 
 
@@ -156,7 +145,6 @@ async def callback_renew_service(
     items = [item for item in items if _status(item)[1] in {"فعال", "رو به اتمام", "منقضی شده"}]
 
     await callback.answer()
-
     if not items:
         await callback.message.edit_text(
             "🔄 <b>تمدید سرویس</b>\n\n"
@@ -172,8 +160,7 @@ async def callback_renew_service(
         return
 
     await callback.message.edit_text(
-        "🔄 <b>تمدید سرویس</b>\n\n"
-        "سرویسی را که می‌خواهید تمدید کنید انتخاب کنید:",
+        "🔄 <b>تمدید سرویس</b>\n\nسرویسی را که می‌خواهید تمدید کنید انتخاب کنید:",
         reply_markup=_service_list_keyboard(items),
     )
 
@@ -197,7 +184,6 @@ async def callback_renewal_service_selected(
     plans.sort(key=lambda plan: (plan.duration_days, plan.id))
 
     await callback.answer()
-
     if not plans:
         await callback.message.edit_text(
             "🔄 <b>تمدید سرویس</b>\n\n"
@@ -215,11 +201,8 @@ async def callback_renewal_service_selected(
     current_expire = _effective_expire_date(subscription)
     remaining_time = _format_remaining_time(current_expire)
 
-    client_data = await services.vpn.get_client_data(user)
-    if client_data:
-        traffic_remaining = client_data.traffic_remaining
-    else:
-        traffic_remaining = "در دسترس نیست"
+    client_data = await services.vpn.get_client_data(user, subscription_id=subscription.id)
+    traffic_remaining = client_data.traffic_remaining if client_data else "در دسترس نیست"
 
     await callback.message.edit_text(
         "🔄 <b>انتخاب مدت تمدید</b>\n\n"
@@ -281,12 +264,8 @@ async def callback_renewal_plan_selected(
     base = current_expire if current_expire and current_expire > datetime.now(timezone.utc) else datetime.now(timezone.utc)
     new_expire = base + timedelta(days=plan.duration_days)
 
-    client_data = await services.vpn.get_client_data(user)
-    if client_data:
-        traffic_remaining = client_data.traffic_remaining
-    else:
-        traffic_remaining = "در دسترس نیست"
-
+    client_data = await services.vpn.get_client_data(user, subscription_id=subscription.id)
+    traffic_remaining = client_data.traffic_remaining if client_data else "در دسترس نیست"
     remaining_time = _format_remaining_time(current_expire)
 
     await callback.answer()
