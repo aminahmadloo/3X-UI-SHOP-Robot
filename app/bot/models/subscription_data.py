@@ -1,6 +1,7 @@
 import json
 
 from aiogram.filters.callback_data import CallbackData
+from pydantic import PrivateAttr
 
 from app.bot.utils.navigation import NavSubscription
 
@@ -16,7 +17,15 @@ class SubscriptionData(CallbackData, prefix="subscription"):
     plan_id: int = 0
     volume_gb: int = 0
     config_name: str = ""
-    subscription_id: int = 0
+    _subscription_id: int = PrivateAttr(default=0)
+
+    @property
+    def subscription_id(self) -> int:
+        return self._subscription_id
+
+    @subscription_id.setter
+    def subscription_id(self, value: int) -> None:
+        self._subscription_id = int(value or 0)
 
     def serialize(self) -> str:
         """Serialize subscription data for FSM/database storage.
@@ -58,7 +67,7 @@ class SubscriptionData(CallbackData, prefix="subscription"):
         if not isinstance(payload, dict):
             raise ValueError("Invalid subscription data payload")
 
-        return cls(
+        data = cls(
             state=NavSubscription(payload.get("state", NavSubscription.CONFIG_NAME)),
             is_extend=payload.get("is_extend", False),
             is_change=payload.get("is_change", False),
@@ -69,5 +78,6 @@ class SubscriptionData(CallbackData, prefix="subscription"):
             plan_id=payload.get("plan_id", 0),
             volume_gb=payload.get("volume_gb", 0),
             config_name=payload.get("config_name", ""),
-            subscription_id=payload.get("subscription_id", 0),
         )
+        data.subscription_id = payload.get("subscription_id", 0)
+        return data
