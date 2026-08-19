@@ -271,54 +271,25 @@ class VPNService:
                     break
 
             source = stats_client or client
-
-            # Normalize all numeric X-UI values before constructing ClientData.
-            # py3xui may expose some values as strings depending on the
-            # endpoint/response, while ClientData handlers expect integers.
-            try:
-                limit_ip = int(client.limit_ip or 0)
-            except (TypeError, ValueError):
-                limit_ip = 0
-
+            limit_ip = client.limit_ip
             max_devices = -1 if limit_ip == 0 else limit_ip
-
-            try:
-                traffic_total = int(source.total or 0)
-            except (TypeError, ValueError):
-                traffic_total = 0
-
-            try:
-                traffic_up = int(source.up or 0)
-            except (TypeError, ValueError):
-                traffic_up = 0
-
-            try:
-                traffic_down = int(source.down or 0)
-            except (TypeError, ValueError):
-                traffic_down = 0
-
-            traffic_used = traffic_up + traffic_down
+            traffic_total = source.total
+            expiry_time = -1 if source.expiry_time == 0 else source.expiry_time
 
             if traffic_total <= 0:
-                traffic_total = -1
                 traffic_remaining = -1
+                traffic_total = -1
             else:
-                traffic_remaining = max(0, traffic_total - traffic_used)
+                traffic_remaining = max(0, source.total - (source.up + source.down))
 
-            try:
-                raw_expiry_time = int(source.expiry_time or 0)
-            except (TypeError, ValueError):
-                raw_expiry_time = 0
-
-            expiry_time = -1 if raw_expiry_time == 0 else raw_expiry_time
-
+            traffic_used = source.up + source.down
             client_data = ClientData(
                 max_devices=max_devices,
                 traffic_total=traffic_total,
                 traffic_remaining=traffic_remaining,
                 traffic_used=traffic_used,
-                traffic_up=traffic_up,
-                traffic_down=traffic_down,
+                traffic_up=source.up,
+                traffic_down=source.down,
                 expiry_time=expiry_time,
                 client_id=str(client.id or "") or None,
                 sub_id=str(client.sub_id or "") or None,

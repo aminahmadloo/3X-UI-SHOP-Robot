@@ -55,43 +55,23 @@ class ClientData:
         return devices
 
     @property
-    def traffic_total(self) -> int:
-        return self._traffic_total
-
-    @property
-    def traffic_remaining(self) -> int:
-        return self._traffic_remaining
-
-    @property
-    def traffic_used(self) -> int:
-        return self._traffic_used
-
-    @property
-    def traffic_up(self) -> int:
-        return self._traffic_up
-
-    @property
-    def traffic_down(self) -> int:
-        return self._traffic_down
-
-    @property
-    def traffic_total_formatted(self) -> str:
+    def traffic_total(self) -> str:
         return format_size(self._traffic_total)
 
     @property
-    def traffic_remaining_formatted(self) -> str:
+    def traffic_remaining(self) -> str:
         return format_size(self._traffic_remaining)
 
     @property
-    def traffic_used_formatted(self) -> str:
+    def traffic_used(self) -> str:
         return format_size(self._traffic_used)
 
     @property
-    def traffic_up_formatted(self) -> str:
+    def traffic_up(self) -> str:
         return format_size(self._traffic_up)
 
     @property
-    def traffic_down_formatted(self) -> str:
+    def traffic_down(self) -> str:
         return format_size(self._traffic_down)
 
     @property

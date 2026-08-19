@@ -17,7 +17,7 @@ from app.bot.models import ClientData
 from app.bot.utils.network import extract_base_url
 from app.bot.utils.time import add_days_to_timestamp, days_to_timestamp, get_current_timestamp
 from app.config import Config
-from app.db.models import Promocode, Server, Subscription, SubscriptionSettings, User
+from app.db.models import Promocode, Subscription, SubscriptionSettings, User
 
 logger = logging.getLogger(__name__)
 
@@ -160,11 +160,7 @@ class VPNService:
         )
 
         target_subscription: Subscription | None = None
-        target_client_id: str | None = None
-
         if subscription_id is not None:
-            target_server: Server | None = None
-
             async with self.session() as session:
                 result = await session.execute(
                     select(Subscription)
@@ -175,40 +171,25 @@ class VPNService:
                 )
                 target_subscription = result.scalar_one_or_none()
 
-                if target_subscription is None or target_subscription.server_id is None:
-                    logger.warning(
-                        "Subscription %s for user %s was not found or has no server.",
-                        subscription_id,
-                        user.tg_id,
-                    )
-                    return None
-
-                if not target_subscription.client_id:
-                    logger.warning(
-                        "Subscription %s for user %s has no client_id.",
-                        subscription_id,
-                        user.tg_id,
-                    )
-                    return None
-
-                target_client_id = str(target_subscription.client_id).strip()
-
-                server_result = await session.execute(
-                    select(Server).where(Server.id == target_subscription.server_id)
-                )
-                target_server = server_result.scalar_one_or_none()
-
-            if target_server is None:
+            if target_subscription is None or target_subscription.server_id is None:
                 logger.warning(
-                    "Server %s for subscription %s was not found.",
-                    target_subscription.server_id,
+                    "Subscription %s for user %s was not found or has no server.",
                     subscription_id,
+                    user.tg_id,
+                )
+                return None
+
+            if not target_subscription.client_id:
+                logger.warning(
+                    "Subscription %s for user %s has no client_id.",
+                    subscription_id,
+                    user.tg_id,
                 )
                 return None
 
             connection = await self.server_pool_service.get_connection_for_server(
-                target_server
-            )
+                target_subscription.server
+            ) if target_subscription.server is not None else None
         else:
             connection = await self.server_pool_service.get_connection(user)
 
@@ -220,7 +201,8 @@ class VPNService:
             client: Client | None = None
             matched_inbound: Inbound | None = None
 
-            if target_subscription is not None and target_client_id is not None:
+            if target_subscription is not None:
+                target_client_id = str(target_subscription.client_id).strip()
                 for inbound in inbounds:
                     for inbound_client in inbound.settings.clients or []:
                         if (
@@ -271,54 +253,25 @@ class VPNService:
                     break
 
             source = stats_client or client
-
-            # Normalize all numeric X-UI values before constructing ClientData.
-            # py3xui may expose some values as strings depending on the
-            # endpoint/response, while ClientData handlers expect integers.
-            try:
-                limit_ip = int(client.limit_ip or 0)
-            except (TypeError, ValueError):
-                limit_ip = 0
-
+            limit_ip = client.limit_ip
             max_devices = -1 if limit_ip == 0 else limit_ip
-
-            try:
-                traffic_total = int(source.total or 0)
-            except (TypeError, ValueError):
-                traffic_total = 0
-
-            try:
-                traffic_up = int(source.up or 0)
-            except (TypeError, ValueError):
-                traffic_up = 0
-
-            try:
-                traffic_down = int(source.down or 0)
-            except (TypeError, ValueError):
-                traffic_down = 0
-
-            traffic_used = traffic_up + traffic_down
+            traffic_total = source.total
+            expiry_time = -1 if source.expiry_time == 0 else source.expiry_time
 
             if traffic_total <= 0:
-                traffic_total = -1
                 traffic_remaining = -1
+                traffic_total = -1
             else:
-                traffic_remaining = max(0, traffic_total - traffic_used)
+                traffic_remaining = max(0, source.total - (source.up + source.down))
 
-            try:
-                raw_expiry_time = int(source.expiry_time or 0)
-            except (TypeError, ValueError):
-                raw_expiry_time = 0
-
-            expiry_time = -1 if raw_expiry_time == 0 else raw_expiry_time
-
+            traffic_used = source.up + source.down
             client_data = ClientData(
                 max_devices=max_devices,
                 traffic_total=traffic_total,
                 traffic_remaining=traffic_remaining,
                 traffic_used=traffic_used,
-                traffic_up=traffic_up,
-                traffic_down=traffic_down,
+                traffic_up=source.up,
+                traffic_down=source.down,
                 expiry_time=expiry_time,
                 client_id=str(client.id or "") or None,
                 sub_id=str(client.sub_id or "") or None,

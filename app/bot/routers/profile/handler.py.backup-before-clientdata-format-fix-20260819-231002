@@ -56,9 +56,9 @@ async def prepare_message(
     )
 
     statistics = _("profile:message:statistics").format(
-        total=client_data.traffic_used_formatted,
-        up=client_data.traffic_up_formatted,
-        down=client_data.traffic_down_formatted,
+        total=client_data.traffic_used,
+        up=client_data.traffic_up,
+        down=client_data.traffic_down,
     )
 
     return profile + subscription + statistics
