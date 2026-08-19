@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
+from aiogram.enums import ButtonStyle
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import delete, select
@@ -255,14 +256,14 @@ async def callback_my_services(
             remaining = f"{subscription.duration_days} روزه"
         lines.extend(
             [
-                "━━━━━━━━━━━━━━━━━━",
+                "      ━━━━━━━━━━━━━━",
                 f"{icon} <b>{subscription.config_name}</b>",
                 f"💾 {subscription.volume_gb} GB  •  📅 {subscription.duration_days} روز",
                 f"⏳ {remaining}  •  {status_text}",
             ]
         )
 
-    lines.extend(["━━━━━━━━━━━━━━━━━━", "👇 برای مشاهده جزئیات، سرویس مورد نظر را انتخاب کنید."])
+    lines.extend(["      ━━━━━━━━━━━━━━", "👇 برای مشاهده جزئیات، سرویس مورد نظر را انتخاب کنید."])
 
     builder = InlineKeyboardBuilder()
     for subscription in subscriptions[:8]:
@@ -273,7 +274,7 @@ async def callback_my_services(
         )
     builder.adjust(1)
     builder.row(InlineKeyboardButton(text="🛒 خرید سرویس جدید", callback_data=NavSubscription.BUY))
-    builder.row(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU))
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت به منوی اصلی", callback_data=NavMain.MAIN_MENU, style=ButtonStyle.DANGER))
 
     await callback.message.edit_text(text="\n".join(lines), reply_markup=builder.as_markup())
 
@@ -361,7 +362,7 @@ async def callback_my_service_details(
         builder.row(InlineKeyboardButton(text="🔄 تمدید سرویس", callback_data=NavSubscription.RENEW_SERVICE))
     builder.row(InlineKeyboardButton(text="🛒 خرید سرویس جدید", callback_data=NavSubscription.BUY))
     builder.row(InlineKeyboardButton(text="⬅️ بازگشت به سرویس‌های من", callback_data=NavMain.MY_SERVICES))
-    builder.row(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU))
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت به منوی اصلی", callback_data=NavMain.MAIN_MENU, style=ButtonStyle.DANGER))
 
     await callback.answer()
     await callback.message.edit_text(text=text, reply_markup=builder.as_markup())
