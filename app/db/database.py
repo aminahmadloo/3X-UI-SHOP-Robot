@@ -1,6 +1,7 @@
 import logging
 from typing import Self
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import DatabaseConfig
@@ -17,6 +18,17 @@ class Database:
             pool_pre_ping=True,
             connect_args={"timeout": 30},
         )
+
+        @event.listens_for(self.engine.sync_engine, "connect")
+        def _configure_sqlite_connection(dbapi_connection, connection_record) -> None:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA busy_timeout=30000")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+                cursor.execute("PRAGMA journal_mode=WAL")
+            finally:
+                cursor.close()
+
         self.session = async_sessionmaker(
             bind=self.engine,
             class_=AsyncSession,
@@ -26,12 +38,6 @@ class Database:
 
     async def initialize(self) -> Self:
         try:
-            async with self.engine.connect() as connection:
-                await connection.exec_driver_sql("PRAGMA journal_mode=WAL")
-                await connection.exec_driver_sql("PRAGMA synchronous=NORMAL")
-                await connection.exec_driver_sql("PRAGMA busy_timeout=30000")
-                await connection.commit()
-
             async with self.engine.begin() as connection:
                 await connection.run_sync(models.Base.metadata.create_all)
             logger.debug("Database schema initialized successfully.")
