@@ -14,6 +14,7 @@ from app.bot.utils.navigation import NavMain, NavSubscription
 from app.db.models import Server, Subscription, SubscriptionSettings, User
 
 from .handler import (
+    _days_left,
     _effective_expire_date,
     _effective_start_date,
     _format_bytes,
@@ -21,7 +22,6 @@ from .handler import (
     _status,
     _sync_subscriptions_with_xui,
     _time_progress,
-    _days_left,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ async def _set_subscription_client_enabled(
             )
             return False
 
-        for client, inbound in matches:
+        for client, _inbound in matches:
             if not client.id:
                 continue
             client.enable = enabled
@@ -140,7 +140,6 @@ async def _render_details(
             )
 
     builder = InlineKeyboardBuilder()
-
     can_toggle = (
         settings.allow_user_client_toggle
         and status_text in {"فعال", "غیرفعال", "رو به اتمام"}
@@ -253,7 +252,7 @@ async def callback_my_service_toggle(
         return
     subscription = synced[0]
 
-    icon, status_text = _status(subscription)
+    _icon, status_text = _status(subscription)
     if status_text == "منقضی شده":
         await callback.answer("سرویس منقضی شده و قابل فعال‌سازی نیست.", show_alert=True)
         return
