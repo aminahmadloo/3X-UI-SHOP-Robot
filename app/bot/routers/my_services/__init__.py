@@ -1,3 +1,3 @@
-from . import handler
+from . import client_control_handler, handler
 
-__all__ = ["handler"]
+__all__ = ["handler", "client_control_handler"]
