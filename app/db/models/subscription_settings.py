@@ -8,7 +8,7 @@ from . import Base
 
 
 class SubscriptionSettings(Base):
-    """Global settings for generated subscription URLs."""
+    """Global settings for generated subscription URLs and user controls."""
 
     __tablename__ = "subscription_settings"
 
@@ -34,6 +34,11 @@ class SubscriptionSettings(Base):
         default="sub",
     )
 
+    allow_user_client_toggle: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=False,
+    )
+
     @classmethod
     async def get(cls, session: AsyncSession) -> Self | None:
         result = await session.execute(
@@ -56,6 +61,7 @@ class SubscriptionSettings(Base):
             domain="",
             port=2096,
             path="sub",
+            allow_user_client_toggle=False,
         )
 
         session.add(item)
