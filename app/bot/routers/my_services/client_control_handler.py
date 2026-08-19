@@ -96,6 +96,7 @@ async def _render_details(
     server_name = subscription.server.name if subscription.server else "نامشخص"
     expire = _effective_expire_date(subscription)
     time_bar = _time_progress(subscription)
+    client_data = await services.vpn.get_client_data(user, subscription_id=subscription.id)
 
     text = (
         "📦 <b>جزئیات سرویس</b>\n\n"
@@ -107,6 +108,15 @@ async def _render_details(
         f"📱 <b>دستگاه مجاز:</b> {subscription.devices}\n"
         f"🖥 <b>سرور:</b> {server_name}\n"
     )
+
+    if client_data:
+        text += (
+            f"🆔 <b>Client ID:</b> <code>{client_data.client_id or '-'}</code>\n"
+            f"🔑 <b>Sub ID:</b> <code>{client_data.sub_id or '-'}</code>\n"
+            f"👤 <b>Telegram User ID:</b> <code>{client_data.tg_id or user.tg_id}</code>\n"
+            f"⚙️ <b>Flow:</b> <code>{client_data.flow or '-'}</code>\n"
+            f"📥 <b>Inbound ID:</b> <code>{client_data.inbound_id or '-'}</code>\n"
+        )
 
     start = _effective_start_date(subscription)
     if start:
@@ -125,9 +135,8 @@ async def _render_details(
     elif subscription.duration_days <= 0:
         text += "♾️ <b>بدون محدودیت زمانی</b>\n"
 
-    if subscription.status == "active" and status_text not in {"منقضی شده", "غیرفعال"}:
-        client_data = await services.vpn.get_client_data(user)
-        if client_data and client_data.traffic_total > 0:
+    if client_data and subscription.status == "active" and status_text not in {"منقضی شده", "غیرفعال"}:
+        if client_data.traffic_total > 0:
             used = client_data.traffic_used
             total = client_data.traffic_total
             remaining = max(0, total - used)
@@ -227,10 +236,7 @@ async def callback_my_service_toggle(
 
     settings = await SubscriptionSettings.get_or_create(session)
     if not settings.allow_user_client_toggle:
-        await callback.answer(
-            "این قابلیت در حال حاضر توسط مدیریت فعال نشده است.",
-            show_alert=True,
-        )
+        await callback.answer("این قابلیت در حال حاضر توسط مدیریت فعال نشده است.", show_alert=True)
         return
 
     result = await session.execute(
