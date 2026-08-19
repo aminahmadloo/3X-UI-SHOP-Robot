@@ -99,7 +99,7 @@ async def _render_details(
 
     text = (
         "📦 <b>جزئیات سرویس</b>\n\n"
-        "━━━━━━━━━━━━━━━━━━\n"
+        "      ━━━━━━━━━━━━━━\n"
         f"{icon} <b>وضعیت:</b> {status_text}\n\n"
         f"📌 <b>نام سرویس:</b>\n<code>{subscription.config_name}</code>\n\n"
         f"💾 <b>حجم کل:</b> {subscription.volume_gb} GB\n"
@@ -145,21 +145,6 @@ async def _render_details(
         and status_text in {"فعال", "غیرفعال", "رو به اتمام"}
         and subscription.status in {"active", "inactive"}
     )
-    if can_toggle:
-        if subscription.status == "active":
-            builder.row(
-                InlineKeyboardButton(
-                    text="⛔ غیرفعال کردن کلاینت",
-                    callback_data=f"my_services:toggle:{subscription.id}",
-                )
-            )
-        else:
-            builder.row(
-                InlineKeyboardButton(
-                    text="✅ فعال کردن کلاینت",
-                    callback_data=f"my_services:toggle:{subscription.id}",
-                )
-            )
 
     if subscription.status == "active" and status_text not in {"منقضی شده", "غیرفعال"}:
         builder.row(
@@ -176,8 +161,25 @@ async def _render_details(
         )
 
     builder.row(InlineKeyboardButton(text="🛒 خرید سرویس جدید", callback_data=NavSubscription.BUY))
+
+    if can_toggle:
+        if subscription.status == "active":
+            builder.row(
+                InlineKeyboardButton(
+                    text="⛔ غیرفعال کردن سرویس",
+                    callback_data=f"my_services:toggle:{subscription.id}",
+                )
+            )
+        else:
+            builder.row(
+                InlineKeyboardButton(
+                    text="✅ فعال کردن سرویس",
+                    callback_data=f"my_services:toggle:{subscription.id}",
+                )
+            )
+
     builder.row(InlineKeyboardButton(text="⬅️ بازگشت به سرویس‌های من", callback_data=NavMain.MY_SERVICES))
-    builder.row(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU))
+    builder.row(InlineKeyboardButton(text="🏠 بازگشت به منوی اصلی", callback_data=NavMain.MAIN_MENU))
 
     await callback.message.edit_text(text=text, reply_markup=builder.as_markup())
 
@@ -265,5 +267,5 @@ async def callback_my_service_toggle(
     subscription.status = "active" if enable else "inactive"
     await session.commit()
 
-    await callback.answer("کلاینت فعال شد." if enable else "کلاینت غیرفعال شد.")
+    await callback.answer("سرویس فعال شد." if enable else "سرویس غیرفعال شد.")
     await _render_details(callback, user, session, services, subscription)
