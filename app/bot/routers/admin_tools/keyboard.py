@@ -38,6 +38,7 @@ def service_purchase_management_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="📅 مدیریت سرویس‌های یک ماهه", callback_data=NavAdminTools.SERVICE_PURCHASE_ONE_MONTH))
     builder.row(InlineKeyboardButton(text="📅 مدیریت سرویس‌های سه ماهه", callback_data=NavAdminTools.SERVICE_PURCHASE_THREE_MONTH))
+    builder.row(InlineKeyboardButton(text="🔄 مدیریت مبالغ تمدید سرویس", callback_data="renewal_admin:management"))
     builder.row(InlineKeyboardButton(text="📱 مدیریت تعداد دستگاه متصل", callback_data=NavAdminTools.SERVICE_PURCHASE_DEVICES))
     builder.row(back_button(NavAdminTools.MAIN))
     builder.row(back_to_main_menu_button())
@@ -135,7 +136,6 @@ def servers_keyboard(servers: list) -> InlineKeyboardMarkup:
 
 def server_keyboard(server_name: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="✏️ ویرایش", callback_data=NavAdminTools.EDIT_SERVER + f"_{server_name}"))
     builder.row(InlineKeyboardButton(text=_("server_management:button:ping"), callback_data=NavAdminTools.PING_SERVER + f"_{server_name}"))
     builder.row(InlineKeyboardButton(text=_("server_management:button:delete"), callback_data=NavAdminTools.DELETE_SERVER + f"_{server_name}"))
     builder.adjust(2)
@@ -218,82 +218,4 @@ def invite_details_keyboard(invite: Invite) -> InlineKeyboardMarkup:
         builder.row(InlineKeyboardButton(text=_("invite_editor:button:enable"), callback_data=NavAdminTools.TOGGLE_INVITE_STATUS + f"_{invite.id}"))
     builder.row(InlineKeyboardButton(text=_("invite_editor:button:delete"), callback_data=NavAdminTools.CONFIRM_DELETE_INVITE + f"_{invite.id}"))
     builder.row(back_button(NavAdminTools.LIST_INVITES))
-    return builder.as_markup()
-
-
-def confirm_delete_invite_keyboard(invite_id: int) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=_("invite_editor:button:confirm_delete"), callback_data=NavAdminTools.DELETE_INVITE + f"_{invite_id}"))
-    builder.row(cancel_button(NavAdminTools.SHOW_INVITE_DETAILS + f"_{invite_id}"))
-    return builder.as_markup()
-
-
-def inbound_management_keyboard(servers: list[Server]) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    for server in servers:
-        status = "🟢" if server.online else "🔴"
-        selected = len(server.configured_inbound_ids)
-        builder.row(InlineKeyboardButton(text=f"{status} {server.name} ({selected} انتخاب)", callback_data=f"{NavAdminTools.INBOUND_MANAGEMENT}:server:{server.id}"))
-    builder.row(back_button(NavAdminTools.MAIN))
-    builder.row(back_to_main_menu_button())
-    return builder.as_markup()
-
-
-def inbound_selection_keyboard(server: Server, inbounds: list) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    selected = set(server.configured_inbound_ids)
-    for inbound in inbounds:
-        inbound_id = int(inbound.id)
-        checked = "☑️" if inbound_id in selected else "⬜️"
-        remark = getattr(inbound, "remark", None) or getattr(inbound, "tag", None) or f"Inbound {inbound_id}"
-        protocol = getattr(inbound, "protocol", "")
-        port = getattr(inbound, "port", "")
-        suffix = f" | {protocol}" if protocol else ""
-        if port:
-            suffix += f":{port}"
-        builder.row(InlineKeyboardButton(text=f"{checked} {remark}{suffix} [#{inbound_id}]", callback_data=f"{NavAdminTools.INBOUND_MANAGEMENT}:toggle:{server.id}:{inbound_id}"))
-    builder.row(InlineKeyboardButton(text="🔄 بازخوانی اینباندها", callback_data=f"{NavAdminTools.INBOUND_MANAGEMENT}:refresh:{server.id}"))
-    builder.row(back_button(NavAdminTools.INBOUND_MANAGEMENT))
-    return builder.as_markup()
-
-
-def subscription_settings_keyboard() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-
-    builder.row(
-        InlineKeyboardButton(
-            text="🌐 ویرایش دامنه",
-            callback_data="subscription_settings:domain"
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="🔢 ویرایش پورت",
-            callback_data="subscription_settings:port"
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="📁 ویرایش مسیر",
-            callback_data="subscription_settings:path"
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="🔄 بازخوانی مقادیر",
-            callback_data=NavAdminTools.SUBSCRIPTION_SETTINGS
-        )
-    )
-
-    builder.row(
-        back_button(NavAdminTools.MAIN)
-    )
-
-    builder.row(
-        back_to_main_menu_button()
-    )
-
     return builder.as_markup()
