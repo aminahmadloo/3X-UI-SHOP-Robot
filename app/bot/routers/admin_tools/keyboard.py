@@ -38,6 +38,7 @@ def service_purchase_management_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="📅 مدیریت سرویس‌های یک ماهه", callback_data=NavAdminTools.SERVICE_PURCHASE_ONE_MONTH))
     builder.row(InlineKeyboardButton(text="📅 مدیریت سرویس‌های سه ماهه", callback_data=NavAdminTools.SERVICE_PURCHASE_THREE_MONTH))
+    builder.row(InlineKeyboardButton(text="📈 مدیریت افزایش حجم", callback_data="traffic_admin:management"))
     builder.row(InlineKeyboardButton(text="📱 مدیریت تعداد دستگاه متصل", callback_data=NavAdminTools.SERVICE_PURCHASE_DEVICES))
     builder.row(back_button(NavAdminTools.MAIN))
     builder.row(back_to_main_menu_button())
