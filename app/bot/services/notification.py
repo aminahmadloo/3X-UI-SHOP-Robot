@@ -179,11 +179,20 @@ class NotificationService:
         data: SubscriptionData,
         message_effect_id: str = MESSAGE_EFFECT_IDS["🎉"],
     ) -> None:
+        if data.duration == 0 and data.volume_gb > 0:
+            text = (
+                "✅ <b>افزایش حجم با موفقیت انجام شد.</b>\n\n"
+                f"➕ حجم اضافه‌شده: <b>{data.volume_gb} GB</b>\n"
+                "⏳ زمان انقضا و مشخصات اتصال سرویس شما تغییر نکرده است."
+            )
+        else:
+            text = _("payment:message:extend_success").format(
+                duration=format_subscription_period(data.duration)
+            )
+
         await self.notify_by_id(
             chat_id=user_id,
-            text=__("payment:message:extend_success").format(
-                duration=format_subscription_period(data.duration)
-            ),
+            text=text,
             message_effect_id=message_effect_id,
         )
 
