@@ -28,12 +28,7 @@ class RenewalPricingState(StatesGroup):
 def _management_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for days, (label, _) in PERIODS.items():
-        builder.row(
-            InlineKeyboardButton(
-                text=f"📅 مبلغ تمدید {label}",
-                callback_data=f"renewal_admin:period:{days}",
-            )
-        )
+        builder.row(InlineKeyboardButton(text=f"📅 مبلغ تمدید {label}", callback_data=f"renewal_admin:period:{days}"))
     builder.row(back_button("admin_tools:service_purchase_management"))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
@@ -41,18 +36,8 @@ def _management_keyboard() -> InlineKeyboardMarkup:
 
 def _details_keyboard(days: int, plan_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="✏️ ویرایش مبلغ",
-            callback_data=f"renewal_admin:edit:{days}:{plan_id}",
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🗑 حذف مبلغ",
-            callback_data=f"renewal_admin:delete:{days}:{plan_id}",
-        )
-    )
+    builder.row(InlineKeyboardButton(text="✏️ ویرایش مبلغ", callback_data=f"renewal_admin:edit:{days}:{plan_id}"))
+    builder.row(InlineKeyboardButton(text="🗑 حذف مبلغ", callback_data=f"renewal_admin:delete:{days}:{plan_id}"))
     builder.row(InlineKeyboardButton(text="🔙 مبالغ تمدید", callback_data="renewal_admin:management"))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
@@ -71,29 +56,25 @@ async def renewal_pricing_management(callback: CallbackQuery, session: AsyncSess
         plan = await _get_plan(session, days)
         price = f"{plan.price_toman:,} تومان" if plan else "❌ تعیین نشده"
         lines.append(f"📅 <b>{label}:</b> {price}")
-
     await callback.answer()
     await callback.message.edit_text("\n".join(lines), reply_markup=_management_keyboard())
 
 
 @router.callback_query(F.data.regexp(r"^renewal_admin:period:(30|60|90)$"), IsAdmin())
-async def renewal_pricing_period(callback: CallbackQuery, session: AsyncSession) -> None:
+async def renewal_pricing_period(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
     days = int(callback.data.rsplit(":", 1)[1])
     label, _ = PERIODS[days]
     plan = await _get_plan(session, days)
     await callback.answer()
 
     if not plan:
+        await state.clear()
+        await state.update_data(days=days)
+        await state.set_state(RenewalPricingState.waiting_price)
         await callback.message.edit_text(
-            f"➕ <b>مبلغ تمدید {label}</b>\n\n"
-            "مبلغ تمدید این دوره هنوز تعیین نشده است.\n\n"
-            "مبلغ را به تومان وارد کنید.",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 مبالغ تمدید", callback_data="renewal_admin:management")],
-                    [back_to_main_menu_button()],
-                ]
-            ),
+            f"➕ <b>تعیین مبلغ تمدید {label}</b>\n\n"
+            "مبلغ تمدید را به تومان وارد کنید.\n"
+            "مثال: <code>150000</code>"
         )
         return
 
@@ -113,7 +94,6 @@ async def renewal_pricing_edit(callback: CallbackQuery, state: FSMContext, sessi
     if not plan or plan.service_type != PERIODS[days][1]:
         await callback.answer("❌ مبلغ تمدید پیدا نشد.", show_alert=True)
         return
-
     await state.clear()
     await state.update_data(plan_id=plan.id, days=days)
     await state.set_state(RenewalPricingState.waiting_edit_price)
@@ -133,13 +113,35 @@ async def renewal_pricing_delete(callback: CallbackQuery, session: AsyncSession)
     if not plan or plan.service_type != PERIODS[days][1]:
         await callback.answer("❌ مبلغ تمدید پیدا نشد.", show_alert=True)
         return
-
     await session.delete(plan)
     await session.commit()
     await callback.answer("✅ مبلغ تمدید حذف شد.", show_alert=True)
     await callback.message.edit_text(
-        "🔄 <b>مدیریت مبالغ تمدید سرویس</b>\n\n"
-        "مبلغ حذف شد. برای تعیین مبلغ جدید، دوره مورد نظر را انتخاب کنید.",
+        "🔄 <b>مدیریت مبالغ تمدید سرویس</b>\n\nمبلغ حذف شد.",
+        reply_markup=_management_keyboard(),
+    )
+
+
+@router.message(RenewalPricingState.waiting_price, IsAdmin())
+async def renewal_pricing_save(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    raw = (message.text or "").strip().replace(",", "").replace("٬", "")
+    if not raw.isdigit() or int(raw) <= 0:
+        await message.answer("❌ مبلغ نامعتبر است. یک عدد مثبت به تومان وارد کنید.")
+        return
+    data = await state.get_data()
+    days = int(data["days"])
+    _, service_type = PERIODS[days]
+    existing = await _get_plan(session, days)
+    if existing:
+        existing.price_toman = int(raw)
+        plan = existing
+    else:
+        plan = ServicePurchasePlan(service_type=service_type, volume_gb=0, duration_days=days, price_toman=int(raw))
+        session.add(plan)
+    await session.commit()
+    await state.clear()
+    await message.answer(
+        f"✅ مبلغ تمدید {PERIODS[days][0]} ذخیره شد: <b>{plan.price_toman:,} تومان</b>",
         reply_markup=_management_keyboard(),
     )
 
@@ -150,7 +152,6 @@ async def renewal_pricing_save_edit(message: Message, state: FSMContext, session
     if not raw.isdigit() or int(raw) <= 0:
         await message.answer("❌ مبلغ نامعتبر است. یک عدد مثبت به تومان وارد کنید.")
         return
-
     data = await state.get_data()
     days = int(data["days"])
     plan = await ServicePurchasePlan.get(session, int(data["plan_id"]))
@@ -158,60 +159,10 @@ async def renewal_pricing_save_edit(message: Message, state: FSMContext, session
         await state.clear()
         await message.answer("❌ مبلغ تمدید پیدا نشد.")
         return
-
     plan.price_toman = int(raw)
     await session.commit()
     await state.clear()
     await message.answer(
         f"✅ مبلغ تمدید {PERIODS[days][0]} به <b>{plan.price_toman:,} تومان</b> تغییر کرد.",
-        reply_markup=_management_keyboard(),
-    )
-
-
-@router.callback_query(F.data.regexp(r"^renewal_admin:period:(30|60|90)$"), IsAdmin())
-async def renewal_pricing_period_create(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
-    days = int(callback.data.rsplit(":", 1)[1])
-    plan = await _get_plan(session, days)
-    if plan:
-        return
-
-    await state.clear()
-    await state.update_data(days=days)
-    await state.set_state(RenewalPricingState.waiting_price)
-    await callback.answer()
-    await callback.message.edit_text(
-        f"➕ <b>تعیین مبلغ تمدید {PERIODS[days][0]}</b>\n\n"
-        "مبلغ تمدید را به تومان وارد کنید.\n"
-        "مثال: <code>150000</code>"
-    )
-
-
-@router.message(RenewalPricingState.waiting_price, IsAdmin())
-async def renewal_pricing_save(message: Message, state: FSMContext, session: AsyncSession) -> None:
-    raw = (message.text or "").strip().replace(",", "").replace("٬", "")
-    if not raw.isdigit() or int(raw) <= 0:
-        await message.answer("❌ مبلغ نامعتبر است. یک عدد مثبت به تومان وارد کنید.")
-        return
-
-    data = await state.get_data()
-    days = int(data["days"])
-    _, service_type = PERIODS[days]
-    existing = await _get_plan(session, days)
-    if existing:
-        existing.price_toman = int(raw)
-        plan = existing
-    else:
-        plan = ServicePurchasePlan(
-            service_type=service_type,
-            volume_gb=0,
-            duration_days=days,
-            price_toman=int(raw),
-        )
-        session.add(plan)
-
-    await session.commit()
-    await state.clear()
-    await message.answer(
-        f"✅ مبلغ تمدید {PERIODS[days][0]} ذخیره شد: <b>{plan.price_toman:,} تومان</b>",
         reply_markup=_management_keyboard(),
     )
