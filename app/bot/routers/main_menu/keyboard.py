@@ -24,9 +24,10 @@ def main_menu_keyboard(
     # 1. Buy Service
     # 2. Custom Service
     # 3. My Services + Wallet
-    # 4. Account + Referral
-    # 5. Support + Language
-    # 6. Admin (admin only)
+    # 4. Renew Service + Add Traffic
+    # 5. Account + Referral
+    # 6. Support + Language
+    # 7. Admin (admin only)
     builder.row(
         InlineKeyboardButton(
             text="🛒 خرید سرویس",
@@ -58,6 +59,10 @@ def main_menu_keyboard(
         InlineKeyboardButton(
             text="🔄 تمدید سرویس",
             callback_data=NavSubscription.RENEW_SERVICE,
+        ),
+        InlineKeyboardButton(
+            text="➕ افزایش حجم",
+            callback_data=NavSubscription.ADD_TRAFFIC,
         ),
     )
 
