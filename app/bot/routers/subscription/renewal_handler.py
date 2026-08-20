@@ -23,6 +23,12 @@ from app.db.models import Server, ServicePurchasePlan, Subscription, User
 
 router = Router(name=__name__)
 
+RENEWAL_TYPES = {30: "renewal_30", 60: "renewal_60", 90: "renewal_90"}
+
+
+def _renewal_period_label(days: int) -> str:
+    return {30: "یک ماه", 60: "دو ماه", 90: "سه ماه"}.get(days, f"{days} روز")
+
 
 async def _get_user_subscription(
     session: AsyncSession,
@@ -70,19 +76,14 @@ def _service_list_keyboard(subscriptions: list[Subscription]) -> InlineKeyboardM
 def _duration_keyboard(subscription: Subscription, plans: list[ServicePurchasePlan]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for plan in plans:
-        period = "یک ماه" if plan.duration_days <= 31 else "سه ماه"
+        period = _renewal_period_label(plan.duration_days)
         builder.row(
             InlineKeyboardButton(
                 text=f"📅 {period} | {plan.duration_days} روز | {plan.price_toman:,} تومان",
                 callback_data=f"renewal:plan:{subscription.id}:{plan.id}",
             )
         )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 تغییر سرویس",
-            callback_data=NavSubscription.RENEW_SERVICE,
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🔙 تغییر سرویس", callback_data=NavSubscription.RENEW_SERVICE))
     builder.row(_main_menu_button())
     return builder.as_markup()
 
@@ -106,28 +107,20 @@ def _format_expire(value: datetime | None) -> str:
 def _format_remaining_time(value: datetime | None) -> str:
     if not value:
         return "نامحدود"
-
     remaining = value - datetime.now(timezone.utc)
     total_seconds = int(remaining.total_seconds())
-
     if total_seconds <= 0:
         return "منقضی شده"
-
     days, remainder = divmod(total_seconds, 86400)
     hours, remainder = divmod(remainder, 3600)
     minutes = remainder // 60
-
     parts = []
-
     if days:
         parts.append(f"{days} روز")
-
     if hours:
         parts.append(f"{hours} ساعت")
-
     if not days and not hours and minutes:
         parts.append(f"{minutes} دقیقه")
-
     return " و ".join(parts) if parts else "کمتر از ۱ دقیقه"
 
 
@@ -140,23 +133,17 @@ async def callback_renew_service(
     state: FSMContext,
 ) -> None:
     await state.clear()
-
     result = await session.execute(
         select(Subscription)
         .join(Server, Subscription.server_id == Server.id)
         .options(selectinload(Subscription.server))
-        .where(
-            Subscription.user_id == user.id,
-            Subscription.server_id.is_not(None),
-        )
+        .where(Subscription.user_id == user.id, Subscription.server_id.is_not(None))
         .order_by(Subscription.id.desc())
     )
     items = list(result.scalars().all())
     items = await _sync_subscriptions_with_xui(session, items, services)
     items = [item for item in items if _status(item)[1] in {"فعال", "رو به اتمام", "منقضی شده"}]
-
     await callback.answer()
-
     if not items:
         await callback.message.edit_text(
             "🔄 <b>تمدید سرویس</b>\n\n"
@@ -170,10 +157,8 @@ async def callback_renew_service(
             ),
         )
         return
-
     await callback.message.edit_text(
-        "🔄 <b>تمدید سرویس</b>\n\n"
-        "سرویسی را که می‌خواهید تمدید کنید انتخاب کنید:",
+        "🔄 <b>تمدید سرویس</b>\n\nسرویسی را که می‌خواهید تمدید کنید انتخاب کنید:",
         reply_markup=_service_list_keyboard(items),
     )
 
@@ -191,17 +176,17 @@ async def callback_renewal_service_selected(
         await callback.answer("❌ این سرویس دیگر قابل تمدید نیست.", show_alert=True)
         return
 
-    plans = await ServicePurchasePlan.list_by_type(session, "one_month")
-    plans += await ServicePurchasePlan.list_by_type(session, "three_month")
-    plans = [plan for plan in plans if plan.volume_gb == subscription.volume_gb and plan.duration_days > 0]
+    plans = []
+    for service_type in RENEWAL_TYPES.values():
+        plans += await ServicePurchasePlan.list_by_type(session, service_type)
+    plans = [plan for plan in plans if plan.duration_days in RENEWAL_TYPES and plan.price_toman > 0]
     plans.sort(key=lambda plan: (plan.duration_days, plan.id))
 
     await callback.answer()
-
     if not plans:
         await callback.message.edit_text(
             "🔄 <b>تمدید سرویس</b>\n\n"
-            f"برای حجم فعلی این سرویس ({subscription.volume_gb} GB) هنوز پلن تمدید فعالی ثبت نشده است.",
+            "هنوز مبلغ تمدید یک‌ماهه، دوماهه یا سه‌ماهه توسط مدیریت تعیین نشده است.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
                     [InlineKeyboardButton(text="🔙 انتخاب سرویس دیگر", callback_data=NavSubscription.RENEW_SERVICE)],
@@ -214,12 +199,8 @@ async def callback_renewal_service_selected(
     icon, status_text = _status(subscription)
     current_expire = _effective_expire_date(subscription)
     remaining_time = _format_remaining_time(current_expire)
-
     client_data = await services.vpn.get_client_data(user)
-    if client_data:
-        traffic_remaining = client_data.traffic_remaining
-    else:
-        traffic_remaining = "در دسترس نیست"
+    traffic_remaining = client_data.traffic_remaining if client_data else "در دسترس نیست"
 
     await callback.message.edit_text(
         "🔄 <b>انتخاب مدت تمدید</b>\n\n"
@@ -244,10 +225,9 @@ async def callback_renewal_plan_selected(
     _, _, subscription_id_text, plan_id_text = callback.data.split(":")
     subscription_id = int(subscription_id_text)
     plan_id = int(plan_id_text)
-
     subscription = await _get_user_subscription(session, user, subscription_id, services)
     plan = await ServicePurchasePlan.get(session, plan_id)
-    if not subscription or not plan or plan.volume_gb != subscription.volume_gb or plan.duration_days <= 0:
+    if not subscription or not plan or plan.service_type not in RENEWAL_TYPES.values() or plan.duration_days not in RENEWAL_TYPES or plan.price_toman <= 0:
         await callback.answer("❌ اطلاعات تمدید نامعتبر یا منقضی شده است.", show_alert=True)
         return
 
@@ -278,15 +258,11 @@ async def callback_renewal_plan_selected(
     })
 
     current_expire = _effective_expire_date(subscription)
-    base = current_expire if current_expire and current_expire > datetime.now(timezone.utc) else datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    base = current_expire if current_expire and current_expire > now else now
     new_expire = base + timedelta(days=plan.duration_days)
-
     client_data = await services.vpn.get_client_data(user)
-    if client_data:
-        traffic_remaining = client_data.traffic_remaining
-    else:
-        traffic_remaining = "در دسترس نیست"
-
+    traffic_remaining = client_data.traffic_remaining if client_data else "در دسترس نیست"
     remaining_time = _format_remaining_time(current_expire)
 
     await callback.answer()
@@ -317,7 +293,6 @@ async def callback_renewal_payment_methods(
     _, _, subscription_id_text, plan_id_text = callback.data.split(":")
     subscription_id = int(subscription_id_text)
     plan_id = int(plan_id_text)
-
     data = await state.get_data()
     packed = data.get("subscription_data")
     if not isinstance(packed, dict) or int(packed.get("subscription_id", 0)) != subscription_id or int(packed.get("plan_id", 0)) != plan_id:
@@ -327,8 +302,8 @@ async def callback_renewal_payment_methods(
 
     subscription = await _get_user_subscription(session, user, subscription_id, services)
     plan = await ServicePurchasePlan.get(session, plan_id)
-    if not subscription or not plan or plan.volume_gb != subscription.volume_gb:
-        await callback.answer("❌ سرویس یا پلن تمدید دیگر معتبر نیست.", show_alert=True)
+    if not subscription or not plan or plan.service_type not in RENEWAL_TYPES.values() or plan.duration_days not in RENEWAL_TYPES or plan.price_toman <= 0:
+        await callback.answer("❌ سرویس یا مبلغ تمدید دیگر معتبر نیست.", show_alert=True)
         await state.clear()
         return
 
@@ -341,7 +316,6 @@ async def callback_renewal_payment_methods(
         "subscription_id": subscription.id,
     })
     await state.update_data(subscription_data=packed)
-
     await callback.answer()
     await callback.message.edit_text(
         "💳 <b>انتخاب روش پرداخت تمدید</b>\n\n"
@@ -350,9 +324,5 @@ async def callback_renewal_payment_methods(
         f"📅 <b>مدت:</b> {plan.duration_days} روز\n"
         f"💰 <b>مبلغ:</b> {plan.price_toman:,} تومان\n\n"
         "روش پرداخت را انتخاب کنید:",
-        reply_markup=managed_payment_method_keyboard(
-            plan.id,
-            plan.price_toman,
-            gateway_factory.get_gateways(),
-        ),
+        reply_markup=managed_payment_method_keyboard(plan.id, plan.price_toman, gateway_factory.get_gateways()),
     )
