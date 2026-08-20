@@ -40,6 +40,7 @@ class NavSubscription(str, Enum):
     MAIN = "subscription"
     BUY = "buy"
     RENEW_SERVICE = "renew_service"
+    ADD_TRAFFIC = "add_traffic"
     CHANGE = "change"
     EXTEND = "extend"
     PROCESS = "process"
