@@ -15,7 +15,7 @@ from app.bot.routers.my_services.handler import (
 )
 from app.bot.routers.subscription.keyboard import managed_payment_method_keyboard
 from app.bot.payment_gateways import GatewayFactory
-from app.bot.utils.navigation import NavMain
+from app.bot.utils.navigation import NavMain, NavSubscription
 from app.db.models import Server, ServicePurchasePlan, Subscription, User
 
 router = Router(name=__name__)
@@ -24,6 +24,20 @@ TRAFFIC_ADDON_TYPE = "traffic_addon"
 
 def _main_menu_button() -> InlineKeyboardButton:
     return InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU)
+
+
+def _active_service_list_keyboard(subscriptions: list[Subscription]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for subscription in subscriptions[:8]:
+        icon, status_text = _status(subscription)
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{icon} {subscription.config_name} | {subscription.volume_gb}GB | {status_text}",
+                callback_data=f"traffic:add:{subscription.id}",
+            )
+        )
+    builder.row(_main_menu_button())
+    return builder.as_markup()
 
 
 def _plan_keyboard(subscription_id: int, plans: list[ServicePurchasePlan]) -> InlineKeyboardMarkup:
@@ -76,6 +90,56 @@ async def _get_subscription(
         return None
     synced = await _sync_subscriptions_with_xui(session, [subscription], services)
     return synced[0] if synced else None
+
+
+@router.callback_query(F.data == NavSubscription.ADD_TRAFFIC)
+async def callback_add_traffic_entry(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    services: ServicesContainer,
+) -> None:
+    """Show the user's active services before starting the traffic add-on flow."""
+    result = await session.execute(
+        select(Subscription)
+        .join(Server, Subscription.server_id == Server.id)
+        .options(selectinload(Subscription.server))
+        .where(
+            Subscription.user_id == user.id,
+            Subscription.server_id.is_not(None),
+        )
+        .order_by(Subscription.id.desc())
+    )
+    subscriptions = list(result.scalars().all())
+    subscriptions = await _sync_subscriptions_with_xui(session, subscriptions, services)
+    subscriptions = [
+        subscription
+        for subscription in subscriptions
+        if subscription.status == "active" and _status(subscription)[1] in {"فعال", "رو به اتمام"}
+    ]
+
+    await callback.answer()
+
+    if not subscriptions:
+        await callback.message.edit_text(
+            "📈 <b>افزایش حجم</b>\n\n"
+            "شما در حال حاضر هیچ سرویس فعالی برای افزایش حجم ندارید.\n\n"
+            "ابتدا یک سرویس خریداری کنید یا در صورت انقضای سرویس، آن را تمدید کنید.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="🛒 خرید سرویس جدید", callback_data=NavSubscription.BUY)],
+                    [InlineKeyboardButton(text="🔄 تمدید سرویس", callback_data=NavSubscription.RENEW_SERVICE)],
+                    [_main_menu_button()],
+                ]
+            ),
+        )
+        return
+
+    await callback.message.edit_text(
+        "📈 <b>افزایش حجم سرویس</b>\n\n"
+        "سرویسی را که می‌خواهید حجم آن را افزایش دهید انتخاب کنید:",
+        reply_markup=_active_service_list_keyboard(subscriptions),
+    )
 
 
 @router.callback_query(F.data.regexp(r"^traffic:add:\d+$"))
