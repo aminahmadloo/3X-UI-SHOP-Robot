@@ -107,6 +107,7 @@ class NavAdminTools(str, Enum):
     CARD_SETTINGS = "card_settings"
     CUSTOM_SERVICE_PRICING = "custom_service_pricing"
     SERVICE_PURCHASE_MANAGEMENT = "service_purchase_management"
+    SERVICE_PURCHASE_RENEWAL_MANAGEMENT = "service_purchase_renewal_management"
     SERVICE_PURCHASE_ONE_MONTH = "service_purchase_one_month"
     SERVICE_PURCHASE_THREE_MONTH = "service_purchase_three_month"
     SERVICE_PURCHASE_DEVICES = "service_purchase_devices"
