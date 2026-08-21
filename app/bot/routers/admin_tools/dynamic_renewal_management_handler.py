@@ -15,6 +15,31 @@ from app.db.models.service_period import ServicePeriod
 router = Router(name=__name__)
 
 
+@router.callback_query(F.data == "service_purchase:renewal", IsAdmin())
+async def open_renewal_management(callback: CallbackQuery, session: AsyncSession) -> None:
+    lines = [
+        "⏳ <b>تنظیمات افزایش زمان سرویس</b>",
+        "",
+        "مبلغ هر مدت افزایش زمان سرویس را مستقل از حجم سرویس تعیین کنید:",
+    ]
+
+    periods = await ServicePeriod.list_manageable(session)
+
+    for p in periods:
+        plan = await _get_plan(session, p.id)
+        price = f"{plan.price_toman:,} تومان" if plan else "❌ تعیین نشده"
+        lines.append(
+            f"📅 <b>{p.name.replace('سرویس‌های ','')}:</b> {price}"
+        )
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=await _management_keyboard(session),
+    )
+
+
+
 
 class RenewalPricingState(StatesGroup):
     waiting_price = State()
@@ -32,7 +57,7 @@ async def _management_keyboard(session: AsyncSession) -> InlineKeyboardMarkup:
                 callback_data=f"renewal_admin:period:{p.id}",
             )
         )
-    builder.row(back_button("admin_tools:service_purchase_management"))
+    builder.row(back_button("service_purchase_management"))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 
@@ -84,7 +109,11 @@ async def renewal_pricing_management(callback: CallbackQuery, session: AsyncSess
 
 
 @router.callback_query(F.data.regexp(r"^renewal_admin:period:\d+$"), IsAdmin())
-async def renewal_pricing_period(callback: CallbackQuery, session: AsyncSession) -> None:
+async def renewal_pricing_period(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
     period_id = int(callback.data.rsplit(":", 1)[1])
     period = await ServicePeriod.get(session, period_id)
     if not period:
@@ -96,6 +125,10 @@ async def renewal_pricing_period(callback: CallbackQuery, session: AsyncSession)
     await callback.answer()
 
     if not plan:
+        await state.clear()
+        await state.update_data(period_id=period_id)
+        await state.set_state(RenewalPricingState.waiting_price)
+
         await callback.message.edit_text(
             f"➕ <b>مبلغ افزایش زمان {label}</b>\n\n"
             "مبلغ افزایش زمان این دوره هنوز تعیین نشده است.\n\n"
@@ -122,7 +155,8 @@ async def renewal_pricing_edit(callback: CallbackQuery, state: FSMContext, sessi
     _, _, period_text, plan_text = callback.data.split(":")
     period_id = int(period_text)
     plan = await ServicePurchasePlan.get(session, int(plan_text))
-    if not plan or plan.service_type != await _get_period(session, period_id).service_type:
+    period = await _get_period(session, period_id)
+    if not plan or not period or plan.service_type != period.service_type:
         await callback.answer("❌ مبلغ افزایش زمان پیدا نشد.", show_alert=True)
         return
 
@@ -142,7 +176,8 @@ async def renewal_pricing_delete(callback: CallbackQuery, session: AsyncSession)
     _, _, period_text, plan_text = callback.data.split(":")
     period_id = int(period_text)
     plan = await ServicePurchasePlan.get(session, int(plan_text))
-    if not plan or plan.service_type != await _get_period(session, period_id).service_type:
+    period = await _get_period(session, period_id)
+    if not plan or not period or plan.service_type != period.service_type:
         await callback.answer("❌ مبلغ افزایش زمان پیدا نشد.", show_alert=True)
         return
 
@@ -167,7 +202,8 @@ async def renewal_pricing_save_edit(message: Message, state: FSMContext, session
     period_id = int(data["period_id"])
     period = await ServicePeriod.get(session, period_id)
     plan = await ServicePurchasePlan.get(session, int(data["plan_id"]))
-    if not plan or plan.service_type != await _get_period(session, period_id).service_type:
+    period_check = await _get_period(session, period_id)
+    if not plan or not period_check or plan.service_type != period_check.service_type:
         await state.clear()
         await message.answer("❌ مبلغ افزایش زمان پیدا نشد.")
         return
