@@ -55,7 +55,6 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         dynamic_traffic_router,
 
         subscription.renewal_handler.router,
-        subscription.traffic_addon_handler.router,
         subscription.subscription_handler.router,
         subscription.payment_handler.router,
         subscription.promocode_handler.router,
@@ -67,7 +66,6 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         dynamic_renewal_admin_router,
         dynamic_service_period_router,
 
-        admin_tools.traffic_addon_handler.router,
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,
         admin_tools.inbound_management_handler.router,
