@@ -23,7 +23,6 @@ from .keyboard import (
     admin_tools_keyboard,
     custom_service_pricing_edit_keyboard,
     custom_service_pricing_keyboard,
-    service_purchase_management_keyboard,
     service_purchase_plan_details_keyboard,
     service_purchase_plan_list_keyboard,
     connected_device_settings_keyboard,
@@ -55,17 +54,6 @@ async def callback_admin_tools(callback: CallbackQuery, user: User) -> None:
         [InlineKeyboardButton(text="💰 مدیریت مبالغ کیف پول", callback_data="wallet_amounts")],
     )
     await callback.message.edit_text(text=_("admin_tools:message:main"), reply_markup=markup)
-
-
-@router.callback_query(F.data == NavAdminTools.SERVICE_PURCHASE_MANAGEMENT, IsAdmin())
-async def callback_service_purchase_management(
-    callback: CallbackQuery,
-) -> None:
-    await callback.answer()
-    await callback.message.edit_text(
-        text="🛒 <b>مدیریت خرید سرویس</b>",
-        reply_markup=service_purchase_management_keyboard(),
-    )
 
 
 
