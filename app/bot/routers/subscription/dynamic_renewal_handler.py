@@ -28,8 +28,8 @@ async def _period(session,days):
 @router.callback_query(F.data==NavSubscription.RENEW_SERVICE)
 async def entry(callback:CallbackQuery,user,session:AsyncSession,services:ServicesContainer,state:FSMContext):
     await state.clear(); r=await session.execute(select(Subscription).join(Server,Subscription.server_id==Server.id).options(selectinload(Subscription.server)).where(Subscription.user_id==user.id,Subscription.server_id.is_not(None)).order_by(Subscription.id.desc())); xs=await _sync_subscriptions_with_xui(session,list(r.scalars().all()),services); xs=[x for x in xs if _status(x)[1] in {"فعال","رو به اتمام","منقضی شده"}]; await callback.answer()
-    if not xs: await callback.message.edit_text("🔄 <b>تمدید سرویس</b>\n\nشما در حال حاضر سرویس قابل تمدیدی ندارید.",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[_home()]])); return
-    await callback.message.edit_text("🔄 <b>تمدید سرویس</b>\n\nسرویسی را که می‌خواهید تمدید کنید انتخاب کنید:",reply_markup=_services(xs))
+    if not xs: await callback.message.edit_text("⏳ <b>افزایش زمان سرویس</b>\n\nشما در حال حاضر سرویس فعالی برای افزایش زمان ندارید.",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[_home()]])); return
+    await callback.message.edit_text("⏳ <b>افزایش زمان سرویس</b>\n\nسرویسی را که می‌خواهید زمان آن افزایش یابد انتخاب کنید:",reply_markup=_services(xs))
 
 @router.callback_query(F.data.regexp(r"^renewal:service:\d+$"))
 async def service(callback:CallbackQuery,user,session:AsyncSession,services:ServicesContainer):
@@ -41,4 +41,4 @@ async def service(callback:CallbackQuery,user,session:AsyncSession,services:Serv
     b=InlineKeyboardBuilder()
     for z in plans: b.row(InlineKeyboardButton(text=f"📅 {z.duration_days} روز | {z.price_toman:,} تومان",callback_data=f"renewal:plan:{x.id}:{z.id}"))
     b.row(InlineKeyboardButton(text="🔙 تغییر سرویس",callback_data=NavSubscription.RENEW_SERVICE)); b.row(_home())
-    await callback.message.edit_text(f"🔄 <b>انتخاب مدت تمدید {p.name}</b>\n\n📦 سرویس: <code>{x.config_name}</code>\n💾 حجم: <b>{x.volume_gb} GB</b>",reply_markup=b.as_markup())
+    await callback.message.edit_text(f"⏳ <b>انتخاب مدت افزایش زمان {p.name}</b>\n\n📦 سرویس: <code>{x.config_name}</code>\n💾 حجم: <b>{x.volume_gb} GB</b>",reply_markup=b.as_markup())

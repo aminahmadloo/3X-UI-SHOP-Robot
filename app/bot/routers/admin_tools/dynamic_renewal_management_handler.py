@@ -30,7 +30,7 @@ def _management_keyboard() -> InlineKeyboardMarkup:
     for days, (label, _) in PERIODS.items():
         builder.row(
             InlineKeyboardButton(
-                text=f"📅 مبلغ تمدید {label}",
+                text=f"📅 مبلغ افزایش زمان {label}",
                 callback_data=f"renewal_admin:period:{days}",
             )
         )
@@ -53,7 +53,7 @@ def _details_keyboard(days: int, plan_id: int) -> InlineKeyboardMarkup:
             callback_data=f"renewal_admin:delete:{days}:{plan_id}",
         )
     )
-    builder.row(InlineKeyboardButton(text="🔙 مبالغ تمدید", callback_data="renewal_admin:management"))
+    builder.row(InlineKeyboardButton(text="🔙 مبالغ افزایش زمان", callback_data="renewal_admin:management"))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 
@@ -66,7 +66,7 @@ async def _get_plan(session: AsyncSession, days: int) -> ServicePurchasePlan | N
 
 @router.callback_query(F.data == "renewal_admin:management", IsAdmin())
 async def renewal_pricing_management(callback: CallbackQuery, session: AsyncSession) -> None:
-    lines = ["🔄 <b>مدیریت مبالغ تمدید سرویس</b>", "", "مبلغ هر مدت تمدید را مستقل از حجم سرویس تعیین کنید:"]
+    lines = ["⏳ <b>تنظیمات افزایش زمان سرویس</b>", "", "مبلغ هر مدت افزایش زمان سرویس را مستقل از حجم سرویس تعیین کنید:"]
     for days, (label, _) in PERIODS.items():
         plan = await _get_plan(session, days)
         price = f"{plan.price_toman:,} تومان" if plan else "❌ تعیین نشده"
@@ -85,12 +85,12 @@ async def renewal_pricing_period(callback: CallbackQuery, session: AsyncSession)
 
     if not plan:
         await callback.message.edit_text(
-            f"➕ <b>مبلغ تمدید {label}</b>\n\n"
-            "مبلغ تمدید این دوره هنوز تعیین نشده است.\n\n"
+            f"➕ <b>مبلغ افزایش زمان {label}</b>\n\n"
+            "مبلغ افزایش زمان این دوره هنوز تعیین نشده است.\n\n"
             "مبلغ را به تومان وارد کنید.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 مبالغ تمدید", callback_data="renewal_admin:management")],
+                    [InlineKeyboardButton(text="🔙 مبالغ افزایش زمان", callback_data="renewal_admin:management")],
                     [back_to_main_menu_button()],
                 ]
             ),
@@ -98,7 +98,7 @@ async def renewal_pricing_period(callback: CallbackQuery, session: AsyncSession)
         return
 
     await callback.message.edit_text(
-        f"🔄 <b>مبلغ تمدید {label}</b>\n\n"
+        f"⏳ <b>مبلغ افزایش زمان {label}</b>\n\n"
         f"📅 مدت: <b>{days} روز</b>\n"
         f"💰 مبلغ فعلی: <b>{plan.price_toman:,} تومان</b>",
         reply_markup=_details_keyboard(days, plan.id),
@@ -111,7 +111,7 @@ async def renewal_pricing_edit(callback: CallbackQuery, state: FSMContext, sessi
     days = int(days_text)
     plan = await ServicePurchasePlan.get(session, int(plan_text))
     if not plan or plan.service_type != PERIODS[days][1]:
-        await callback.answer("❌ مبلغ تمدید پیدا نشد.", show_alert=True)
+        await callback.answer("❌ مبلغ افزایش زمان پیدا نشد.", show_alert=True)
         return
 
     await state.clear()
@@ -119,7 +119,7 @@ async def renewal_pricing_edit(callback: CallbackQuery, state: FSMContext, sessi
     await state.set_state(RenewalPricingState.waiting_edit_price)
     await callback.answer()
     await callback.message.edit_text(
-        f"✏️ <b>ویرایش مبلغ تمدید {PERIODS[days][0]}</b>\n\n"
+        f"✏️ <b>ویرایش مبلغ افزایش زمان {PERIODS[days][0]}</b>\n\n"
         f"مبلغ فعلی: <b>{plan.price_toman:,} تومان</b>\n\n"
         "مبلغ جدید را به تومان وارد کنید."
     )
@@ -131,14 +131,14 @@ async def renewal_pricing_delete(callback: CallbackQuery, session: AsyncSession)
     days = int(days_text)
     plan = await ServicePurchasePlan.get(session, int(plan_text))
     if not plan or plan.service_type != PERIODS[days][1]:
-        await callback.answer("❌ مبلغ تمدید پیدا نشد.", show_alert=True)
+        await callback.answer("❌ مبلغ افزایش زمان پیدا نشد.", show_alert=True)
         return
 
     await session.delete(plan)
     await session.commit()
-    await callback.answer("✅ مبلغ تمدید حذف شد.", show_alert=True)
+    await callback.answer("✅ مبلغ افزایش زمان حذف شد.", show_alert=True)
     await callback.message.edit_text(
-        "🔄 <b>مدیریت مبالغ تمدید سرویس</b>\n\n"
+        "⏳ <b>تنظیمات افزایش زمان سرویس</b>\n\n"
         "مبلغ حذف شد. برای تعیین مبلغ جدید، دوره مورد نظر را انتخاب کنید.",
         reply_markup=_management_keyboard(),
     )
@@ -156,14 +156,14 @@ async def renewal_pricing_save_edit(message: Message, state: FSMContext, session
     plan = await ServicePurchasePlan.get(session, int(data["plan_id"]))
     if not plan or plan.service_type != PERIODS[days][1]:
         await state.clear()
-        await message.answer("❌ مبلغ تمدید پیدا نشد.")
+        await message.answer("❌ مبلغ افزایش زمان پیدا نشد.")
         return
 
     plan.price_toman = int(raw)
     await session.commit()
     await state.clear()
     await message.answer(
-        f"✅ مبلغ تمدید {PERIODS[days][0]} به <b>{plan.price_toman:,} تومان</b> تغییر کرد.",
+        f"✅ مبلغ افزایش زمان {PERIODS[days][0]} به <b>{plan.price_toman:,} تومان</b> تغییر کرد.",
         reply_markup=_management_keyboard(),
     )
 
@@ -180,8 +180,8 @@ async def renewal_pricing_period_create(callback: CallbackQuery, state: FSMConte
     await state.set_state(RenewalPricingState.waiting_price)
     await callback.answer()
     await callback.message.edit_text(
-        f"➕ <b>تعیین مبلغ تمدید {PERIODS[days][0]}</b>\n\n"
-        "مبلغ تمدید را به تومان وارد کنید.\n"
+        f"➕ <b>تعیین مبلغ افزایش زمان {PERIODS[days][0]}</b>\n\n"
+        "مبلغ افزایش زمان را به تومان وارد کنید.\n"
         "مثال: <code>150000</code>"
     )
 
@@ -212,6 +212,6 @@ async def renewal_pricing_save(message: Message, state: FSMContext, session: Asy
     await session.commit()
     await state.clear()
     await message.answer(
-        f"✅ مبلغ تمدید {PERIODS[days][0]} ذخیره شد: <b>{plan.price_toman:,} تومان</b>",
+        f"✅ مبلغ افزایش زمان {PERIODS[days][0]} ذخیره شد: <b>{plan.price_toman:,} تومان</b>",
         reply_markup=_management_keyboard(),
     )

@@ -147,8 +147,8 @@ async def callback_renew_service(
     await callback.answer()
     if not items:
         await callback.message.edit_text(
-            "🔄 <b>تمدید سرویس</b>\n\n"
-            "شما در حال حاضر سرویس قابل تمدیدی ندارید.\n\n"
+            "⏳ <b>افزایش زمان سرویس</b>\n\n"
+            "شما در حال حاضر سرویس فعالی برای افزایش زمان ندارید.\n\n"
             "برای استفاده از این بخش ابتدا یک سرویس خریداری کنید.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
@@ -160,7 +160,7 @@ async def callback_renew_service(
         return
 
     await callback.message.edit_text(
-        "🔄 <b>تمدید سرویس</b>\n\nسرویسی را که می‌خواهید تمدید کنید انتخاب کنید:",
+        "⏳ <b>افزایش زمان سرویس</b>\n\nسرویسی را که می‌خواهید زمان آن افزایش یابد انتخاب کنید:",
         reply_markup=_service_list_keyboard(items),
     )
 
@@ -175,7 +175,7 @@ async def callback_renewal_service_selected(
     subscription_id = int(callback.data.rsplit(":", 1)[1])
     subscription = await _get_user_subscription(session, user, subscription_id, services)
     if not subscription:
-        await callback.answer("❌ این سرویس دیگر قابل تمدید نیست.", show_alert=True)
+        await callback.answer("❌ این سرویس دیگر قابل افزایش زمان نیست.", show_alert=True)
         return
 
     plans = await ServicePurchasePlan.list_by_type(session, "one_month")
@@ -186,8 +186,8 @@ async def callback_renewal_service_selected(
     await callback.answer()
     if not plans:
         await callback.message.edit_text(
-            "🔄 <b>تمدید سرویس</b>\n\n"
-            f"برای حجم فعلی این سرویس ({subscription.volume_gb} GB) هنوز پلن تمدید فعالی ثبت نشده است.",
+            "⏳ <b>افزایش زمان سرویس</b>\n\n"
+            f"برای حجم فعلی این سرویس ({subscription.volume_gb} GB) هنوز پلن افزایش زمان فعالی ثبت نشده است.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
                     [InlineKeyboardButton(text="🔙 انتخاب سرویس دیگر", callback_data=NavSubscription.RENEW_SERVICE)],
@@ -205,13 +205,13 @@ async def callback_renewal_service_selected(
     traffic_remaining = client_data.traffic_remaining_formatted if client_data else "در دسترس نیست"
 
     await callback.message.edit_text(
-        "🔄 <b>انتخاب مدت تمدید</b>\n\n"
+        "⏳ <b>انتخاب مدت افزایش زمان</b>\n\n"
         f"{icon} <b>سرویس:</b> <code>{subscription.config_name}</code>\n"
         f"💾 <b>حجم کل:</b> {subscription.volume_gb} GB\n"
         f"📊 <b>حجم باقی‌مانده:</b> {traffic_remaining}\n"
         f"⏳ <b>زمان باقی‌مانده:</b> {remaining_time}\n"
         f"📌 <b>وضعیت:</b> {status_text}\n\n"
-        "مدت تمدید را انتخاب کنید:",
+        "مدت افزایش زمان را انتخاب کنید:",
         reply_markup=_duration_keyboard(subscription, plans),
     )
 
@@ -231,7 +231,7 @@ async def callback_renewal_plan_selected(
     subscription = await _get_user_subscription(session, user, subscription_id, services)
     plan = await ServicePurchasePlan.get(session, plan_id)
     if not subscription or not plan or plan.volume_gb != subscription.volume_gb or plan.duration_days <= 0:
-        await callback.answer("❌ اطلاعات تمدید نامعتبر یا منقضی شده است.", show_alert=True)
+        await callback.answer("❌ اطلاعات افزایش زمان نامعتبر یا منقضی شده است.", show_alert=True)
         return
 
     data = SubscriptionData(
@@ -270,12 +270,12 @@ async def callback_renewal_plan_selected(
 
     await callback.answer()
     await callback.message.edit_text(
-        "🧾 <b>خلاصه سفارش تمدید</b>\n\n"
+        "🧾 <b>خلاصه سفارش افزایش زمان</b>\n\n"
         f"📦 <b>سرویس:</b> <code>{subscription.config_name}</code>\n"
         f"💾 <b>حجم کل:</b> {subscription.volume_gb} GB\n"
         f"📊 <b>حجم باقی‌مانده:</b> {traffic_remaining}\n"
         f"⏳ <b>زمان باقی‌مانده:</b> {remaining_time}\n"
-        f"📅 <b>مدت تمدید:</b> {plan.duration_days} روز\n"
+        f"📅 <b>مدت افزایش زمان:</b> {plan.duration_days} روز\n"
         f"⏱ <b>انقضای فعلی:</b> {_format_expire(current_expire)}\n"
         f"🆕 <b>انقضای جدید:</b> {_format_expire(new_expire)}\n"
         f"💰 <b>مبلغ:</b> {plan.price_toman:,} تومان\n\n"
@@ -300,14 +300,14 @@ async def callback_renewal_payment_methods(
     data = await state.get_data()
     packed = data.get("subscription_data")
     if not isinstance(packed, dict) or int(packed.get("subscription_id", 0)) != subscription_id or int(packed.get("plan_id", 0)) != plan_id:
-        await callback.answer("❌ اطلاعات سفارش تمدید منقضی شده است.", show_alert=True)
+        await callback.answer("❌ اطلاعات سفارش افزایش زمان منقضی شده است.", show_alert=True)
         await state.clear()
         return
 
     subscription = await _get_user_subscription(session, user, subscription_id, services)
     plan = await ServicePurchasePlan.get(session, plan_id)
     if not subscription or not plan or plan.volume_gb != subscription.volume_gb:
-        await callback.answer("❌ سرویس یا پلن تمدید دیگر معتبر نیست.", show_alert=True)
+        await callback.answer("❌ سرویس یا پلن افزایش زمان دیگر معتبر نیست.", show_alert=True)
         await state.clear()
         return
 
@@ -323,7 +323,7 @@ async def callback_renewal_payment_methods(
 
     await callback.answer()
     await callback.message.edit_text(
-        "💳 <b>انتخاب روش پرداخت تمدید</b>\n\n"
+        "💳 <b>انتخاب روش پرداخت افزایش زمان</b>\n\n"
         f"📦 <b>سرویس:</b> <code>{subscription.config_name}</code>\n"
         f"💾 <b>حجم:</b> {subscription.volume_gb} GB\n"
         f"📅 <b>مدت:</b> {plan.duration_days} روز\n"

@@ -57,7 +57,7 @@ def main_menu_keyboard(
 
     builder.row(
         InlineKeyboardButton(
-            text="🔄 تمدید سرویس",
+            text="⏳ افزایش زمان سرویس",
             callback_data=NavSubscription.RENEW_SERVICE,
         ),
         InlineKeyboardButton(

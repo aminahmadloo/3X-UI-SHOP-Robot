@@ -164,7 +164,7 @@ async def _render_details(
         )
         builder.row(
             InlineKeyboardButton(
-                text="🔄 تمدید سرویس",
+                text="⏳ افزایش زمان سرویس",
                 callback_data=NavSubscription.RENEW_SERVICE,
             )
         )

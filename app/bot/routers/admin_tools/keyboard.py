@@ -53,7 +53,7 @@ def service_purchase_management_keyboard() -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(
-            text="🔄 مدیریت تمدید زمانی سرویس",
+            text="⏳ تنظیمات افزایش زمان سرویس",
             callback_data="service_purchase:renewal",
         )
     )

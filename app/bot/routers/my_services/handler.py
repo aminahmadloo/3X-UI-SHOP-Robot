@@ -368,7 +368,7 @@ async def callback_my_service_details(
     builder = InlineKeyboardBuilder()
     if subscription.status == "active" and status_text not in {"منقضی شده", "غیرفعال"}:
         builder.row(InlineKeyboardButton(text="🔗 دریافت لینک اتصال", callback_data=f"my_services:key:{subscription.id}"))
-        builder.row(InlineKeyboardButton(text="🔄 تمدید سرویس", callback_data=NavSubscription.RENEW_SERVICE))
+        builder.row(InlineKeyboardButton(text="⏳ افزایش زمان سرویس", callback_data=NavSubscription.RENEW_SERVICE))
     builder.row(InlineKeyboardButton(text="🛒 خرید سرویس جدید", callback_data=NavSubscription.BUY))
     builder.row(InlineKeyboardButton(text="⬅️ بازگشت به سرویس‌های من", callback_data=NavMain.MY_SERVICES))
     builder.row(InlineKeyboardButton(text="🔙 بازگشت به منوی اصلی", callback_data=NavMain.MAIN_MENU, style=ButtonStyle.DANGER))

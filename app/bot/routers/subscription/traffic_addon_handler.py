@@ -96,7 +96,7 @@ async def callback_add_traffic_entry(callback, user, session, services):
     subscriptions = [s for s in subscriptions if s.status == "active" and _status(s)[1] in {"فعال", "رو به اتمام"}]
     await callback.answer()
     if not subscriptions:
-        await callback.message.edit_text("📈 <b>افزایش حجم</b>\n\nشما در حال حاضر هیچ سرویس فعالی برای افزایش حجم ندارید.\n\nابتدا یک سرویس خریداری کنید یا در صورت انقضای سرویس، آن را تمدید کنید.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🛒 خرید سرویس جدید", callback_data=NavSubscription.BUY)], [InlineKeyboardButton(text="🔄 تمدید سرویس", callback_data=NavSubscription.RENEW_SERVICE)], [_main_menu_button()]]))
+        await callback.message.edit_text("📈 <b>افزایش حجم</b>\n\nشما در حال حاضر هیچ سرویس فعالی برای افزایش حجم ندارید.\n\nابتدا یک سرویس خریداری کنید یا در صورت نیاز، زمان سرویس را افزایش دهید.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🛒 خرید سرویس جدید", callback_data=NavSubscription.BUY)], [InlineKeyboardButton(text="⏳ افزایش زمان سرویس", callback_data=NavSubscription.RENEW_SERVICE)], [_main_menu_button()]]))
         return
 
     period_prices = {}
@@ -123,7 +123,7 @@ async def callback_add_traffic(callback, user, session, services):
         await callback.answer("❌ سرویس پیدا نشد یا دیگر در 3X-UI وجود ندارد.", show_alert=True); return
     _icon, status_text = _status(subscription)
     if status_text == "منقضی شده":
-        await callback.answer("❌ این سرویس منقضی شده است. ابتدا آن را تمدید کنید.", show_alert=True); return
+        await callback.answer("❌ این سرویس منقضی شده است. ابتدا زمان آن را افزایش دهید.", show_alert=True); return
     if subscription.status != "active":
         await callback.answer("❌ این سرویس فعال نیست و امکان افزایش حجم ندارد.", show_alert=True); return
 
