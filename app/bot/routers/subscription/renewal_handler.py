@@ -16,7 +16,7 @@ from app.bot.routers.my_services.handler import (
     _status,
     _sync_subscriptions_with_xui,
 )
-from app.bot.routers.subscription.keyboard import managed_payment_method_keyboard
+from app.bot.routers.subscription.keyboard import managed_payment_method_keyboard_renewal
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.utils.navigation import NavMain, NavSubscription
 from app.db.models import Server, ServicePurchasePlan, Subscription, User
@@ -230,7 +230,7 @@ async def callback_renewal_plan_selected(
 
     subscription = await _get_user_subscription(session, user, subscription_id, services)
     plan = await ServicePurchasePlan.get(session, plan_id)
-    if not subscription or not plan or plan.volume_gb != subscription.volume_gb or plan.duration_days <= 0:
+    if not subscription or not plan or plan.volume_gb != 0 or plan.duration_days <= 0:
         await callback.answer("❌ اطلاعات افزایش زمان نامعتبر یا منقضی شده است.", show_alert=True)
         return
 
@@ -306,7 +306,7 @@ async def callback_renewal_payment_methods(
 
     subscription = await _get_user_subscription(session, user, subscription_id, services)
     plan = await ServicePurchasePlan.get(session, plan_id)
-    if not subscription or not plan or plan.volume_gb != subscription.volume_gb:
+    if not subscription or not plan or plan.volume_gb != 0 or plan.duration_days <= 0:
         await callback.answer("❌ سرویس یا پلن افزایش زمان دیگر معتبر نیست.", show_alert=True)
         await state.clear()
         return
@@ -329,7 +329,7 @@ async def callback_renewal_payment_methods(
         f"📅 <b>مدت:</b> {plan.duration_days} روز\n"
         f"💰 <b>مبلغ:</b> {plan.price_toman:,} تومان\n\n"
         "روش پرداخت را انتخاب کنید:",
-        reply_markup=managed_payment_method_keyboard(
+        reply_markup=managed_payment_method_keyboard_renewal(
             plan.id,
             plan.price_toman,
             gateway_factory.get_gateways(),
