@@ -19,51 +19,71 @@ def is_traffic_addon_type(service_type: str | None) -> bool:
     return service_type == TRAFFIC_ADDON_TYPE or bool(service_type and service_type.startswith(TRAFFIC_ADDON_PREFIX))
 
 
-async def extend_existing_subscription(services: ServicesContainer, user: User, subscription_id: int, duration_days: int, plan_id: int | None = None) -> bool:
-    """Extend one exact subscription/client or add traffic without changing expiry."""
-    if duration_days < 0:
+async def extend_existing_subscription(
+    services: ServicesContainer,
+    user: User,
+    subscription_id: int,
+    duration_days: int,
+    plan_id: int | None = None,
+) -> bool:
+    """
+    Extend an existing subscription by merging new purchase data
+    into the original subscription.
+    """
+
+    if duration_days <= 0:
         return False
 
     async with services.vpn.session() as session:
         result = await session.execute(
-            select(Subscription).join(Server, Subscription.server_id == Server.id).options(selectinload(Subscription.server)).where(
+            select(Subscription)
+            .join(Server, Subscription.server_id == Server.id)
+            .options(selectinload(Subscription.server))
+            .where(
                 Subscription.id == subscription_id,
                 Subscription.user_id == user.id,
                 Subscription.server_id.is_not(None),
             )
         )
+
         subscription = result.scalar_one_or_none()
+
         if not subscription or not subscription.server or not subscription.client_id:
             return False
 
-        traffic_addon_gb = 0
-        if duration_days == 0:
-            if plan_id is None:
-                return False
+        plan = None
+        if plan_id is not None:
             plan = await ServicePurchasePlan.get(session, plan_id)
-            if not plan or not is_traffic_addon_type(plan.service_type) or plan.duration_days != 0 or plan.volume_gb <= 0:
-                return False
-            traffic_addon_gb = int(plan.volume_gb)
-        elif duration_days <= 0:
+
+        if not plan:
             return False
 
-        connection = await services.server_pool.get_connection_for_server(subscription.server)
+        connection = await services.server_pool.get_connection_for_server(
+            subscription.server
+        )
+
         if connection is None:
             return False
+
         try:
             inbounds = await connection.api.inbound.get_list()
         except Exception:
             return False
 
-        target: Client | None = None
+        target = None
         target_client_id = str(subscription.client_id).strip()
+
         for inbound in inbounds:
             for client in inbound.settings.clients or []:
-                if str(client.id or "").strip() == target_client_id or str(client.sub_id or "").strip() == target_client_id:
+                if (
+                    str(client.id or "").strip() == target_client_id
+                    or str(client.sub_id or "").strip() == target_client_id
+                ):
                     target = client
                     break
             if target:
                 break
+
         if target is None:
             return False
 
@@ -73,31 +93,47 @@ async def extend_existing_subscription(services: ServicesContainer, user: User, 
         client.sub_id = client.sub_id or target_client_id
         client.tg_id = user.tg_id
 
-        if traffic_addon_gb:
+        now_ms = get_current_timestamp()
+        current_expiry_ms = int(client.expiry_time or 0)
+
+        base_expiry_ms = max(current_expiry_ms, now_ms)
+        new_expiry_ms = add_days_to_timestamp(
+            base_expiry_ms,
+            duration_days,
+        )
+
+        client.expiry_time = new_expiry_ms
+
+        # merge new purchase data into old subscription
+        if plan.volume_gb > 0:
+            subscription.volume_gb += plan.volume_gb
+
             current_total_bytes = int(client.total_gb or 0)
-            if current_total_bytes <= 0:
-                return False
-            client.total_gb = current_total_bytes + traffic_addon_gb * BYTES_PER_GB
-        else:
-            now_ms = get_current_timestamp()
-            current_expiry_ms = int(client.expiry_time or 0)
-            base_expiry_ms = max(current_expiry_ms, now_ms)
-            new_expiry_ms = add_days_to_timestamp(base_expiry_ms, duration_days)
-            client.expiry_time = new_expiry_ms
+            client.total_gb = (
+                current_total_bytes
+                + plan.volume_gb * BYTES_PER_GB
+            )
 
-        try:
-            await connection.api.client.update(client_uuid=client.id, client=client)
-        except Exception:
-            return False
+        subscription.duration_days += duration_days
+        subscription.expire_date = datetime.fromtimestamp(
+            new_expiry_ms / 1000,
+            tz=timezone.utc,
+        ).replace(tzinfo=None)
 
-        if traffic_addon_gb:
-            subscription.volume_gb += traffic_addon_gb
-        else:
-            subscription.expire_date = datetime.fromtimestamp(new_expiry_ms / 1000, tz=timezone.utc).replace(tzinfo=None)
-            subscription.duration_days += duration_days
-            subscription.status = "active"
+        subscription.status = "active"
 
         if plan_id is not None:
             subscription.plan_id = plan_id
+
+        try:
+            await connection.api.client.update(
+                client_uuid=client.id,
+                client=client,
+            )
+        except Exception:
+            return False
+
         await session.commit()
+
         return True
+

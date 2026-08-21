@@ -180,7 +180,12 @@ async def callback_renewal_service_selected(
 
     plans = await ServicePurchasePlan.list_by_type(session, "one_month")
     plans += await ServicePurchasePlan.list_by_type(session, "three_month")
-    plans = [plan for plan in plans if plan.volume_gb == subscription.volume_gb and plan.duration_days > 0]
+    plans = [
+        plan
+        for plan in plans
+        if plan.duration_days > 0
+        and plan.volume_gb > 0
+    ]
     plans.sort(key=lambda plan: (plan.duration_days, plan.id))
 
     await callback.answer()
@@ -230,7 +235,7 @@ async def callback_renewal_plan_selected(
 
     subscription = await _get_user_subscription(session, user, subscription_id, services)
     plan = await ServicePurchasePlan.get(session, plan_id)
-    if not subscription or not plan or plan.volume_gb != 0 or plan.duration_days <= 0:
+    if not subscription or not plan or plan.volume_gb <= 0 or plan.duration_days <= 0:
         await callback.answer("❌ اطلاعات افزایش زمان نامعتبر یا منقضی شده است.", show_alert=True)
         return
 
@@ -242,7 +247,7 @@ async def callback_renewal_plan_selected(
         duration=plan.duration_days,
         price=plan.price_toman,
         plan_id=plan.id,
-        volume_gb=subscription.volume_gb,
+        volume_gb=plan.volume_gb,
         config_name=subscription.config_name,
     )
     data.subscription_id = subscription.id
@@ -306,7 +311,7 @@ async def callback_renewal_payment_methods(
 
     subscription = await _get_user_subscription(session, user, subscription_id, services)
     plan = await ServicePurchasePlan.get(session, plan_id)
-    if not subscription or not plan or plan.volume_gb != 0 or plan.duration_days <= 0:
+    if not subscription or not plan or plan.volume_gb <= 0 or plan.duration_days <= 0:
         await callback.answer("❌ سرویس یا پلن افزایش زمان دیگر معتبر نیست.", show_alert=True)
         await state.clear()
         return
