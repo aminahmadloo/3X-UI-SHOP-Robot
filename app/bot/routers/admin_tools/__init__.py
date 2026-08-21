@@ -1,5 +1,4 @@
 from . import (
-    traffic_addon_management_handler,
     admin_tools_handler,
     backup_handler,
     client_control_settings_handler,
@@ -12,6 +11,5 @@ from . import (
     server_handler,
     subscription_settings_handler,
     statistics_handler,
-    traffic_addon_handler,
     user_handler,
 )

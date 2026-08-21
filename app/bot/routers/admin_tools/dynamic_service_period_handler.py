@@ -43,8 +43,6 @@ def _plan_details_kb(p,x): return InlineKeyboardMarkup(inline_keyboard=[[InlineK
 async def _show(callback,session):
     await callback.message.edit_text("🛒 <b>مدیریت خرید سرویس</b>\n\n📅 <b>مدیریت دوره‌های سرویس</b>\n\nدوره موردنظر را انتخاب کنید:",reply_markup=_periods_kb(await ServicePeriod.list_manageable(session)))
 
-@router.callback_query(F.data==NavAdminTools.SERVICE_PURCHASE_MANAGEMENT,IsAdmin())
-async def entry(callback:CallbackQuery,session:AsyncSession,state:FSMContext): await state.clear(); await callback.answer(); await _show(callback,session)
 @router.callback_query(F.data=="sp:management",IsAdmin())
 async def back(callback:CallbackQuery,session:AsyncSession): await callback.answer(); await _show(callback,session)
 

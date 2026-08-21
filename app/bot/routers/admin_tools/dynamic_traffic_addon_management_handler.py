@@ -25,8 +25,6 @@ def _detail(p,x): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardBu
 async def _show(c,s): await c.message.edit_text("📈 <b>مدیریت افزایش حجم</b>\n\nدوره موردنظر را انتخاب کنید:",reply_markup=_periods(await ServicePeriod.list_manageable(s)))
 @router.callback_query(F.data=="traffic_admin:management",IsAdmin())
 async def entry(c:CallbackQuery,s:AsyncSession): await c.answer();await _show(c,s)
-@router.callback_query(F.data==NavAdminTools.SERVICE_PURCHASE_MANAGEMENT,IsAdmin())
-async def from_purchase(c:CallbackQuery,s:AsyncSession): await c.answer();await _show(c,s)
 @router.callback_query(F.data=="ta:management",IsAdmin())
 async def back(c:CallbackQuery,s:AsyncSession): await c.answer();await _show(c,s)
 @router.callback_query(F.data.regexp(r"^ta:period:\d+$"),IsAdmin())
