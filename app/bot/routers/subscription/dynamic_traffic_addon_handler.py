@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.bot.models import ServicesContainer
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.routers.my_services.handler import _status,_sync_subscriptions_with_xui
-from app.bot.routers.subscription.keyboard import managed_payment_method_keyboard
+from app.bot.routers.subscription.keyboard import managed_payment_method_keyboard_traffic
 from app.bot.services.renewal import is_traffic_addon_type
 from app.bot.utils.navigation import NavMain,NavSubscription
 from app.db.models import Server,ServicePurchasePlan,Subscription
@@ -68,4 +68,4 @@ async def payment(callback:CallbackQuery,user,session:AsyncSession,services:Serv
     if not isinstance(data,dict) or int(data.get('subscription_id',0))!=int(sid) or int(data.get('plan_id',0))!=int(pid): await state.clear(); await callback.answer("❌ اطلاعات سفارش منقضی شده است.",show_alert=True); return
     x=await _sub(session,user,int(sid),services); p=await _period(session,x.duration_days) if x else None; z=await ServicePurchasePlan.get(session,int(pid))
     if not x or not p or not z or z.service_type!=p.traffic_addon_service_type: await state.clear(); await callback.answer("❌ سرویس یا بسته دیگر معتبر نیست.",show_alert=True); return
-    data.update(price=z.price_toman,volume_gb=z.volume_gb,duration=0,config_name=x.config_name,devices=x.devices,subscription_id=x.id); await state.update_data(subscription_data=data); await callback.answer(); await callback.message.edit_text("💳 <b>انتخاب روش پرداخت افزایش حجم</b>\n\n"+f"📦 سرویس: <code>{x.config_name}</code>\n➕ حجم افزوده: <b>{z.volume_gb} GB</b>\n💰 مبلغ: <b>{z.price_toman:,} تومان</b>\n\nروش پرداخت را انتخاب کنید:",reply_markup=managed_payment_method_keyboard(z.id,z.price_toman,gateway_factory.get_gateways()))
+    data.update(price=z.price_toman,volume_gb=z.volume_gb,duration=0,config_name=x.config_name,devices=x.devices,subscription_id=x.id); await state.update_data(subscription_data=data); await callback.answer(); await callback.message.edit_text("💳 <b>انتخاب روش پرداخت افزایش حجم</b>\n\n"+f"📦 سرویس: <code>{x.config_name}</code>\n➕ حجم افزوده: <b>{z.volume_gb} GB</b>\n💰 مبلغ: <b>{z.price_toman:,} تومان</b>\n\nروش پرداخت را انتخاب کنید:",reply_markup=managed_payment_method_keyboard_traffic(x.id,z.id,z.price_toman,gateway_factory.get_gateways()))

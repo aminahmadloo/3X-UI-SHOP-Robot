@@ -104,6 +104,49 @@ def managed_payment_method_keyboard(plan_id: int, price_toman: int, gateways: li
     return builder.as_markup()
 
 
+def managed_payment_method_keyboard_traffic(
+    subscription_id: int,
+    plan_id: int,
+    price_toman: int,
+    gateways: list[PaymentGateway],
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    for gateway in gateways:
+        callback_data = f"mp:{gateway.callback}:{plan_id}"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{gateway.name} | {price_toman:,} تومان",
+                callback_data=callback_data,
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(
+            text=f"💰 کیف پول | {price_toman:,} تومان",
+            callback_data=f"mp_wallet:{plan_id}",
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text=f"💳 کارت به کارت | {price_toman:,} تومان",
+            callback_data=f"mp_card:{plan_id}",
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 تغییر حجم",
+            callback_data=f"traffic:add:{subscription_id}",
+        )
+    )
+
+    builder.row(back_to_main_menu_button())
+
+    return builder.as_markup()
+
+
 def devices_keyboard(plans: list[Plan], callback_data: SubscriptionData) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for plan in plans:
