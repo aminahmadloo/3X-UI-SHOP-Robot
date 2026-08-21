@@ -163,11 +163,14 @@ def maintenance_mode_keyboard() -> InlineKeyboardMarkup:
 
 def servers_keyboard(servers: list) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.add(InlineKeyboardButton(text=_("server_management:button:sync"), callback_data=NavAdminTools.SYNC_SERVERS))
-    builder.add(InlineKeyboardButton(text=_("server_management:button:add"), callback_data=NavAdminTools.ADD_SERVER))
+
     for server in servers:
         status = "🟢" if server.online else "🔴"
         builder.row(InlineKeyboardButton(text=f"{status} {server.name}", callback_data=NavAdminTools.SHOW_SERVER + f"_{server.name}"))
+
+    builder.row(InlineKeyboardButton(text=_("server_management:button:sync"), callback_data=NavAdminTools.SYNC_SERVERS))
+    builder.row(InlineKeyboardButton(text=_("server_management:button:add"), callback_data=NavAdminTools.ADD_SERVER))
+
     builder.row(back_button(NavAdminTools.MAIN))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
