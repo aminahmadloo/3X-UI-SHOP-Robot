@@ -8,7 +8,11 @@ from . import Base
 
 
 class ServicePurchasePlan(Base):
-    """Admin-managed service purchase plans."""
+    """Admin-managed purchase, renewal and add-on plans.
+
+    ``plan_kind`` keeps the commercial products separate while allowing
+    existing service_type values and legacy rows to remain compatible.
+    """
 
     __tablename__ = "service_purchase_plans"
 
@@ -17,6 +21,9 @@ class ServicePurchasePlan(Base):
     volume_gb: Mapped[int] = mapped_column(Integer, nullable=False)
     duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
     price_toman: Mapped[int] = mapped_column(Integer, nullable=False)
+    plan_kind: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="purchase", server_default="purchase", index=True
+    )
 
     @classmethod
     async def get(
@@ -24,9 +31,7 @@ class ServicePurchasePlan(Base):
         session: AsyncSession,
         plan_id: int,
     ) -> Self | None:
-        result = await session.execute(
-            select(cls).where(cls.id == plan_id)
-        )
+        result = await session.execute(select(cls).where(cls.id == plan_id))
         return result.scalar_one_or_none()
 
     @classmethod
@@ -34,10 +39,11 @@ class ServicePurchasePlan(Base):
         cls,
         session: AsyncSession,
         service_type: str,
+        plan_kind: str = "purchase",
     ) -> list[Self]:
         result = await session.execute(
             select(cls)
-            .where(cls.service_type == service_type)
+            .where(cls.service_type == service_type, cls.plan_kind == plan_kind)
             .order_by(cls.id)
         )
         return list(result.scalars().all())
