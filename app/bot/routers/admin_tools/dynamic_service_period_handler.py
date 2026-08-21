@@ -12,6 +12,18 @@ from app.db.models.service_period import ServicePeriod
 
 router = Router(name=__name__)
 
+
+def month_label(months: int):
+    labels = {
+        1: "یک ماهه",
+        2: "دو ماهه",
+        3: "سه ماهه",
+        6: "شش ماهه",
+        12: "دوازده ماهه",
+    }
+    return labels.get(months, f"{months} ماهه")
+
+
 class PeriodStates(StatesGroup):
     months = State()
     volume = State()
@@ -27,7 +39,7 @@ def _periods_kb(periods):
     b=InlineKeyboardBuilder()
     for p in periods:
         b.row(InlineKeyboardButton(text=f"{'🟢' if p.is_active else '🔴'} {p.name}", callback_data=f"sp:view:{p.id}"))
-    b.row(InlineKeyboardButton(text="➕ ایجاد مدیریت سرویس جدید", callback_data="sp:create")); b.row(_back()); b.row(_home())
+    b.row(InlineKeyboardButton(text="➕ ایجاد دوره جدید", callback_data="sp:create")); b.row(_back()); b.row(_home())
     return b.as_markup()
 
 def _details_kb(p):
@@ -43,6 +55,14 @@ def _plan_details_kb(p,x): return InlineKeyboardMarkup(inline_keyboard=[[InlineK
 async def _show(callback,session):
     await callback.message.edit_text("🛒 <b>مدیریت خرید سرویس</b>\n\n📅 <b>مدیریت دوره‌های سرویس</b>\n\nدوره موردنظر را انتخاب کنید:",reply_markup=_periods_kb(await ServicePeriod.list_manageable(session)))
 
+
+
+@router.callback_query(F.data=="service_purchase:periods", IsAdmin())
+async def entry(c:CallbackQuery,session:AsyncSession):
+    await c.answer()
+    await _show(c, session)
+
+
 @router.callback_query(F.data=="sp:management",IsAdmin())
 async def back(callback:CallbackQuery,session:AsyncSession): await callback.answer(); await _show(callback,session)
 
@@ -53,10 +73,23 @@ async def create(callback:CallbackQuery,state:FSMContext): await state.clear(); 
 async def save_period(message:Message,state:FSMContext,session:AsyncSession):
     try: months=int((message.text or '').strip()); assert 1<=months<=120
     except: await message.answer("❌ مدت نامعتبر است."); return
-    if await ServicePeriod.get_by_months(session,months): await message.answer("❌ این دوره قبلاً ایجاد شده است."); return
+    existing = await ServicePeriod.get_any_by_months(session, months)
+
+    if existing:
+        if existing.is_archived:
+            existing.is_archived = False
+            existing.is_active = True
+            await session.commit()
+            await message.answer(
+                f"✅ دوره <b>{existing.name}</b> دوباره فعال شد."
+            )
+            return
+
+        await message.answer("❌ این دوره قبلاً ایجاد شده است.")
+        return
     st="one_month" if months==1 else "three_month" if months==3 else f"period_{months}m"
     tt="traffic_addon_30" if months==1 else "traffic_addon_90" if months==3 else f"traffic_addon_{months}m"
-    p=ServicePeriod(name=f"سرویس‌های {months}ماهه",months=months,duration_days=months*30,service_type=st,traffic_addon_service_type=tt,is_active=True,is_archived=False,sort_order=months)
+    p=ServicePeriod(name=f"سرویس‌های {month_label(months)}",months=months,duration_days=months*30,service_type=st,traffic_addon_service_type=tt,is_active=True,is_archived=False,sort_order=months)
     session.add(p); await session.commit(); await state.clear(); await message.answer(f"✅ مدیریت <b>{p.name}</b> ایجاد شد.\n⏱ مدت پایه: <b>{p.duration_days} روز</b>",reply_markup=_details_kb(p))
 
 @router.callback_query(F.data.regexp(r"^sp:view:\d+$"),IsAdmin())

@@ -41,5 +41,18 @@ class ServicePeriod(Base):
 
     @classmethod
     async def get_by_months(cls, session: AsyncSession, months: int) -> Self | None:
-        result = await session.execute(select(cls).where(cls.months == months))
+        result = await session.execute(
+            select(cls).where(
+                cls.months == months,
+                cls.is_archived.is_(False)
+            )
+        )
+        return result.scalar_one_or_none()
+
+
+    @classmethod
+    async def get_any_by_months(cls, session: AsyncSession, months: int) -> Self | None:
+        result = await session.execute(
+            select(cls).where(cls.months == months)
+        )
         return result.scalar_one_or_none()
