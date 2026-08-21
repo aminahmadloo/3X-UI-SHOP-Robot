@@ -12,7 +12,7 @@ from app.bot.routers.my_services.handler import _status,_sync_subscriptions_with
 from app.bot.routers.subscription.renewal_handler import _effective_expire_date,_format_remaining_time,_format_expire,_get_user_subscription
 from app.bot.utils.navigation import NavMain,NavSubscription
 from app.bot.payment_gateways import GatewayFactory
-from app.bot.routers.subscription.keyboard import managed_payment_method_keyboard
+
 from app.db.models import Server,ServicePurchasePlan,Subscription,User
 from app.db.models.service_period import ServicePeriod
 
@@ -46,6 +46,43 @@ def _summary_keyboard(subscription_id: int, plan_id: int):
             [_home()],
         ]
     )
+
+
+def _payment_keyboard(subscription_id: int, plan_id: int, price_toman: int, gateways):
+    builder = InlineKeyboardBuilder()
+
+    for gateway in gateways:
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{gateway.name} | {price_toman:,} تومان",
+                callback_data=f"mp:{gateway.callback}:{price_toman}",
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(
+            text=f"💰 کیف پول | {price_toman:,} تومان",
+            callback_data=f"mp_wallet:{plan_id}",
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text=f"💳 کارت به کارت | {price_toman:,} تومان",
+            callback_data=f"mp_card:{plan_id}",
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 تغییر مدت",
+            callback_data=f"dynamic_renewal:service:{subscription_id}",
+        )
+    )
+
+    builder.row(_home())
+
+    return builder.as_markup()
 
 async def _period(session,days):
     ps=await ServicePeriod.list_active(session); return min(ps,key=lambda p:abs(p.duration_days-days)) if ps else None
@@ -192,7 +229,8 @@ async def callback_renewal_payment_methods(
         f"📅 <b>مدت:</b> {plan.duration_days} روز\n"
         f"💰 <b>مبلغ:</b> {plan.price_toman:,} تومان\n\n"
         "روش پرداخت را انتخاب کنید:",
-        reply_markup=managed_payment_method_keyboard(
+        reply_markup=_payment_keyboard(
+            subscription.id,
             plan.id,
             plan.price_toman,
             gateway_factory.get_gateways(),
