@@ -31,7 +31,14 @@ async def back(c:CallbackQuery,s:AsyncSession): await c.answer();await _show(c,s
 async def period(c:CallbackQuery,s:AsyncSession,state:FSMContext):
  p=await ServicePeriod.get(s,int(c.data.rsplit(':',1)[1]));
  if not p or p.is_archived: await c.answer("❌ دوره پیدا نشد.",show_alert=True);return
- xs=await _plans(s,p);await c.answer();await c.message.edit_text(f"📈 <b>مدیریت افزایش حجم {p.name}</b>\n\nتعداد بسته‌ها: <b>{len(xs)}</b>",reply_markup=_plans_kb(p,xs))
+ xs=await _plans(s,p);status = "🟢 فعال" if p.is_active else "🔴 غیرفعال"
+ await c.answer()
+ await c.message.edit_text(
+     f"📈 <b>مدیریت افزایش حجم {p.name}</b>\n\n"
+     f"وضعیت دوره: <b>{status}</b>\n"
+     f"تعداد بسته‌ها: <b>{len(xs)}</b>",
+     reply_markup=_plans_kb(p,xs)
+ )
 @router.callback_query(F.data.regexp(r"^ta:create:\d+$"),IsAdmin())
 async def create(c:CallbackQuery,s:AsyncSession,state:FSMContext):
  p=await ServicePeriod.get(s,int(c.data.rsplit(':',1)[1]));
