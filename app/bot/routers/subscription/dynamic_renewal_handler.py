@@ -37,7 +37,13 @@ async def service(callback:CallbackQuery,user,session:AsyncSession,services:Serv
     if not x: await callback.answer("❌ سرویس پیدا نشد.",show_alert=True); return
     p=await _period(session,x.duration_days)
     if not p: await callback.answer("❌ هیچ دوره فعالی برای این سرویس وجود ندارد.",show_alert=True); return
-    plans=await ServicePurchasePlan.list_by_type(session,p.service_type); plans=[z for z in plans if z.volume_gb==x.volume_gb and z.duration_days>0]; plans.sort(key=lambda z:(z.duration_days,z.id)); await callback.answer()
+    plans = await ServicePurchasePlan.list_by_type(session, p.service_type)
+    plans = [
+        z for z in plans
+        if z.volume_gb == 0 and z.duration_days > 0
+    ]
+    plans.sort(key=lambda z: (z.duration_days, z.id))
+    await callback.answer()
     b=InlineKeyboardBuilder()
     for z in plans: b.row(InlineKeyboardButton(text=f"📅 {z.duration_days} روز | {z.price_toman:,} تومان",callback_data=f"renewal:plan:{x.id}:{z.id}"))
     b.row(InlineKeyboardButton(text="🔙 تغییر سرویس",callback_data=NavSubscription.RENEW_SERVICE)); b.row(_home())
