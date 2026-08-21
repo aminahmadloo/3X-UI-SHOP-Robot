@@ -491,7 +491,6 @@ async def service_card_payment_approve(
             session=session,
             tg_id=subscription_data.user_id,
         )
-        await session.commit()
         if service_user is None:
             raise RuntimeError(f"User {subscription_data.user_id} not found")
 
