@@ -79,16 +79,6 @@ async def traffic_addon_management_entry(callback: CallbackQuery):
     await callback.message.edit_text("📈 <b>مدیریت افزایش حجم</b>\n\nمدیریت بسته‌های افزایش حجم را بر اساس مدت سرویس انتخاب کنید:", reply_markup=_period_menu_keyboard())
 
 
-@router.callback_query(F.data == NavAdminTools.SERVICE_PURCHASE_MANAGEMENT, IsAdmin())
-async def traffic_addon_management_from_purchase_menu(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.edit_text("🛒 <b>مدیریت خرید سرویس</b>\n\nلطفاً بخش مورد نظر را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📅 مدیریت سرویس‌های یک ماهه", callback_data=NavAdminTools.SERVICE_PURCHASE_ONE_MONTH)],
-        [InlineKeyboardButton(text="📅 مدیریت سرویس‌های سه ماهه", callback_data=NavAdminTools.SERVICE_PURCHASE_THREE_MONTH)],
-        [InlineKeyboardButton(text="📈 مدیریت افزایش حجم", callback_data="traffic_admin:management")],
-        [InlineKeyboardButton(text="📱 مدیریت تعداد دستگاه متصل", callback_data=NavAdminTools.SERVICE_PURCHASE_DEVICES)],
-        [_back_purchase_management()], [_main_menu()],
-    ]))
 
 
 @router.callback_query(F.data.regexp(r"^traffic_admin:period:(30|60|90)$"), IsAdmin())

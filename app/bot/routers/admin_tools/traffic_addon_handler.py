@@ -74,25 +74,6 @@ async def _show_menu(callback: CallbackQuery, session: AsyncSession) -> None:
     )
 
 
-@router.callback_query(F.data == NavAdminTools.SERVICE_PURCHASE_MANAGEMENT, IsAdmin())
-async def traffic_addon_management_entry(callback: CallbackQuery, session: AsyncSession) -> None:
-    plans = await ServicePurchasePlan.list_by_type(session, TRAFFIC_ADDON_TYPE)
-    plans = [p for p in plans if p.volume_gb > 0 and p.duration_days == 0]
-    await callback.answer()
-    await callback.message.edit_text(
-        "🛒 <b>مدیریت خرید سرویس</b>\n\n"
-        "لطفاً بخش مورد نظر را انتخاب کنید:",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="📅 مدیریت سرویس‌های یک ماهه", callback_data=NavAdminTools.SERVICE_PURCHASE_ONE_MONTH)],
-                [InlineKeyboardButton(text="📅 مدیریت سرویس‌های سه ماهه", callback_data=NavAdminTools.SERVICE_PURCHASE_THREE_MONTH)],
-                [InlineKeyboardButton(text="📈 مدیریت افزایش حجم", callback_data="traffic_admin:list")],
-                [InlineKeyboardButton(text="📱 مدیریت تعداد دستگاه متصل", callback_data=NavAdminTools.SERVICE_PURCHASE_DEVICES)],
-                [_back_main()],
-                [InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavAdminTools.MAIN)],
-            ]
-        ),
-    )
 
 
 @router.callback_query(F.data == "traffic_admin:list", IsAdmin())
