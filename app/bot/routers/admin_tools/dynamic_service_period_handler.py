@@ -33,7 +33,7 @@ class PeriodStates(StatesGroup):
 
 
 def _home(): return InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavAdminTools.MAIN)
-def _back(): return InlineKeyboardButton(text="🔙 مدیریت خرید سرویس", callback_data=NavAdminTools.SERVICE_PURCHASE_MANAGEMENT)
+def _back(): return InlineKeyboardButton(text="🔙 تنظیمات خرید سرویس|حجم سرویس|زمان سرویس", callback_data=NavAdminTools.SERVICE_PURCHASE_MANAGEMENT)
 
 def _periods_kb(periods):
     b=InlineKeyboardBuilder()
@@ -53,7 +53,7 @@ def _plans_kb(p, plans):
 def _plan_details_kb(p,x): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✏️ ویرایش",callback_data=f"sp:edit:{p.id}:{x.id}")],[InlineKeyboardButton(text="🗑 حذف",callback_data=f"sp:delete:{p.id}:{x.id}")],[InlineKeyboardButton(text="🔙 لیست پلن‌ها",callback_data=f"sp:plans:{p.id}")]])
 
 async def _show(callback,session):
-    await callback.message.edit_text("🛒 <b>مدیریت خرید سرویس</b>\n\n📅 <b>مدیریت دوره‌های سرویس</b>\n\nدوره موردنظر را انتخاب کنید:",reply_markup=_periods_kb(await ServicePeriod.list_manageable(session)))
+    await callback.message.edit_text("🛒 <b>تنظیمات خرید سرویس|حجم سرویس|زمان سرویس</b>\n\n📅 <b>مدیریت دوره‌های سرویس</b>\n\nدوره موردنظر را انتخاب کنید:",reply_markup=_periods_kb(await ServicePeriod.list_manageable(session)))
 
 
 

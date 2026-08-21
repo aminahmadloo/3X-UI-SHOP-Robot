@@ -23,7 +23,7 @@ class TrafficPlanState(StatesGroup):
 
 
 def _back_main() -> InlineKeyboardButton:
-    return InlineKeyboardButton(text="🔙 مدیریت خرید سرویس", callback_data=NavAdminTools.SERVICE_PURCHASE_MANAGEMENT)
+    return InlineKeyboardButton(text="🔙 تنظیمات خرید سرویس|حجم سرویس|زمان سرویس", callback_data=NavAdminTools.SERVICE_PURCHASE_MANAGEMENT)
 
 
 def _traffic_menu_keyboard() -> InlineKeyboardMarkup:

@@ -62,9 +62,9 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         subscription.wallet_payment.router,
 
         service_purchase_management_menu_router,
+        dynamic_traffic_admin_router,
         dynamic_renewal_admin_router,
         dynamic_service_period_router,
-        dynamic_traffic_admin_router,
 
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,

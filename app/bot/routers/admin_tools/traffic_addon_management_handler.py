@@ -23,7 +23,7 @@ class TrafficPeriodPlanState(StatesGroup):
 
 
 def _back_purchase_management():
-    return InlineKeyboardButton(text="🔙 مدیریت خرید سرویس", callback_data=NavAdminTools.SERVICE_PURCHASE_MANAGEMENT)
+    return InlineKeyboardButton(text="🔙 تنظیمات خرید سرویس|حجم سرویس|زمان سرویس", callback_data=NavAdminTools.SERVICE_PURCHASE_MANAGEMENT)
 
 
 def _main_menu():

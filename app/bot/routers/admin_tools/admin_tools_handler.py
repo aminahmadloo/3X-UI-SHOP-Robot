@@ -35,7 +35,7 @@ router = Router(name=__name__)
 async def _pricing_text(session: AsyncSession) -> str:
     pricing = await CustomServicePricing.get_or_create(session)
     return (
-        "⚙️ <b>مدیریت خرید سرویس با مشخصات دلخواه</b>\n\n"
+        "⚙️ <b>تنظیمات خرید سرویس ها با مشخصات دلخواه</b>\n\n"
         f"1️⃣ <b>مبلغ پایه به ازاء هر روز:</b> {pricing.base_price_per_day:,.0f}\n"
         f"2️⃣ <b>مبلغ پایه هر گیگ حجم:</b> {pricing.base_price_per_gb:,.0f}\n"
         f"3️⃣ <b>مبلغ پایه هر کاربر/دستگاه:</b> {pricing.base_price_per_device:,.0f}\n"
