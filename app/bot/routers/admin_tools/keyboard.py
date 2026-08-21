@@ -36,12 +36,51 @@ def _plan_button_text(plan: ServicePurchasePlan) -> str:
 
 def service_purchase_management_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="📅 مدیریت سرویس‌های یک ماهه", callback_data=NavAdminTools.SERVICE_PURCHASE_ONE_MONTH))
-    builder.row(InlineKeyboardButton(text="📅 مدیریت سرویس‌های سه ماهه", callback_data=NavAdminTools.SERVICE_PURCHASE_THREE_MONTH))
-    builder.row(InlineKeyboardButton(text="📈 مدیریت افزایش حجم", callback_data="traffic_admin:management"))
-    builder.row(InlineKeyboardButton(text="📱 مدیریت تعداد دستگاه متصل", callback_data=NavAdminTools.SERVICE_PURCHASE_DEVICES))
-    builder.row(back_button(NavAdminTools.MAIN))
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📅 مدیریت دوره‌های سرویس",
+            callback_data="service_purchase:periods",
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📈 مدیریت افزایش حجم",
+            callback_data="traffic_admin:management",
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🔄 مدیریت تمدید زمانی سرویس",
+            callback_data="service_purchase:renewal",
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📱 مدیریت تعداد دستگاه",
+            callback_data=NavAdminTools.SERVICE_PURCHASE_DEVICES,
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🎁 مدیریت محصولات ویژه",
+            callback_data="service_purchase:special_products",
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⚙️ تنظیمات خرید سرویس",
+            callback_data="service_purchase:settings",
+        )
+    )
+
     builder.row(back_to_main_menu_button())
+
     return builder.as_markup()
 
 
