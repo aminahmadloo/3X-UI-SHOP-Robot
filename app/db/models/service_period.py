@@ -18,6 +18,8 @@ class ServicePeriod(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     months: Mapped[int] = mapped_column(Integer, nullable=False, unique=True, index=True)
     duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    service_type: Mapped[str] = mapped_column(String(20), nullable=False, unique=True, index=True)
+    traffic_addon_service_type: Mapped[str] = mapped_column(String(30), nullable=False, unique=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
@@ -48,4 +50,11 @@ class ServicePeriod(Base):
     @classmethod
     async def get_by_months(cls, session: AsyncSession, months: int) -> Self | None:
         result = await session.execute(select(cls).where(cls.months == months))
+        return result.scalar_one_or_none()
+
+    @classmethod
+    async def get_by_duration_days(cls, session: AsyncSession, duration_days: int) -> Self | None:
+        result = await session.execute(
+            select(cls).where(cls.duration_days == duration_days, cls.is_archived.is_(False))
+        )
         return result.scalar_one_or_none()
