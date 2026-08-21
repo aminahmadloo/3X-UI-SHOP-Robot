@@ -11,6 +11,7 @@ from . import (
     server_handler,
     subscription_settings_handler,
     traffic_addon_handler,
+    traffic_addon_management_handler,
     statistics_handler,
     user_handler,
 )
