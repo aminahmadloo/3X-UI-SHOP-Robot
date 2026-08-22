@@ -7,7 +7,7 @@ from aiogram import F, Router
 from aiogram.enums import ButtonStyle
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -124,16 +124,21 @@ async def _sync_subscriptions_with_xui(
     subscriptions: list[Subscription],
     services: ServicesContainer,
 ) -> list[Subscription]:
-    """Synchronize database subscriptions with clients currently present in 3X-UI."""
+    """Synchronize the user's subscription records from live 3X-UI clients.
+
+    3X-UI is the live source of truth for client state. The user's existing
+    My Services UI is preserved; only the data behind it is refreshed.
+    One inbound list is fetched per server, then every subscription belonging
+    to that server is matched by client UUID/sub-id.
+    """
     subscriptions_by_server: dict[int, list[Subscription]] = {}
     for subscription in subscriptions:
         if subscription.server_id is not None:
             subscriptions_by_server.setdefault(subscription.server_id, []).append(subscription)
 
-    deleted_ids: set[int] = set()
     changed = False
 
-    for server_id, server_subscriptions in subscriptions_by_server.items():
+    for _server_id, server_subscriptions in subscriptions_by_server.items():
         server = server_subscriptions[0].server
         if server is None:
             continue
@@ -156,34 +161,44 @@ async def _sync_subscriptions_with_xui(
             )
             continue
 
-        live_clients: dict[str, bool] = {}
+        live_clients: dict[str, object] = {}
         for inbound in inbounds:
             for client in inbound.settings.clients or []:
                 client_id = str(client.id or "").strip()
-                if not client_id:
-                    continue
-                live_clients[client_id] = live_clients.get(client_id, False) or bool(client.enable)
+                sub_id = str(client.sub_id or "").strip()
+                if client_id:
+                    live_clients.setdefault(client_id, client)
+                if sub_id:
+                    live_clients.setdefault(sub_id, client)
 
         for subscription in server_subscriptions:
-            client_id = str(subscription.client_id or "").strip()
-            if not client_id:
-                logger.warning("Subscription %s has no client_id; keeping it unchanged for safety.", subscription.id)
+            stored_client_id = str(subscription.client_id or "").strip()
+            if not stored_client_id:
+                logger.warning(
+                    "Subscription %s has no client_id; keeping it unchanged for safety.",
+                    subscription.id,
+                )
                 continue
 
-            if client_id not in live_clients:
-                deleted_ids.add(subscription.id)
-                await session.execute(delete(Subscription).where(Subscription.id == subscription.id))
-                changed = True
-                logger.info(
-                    "Removed orphan subscription %s (%s): client %s no longer exists on XUI server %s.",
+            client = live_clients.get(stored_client_id)
+            if client is None:
+                # Do not delete the DB record when an administrator removes a
+                # client from 3X-UI. Preserve the purchase/history record and
+                # mark it inactive so the discrepancy remains recoverable.
+                if subscription.status != "inactive":
+                    subscription.status = "inactive"
+                    changed = True
+                logger.warning(
+                    "Subscription %s (%s) client %s is missing from XUI server %s; synchronized status=inactive without deleting DB record.",
                     subscription.id,
                     subscription.config_name,
-                    client_id,
+                    stored_client_id,
                     server.name,
                 )
                 continue
 
-            new_status = "active" if live_clients[client_id] else "inactive"
+            # 3X-UI is authoritative for the live client enabled/disabled state.
+            new_status = "active" if bool(getattr(client, "enable", False)) else "inactive"
             if subscription.status != new_status:
                 subscription.status = new_status
                 changed = True
@@ -191,14 +206,86 @@ async def _sync_subscriptions_with_xui(
                     "Synchronized subscription %s (%s) with XUI client %s: status=%s.",
                     subscription.id,
                     subscription.config_name,
-                    client_id,
+                    str(getattr(client, "id", "")),
                     new_status,
                 )
 
+            # Keep the DB identity aligned with the actual XUI UUID. Prefer the
+            # real client.id because all subscription-specific lookups use it.
+            actual_client_id = str(getattr(client, "id", "") or "").strip()
+            if actual_client_id and actual_client_id != stored_client_id:
+                subscription.client_id = actual_client_id
+                changed = True
+                logger.info(
+                    "Synchronized subscription %s client_id from XUI: %s -> %s.",
+                    subscription.id,
+                    stored_client_id,
+                    actual_client_id,
+                )
+
+            xui_name = str(getattr(client, "email", "") or "").strip()
+            if xui_name and subscription.config_name != xui_name:
+                logger.info(
+                    "Synchronized subscription %s config_name from XUI: %s -> %s.",
+                    subscription.id,
+                    subscription.config_name,
+                    xui_name,
+                )
+                subscription.config_name = xui_name
+                changed = True
+
+            try:
+                xui_devices = int(getattr(client, "limit_ip", 0) or 0)
+            except (TypeError, ValueError):
+                xui_devices = subscription.devices
+            if subscription.devices != xui_devices:
+                subscription.devices = xui_devices
+                changed = True
+
+            try:
+                xui_total_bytes = int(getattr(client, "total_gb", 0) or 0)
+            except (TypeError, ValueError):
+                xui_total_bytes = 0
+            if xui_total_bytes > 0:
+                xui_volume_gb = max(1, round(xui_total_bytes / (1024**3)))
+                if subscription.volume_gb != xui_volume_gb:
+                    subscription.volume_gb = xui_volume_gb
+                    changed = True
+
+            # Synchronize expiry from the live XUI timestamp. A zero timestamp
+            # means unlimited lifetime and clears any stale DB expiry.
+            try:
+                raw_expiry = int(getattr(client, "expiry_time", 0) or 0)
+            except (TypeError, ValueError):
+                raw_expiry = 0
+
+            if raw_expiry > 0:
+                xui_expire = datetime.fromtimestamp(raw_expiry / 1000, tz=timezone.utc)
+                current_expire = _as_utc(subscription.expire_date) if subscription.expire_date else None
+                if current_expire != xui_expire:
+                    subscription.expire_date = xui_expire
+                    changed = True
+
+                start = _effective_start_date(subscription)
+                if start:
+                    calculated_days = max(0, round((xui_expire - start).total_seconds() / 86400))
+                    if subscription.duration_days != calculated_days:
+                        subscription.duration_days = calculated_days
+                        changed = True
+            elif subscription.expire_date is not None:
+                subscription.expire_date = None
+                subscription.duration_days = 0
+                changed = True
+
     if changed:
         await session.commit()
+        # Refresh ORM state after commit so the caller renders the synchronized
+        # values rather than stale pre-commit attributes.
+        for subscription in subscriptions:
+            if subscription.server_id is not None:
+                await session.refresh(subscription)
 
-    return [subscription for subscription in subscriptions if subscription.id not in deleted_ids]
+    return subscriptions
 
 
 @router.callback_query(F.data == NavMain.MY_SERVICES)
@@ -328,8 +415,8 @@ async def callback_my_service_details(
 
     if client_data:
         text += (
-            f"🆔 <b>Client ID:</b> <code>{client_data.client_id or '-'} </code>\n"
-            f"🔑 <b>Sub ID:</b> <code>{client_data.sub_id or '-'} </code>\n"
+            f"🆔 <b>Client ID:</b> <code>{client_data.client_id or '-'}</code>\n"
+            f"🔑 <b>Sub ID:</b> <code>{client_data.sub_id or '-'}</code>\n"
             f"👤 <b>Telegram User ID:</b> <code>{client_data.tg_id or user.tg_id}</code>\n"
             f"⚙️ <b>Flow:</b> <code>{client_data.flow or '-'}</code>\n"
             f"📥 <b>Inbound ID:</b> <code>{client_data.inbound_id or '-'}</code>\n"
