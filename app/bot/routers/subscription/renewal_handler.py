@@ -67,21 +67,6 @@ def _service_list_keyboard(subscriptions: list[Subscription]) -> InlineKeyboardM
     return builder.as_markup()
 
 
-def _duration_keyboard(subscription: Subscription, plans: list[ServicePurchasePlan]) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    for plan in plans:
-        period = "یک ماه" if plan.duration_days <= 31 else "سه ماه"
-        builder.row(
-            InlineKeyboardButton(
-                text=f"📅 {period} | {plan.duration_days} روز | {plan.price_toman:,} تومان",
-                callback_data=f"renewal:plan:{subscription.id}:{plan.id}",
-            )
-        )
-    builder.row(InlineKeyboardButton(text="🔙 تغییر سرویس", callback_data=NavSubscription.RENEW_SERVICE))
-    builder.row(_main_menu_button())
-    return builder.as_markup()
-
-
 def _summary_keyboard(subscription_id: int, plan_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -165,126 +150,87 @@ async def callback_renew_service(
     )
 
 
+
 @router.callback_query(F.data.regexp(r"^renewal:service:\d+$"))
 async def callback_renewal_service_selected(
     callback: CallbackQuery,
     user: User,
     session: AsyncSession,
     services: ServicesContainer,
+    state: FSMContext,
 ) -> None:
     subscription_id = int(callback.data.rsplit(":", 1)[1])
-    subscription = await _get_user_subscription(session, user, subscription_id, services)
+
+    subscription = await _get_user_subscription(
+        session,
+        user,
+        subscription_id,
+        services,
+    )
+
     if not subscription:
-        await callback.answer("❌ این سرویس دیگر قابل افزایش زمان نیست.", show_alert=True)
+        await callback.answer("❌ سرویس پیدا نشد.", show_alert=True)
         return
 
-    plans = await ServicePurchasePlan.list_by_type(session, "one_month")
-    plans += await ServicePurchasePlan.list_by_type(session, "three_month")
-    plans = [
-        plan
-        for plan in plans
-        if plan.duration_days > 0
-        and plan.volume_gb > 0
-    ]
-    plans.sort(key=lambda plan: (plan.duration_days, plan.id))
+    plan_result = await session.execute(
+        select(ServicePurchasePlan).where(
+            ServicePurchasePlan.volume_gb == subscription.volume_gb,
+            ServicePurchasePlan.duration_days == subscription.duration_days,
+            ServicePurchasePlan.service_type.in_(["one_month", "three_month"]),
+        )
+    )
 
-    await callback.answer()
-    if not plans:
-        await callback.message.edit_text(
-            "⏳ <b>افزایش زمان سرویس</b>\n\n"
-            f"برای حجم فعلی این سرویس ({subscription.volume_gb} GB) هنوز پلن افزایش زمان فعالی ثبت نشده است.",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 انتخاب سرویس دیگر", callback_data=NavSubscription.RENEW_SERVICE)],
-                    [_main_menu_button()],
-                ]
-            ),
+    plan = plan_result.scalars().first()
+
+    if not plan:
+        await callback.answer(
+            "❌ پلن مشابه برای تمدید این سرویس تعریف نشده است.",
+            show_alert=True,
         )
         return
 
-    icon, status_text = _status(subscription)
     current_expire = _effective_expire_date(subscription)
-    remaining_time = _format_remaining_time(current_expire)
 
-    client_data = await services.vpn.get_client_data(user, subscription_id=subscription.id)
-    traffic_remaining = client_data.traffic_remaining_formatted if client_data else "در دسترس نیست"
+    remaining_days = 0
+    if current_expire:
+        remaining_days = max(
+            0,
+            int(
+                (current_expire - datetime.now(timezone.utc))
+                .total_seconds()
+                // 86400
+            ),
+        )
 
-    await callback.message.edit_text(
-        "⏳ <b>انتخاب مدت افزایش زمان</b>\n\n"
-        f"{icon} <b>سرویس:</b> <code>{subscription.config_name}</code>\n"
-        f"💾 <b>حجم کل:</b> {subscription.volume_gb} GB\n"
-        f"📊 <b>حجم باقی‌مانده:</b> {traffic_remaining}\n"
-        f"⏳ <b>زمان باقی‌مانده:</b> {remaining_time}\n"
-        f"📌 <b>وضعیت:</b> {status_text}\n\n"
-        "مدت افزایش زمان را انتخاب کنید:",
-        reply_markup=_duration_keyboard(subscription, plans),
-    )
+    new_volume = subscription.volume_gb + plan.volume_gb
+    new_days = remaining_days + plan.duration_days
 
-
-@router.callback_query(F.data.regexp(r"^renewal:plan:\d+:\d+$"))
-async def callback_renewal_plan_selected(
-    callback: CallbackQuery,
-    user: User,
-    session: AsyncSession,
-    services: ServicesContainer,
-    state: FSMContext,
-) -> None:
-    _, _, subscription_id_text, plan_id_text = callback.data.split(":")
-    subscription_id = int(subscription_id_text)
-    plan_id = int(plan_id_text)
-
-    subscription = await _get_user_subscription(session, user, subscription_id, services)
-    plan = await ServicePurchasePlan.get(session, plan_id)
-    if not subscription or not plan or plan.volume_gb <= 0 or plan.duration_days <= 0:
-        await callback.answer("❌ اطلاعات افزایش زمان نامعتبر یا منقضی شده است.", show_alert=True)
-        return
-
-    data = SubscriptionData(
-        state=NavSubscription.PAY,
-        is_extend=True,
-        user_id=user.tg_id,
-        devices=subscription.devices,
-        duration=plan.duration_days,
-        price=plan.price_toman,
-        plan_id=plan.id,
-        volume_gb=plan.volume_gb,
-        config_name=subscription.config_name,
-    )
-    data.subscription_id = subscription.id
     await state.update_data(subscription_data={
         "state": NavSubscription.PAY.value,
         "is_extend": True,
         "is_change": False,
-        "user_id": data.user_id,
-        "devices": data.devices,
-        "duration": data.duration,
-        "price": data.price,
-        "plan_id": data.plan_id,
-        "volume_gb": data.volume_gb,
-        "config_name": data.config_name,
-        "subscription_id": data.subscription_id,
+        "user_id": user.tg_id,
+        "devices": subscription.devices,
+        "duration": plan.duration_days,
+        "price": plan.price_toman,
+        "plan_id": plan.id,
+        "volume_gb": plan.volume_gb,
+        "config_name": subscription.config_name,
+        "subscription_id": subscription.id,
     })
 
-    current_expire = _effective_expire_date(subscription)
-    base = current_expire if current_expire and current_expire > datetime.now(timezone.utc) else datetime.now(timezone.utc)
-    new_expire = base + timedelta(days=plan.duration_days)
-
-    client_data = await services.vpn.get_client_data(user, subscription_id=subscription.id)
-    traffic_remaining = client_data.traffic_remaining_formatted if client_data else "در دسترس نیست"
-    remaining_time = _format_remaining_time(current_expire)
-
     await callback.answer()
+
     await callback.message.edit_text(
-        "🧾 <b>خلاصه سفارش افزایش زمان</b>\n\n"
-        f"📦 <b>سرویس:</b> <code>{subscription.config_name}</code>\n"
-        f"💾 <b>حجم کل:</b> {subscription.volume_gb} GB\n"
-        f"📊 <b>حجم باقی‌مانده:</b> {traffic_remaining}\n"
-        f"⏳ <b>زمان باقی‌مانده:</b> {remaining_time}\n"
-        f"📅 <b>مدت افزایش زمان:</b> {plan.duration_days} روز\n"
-        f"⏱ <b>انقضای فعلی:</b> {_format_expire(current_expire)}\n"
-        f"🆕 <b>انقضای جدید:</b> {_format_expire(new_expire)}\n"
-        f"💰 <b>مبلغ:</b> {plan.price_toman:,} تومان\n\n"
-        "حجم، سرور و مشخصات سرویس فعلی تغییر نمی‌کند.",
+        "🔄 <b>تمدید سرویس</b>\n\n"
+        f"📌 <b>سرویس فعلی:</b>\n"
+        f"<code>{subscription.config_name}</code>\n\n"
+        f"📦 <b>حجم:</b>\n"
+        f"فعلی {subscription.volume_gb}GB + تمدید {plan.volume_gb}GB = {new_volume}GB\n\n"
+        f"⏳ <b>اعتبار:</b>\n"
+        f"باقی‌مانده {remaining_days} روز + تمدید {plan.duration_days} روز = {new_days} روز\n\n"
+        f"💰 <b>هزینه تمدید:</b>\n"
+        f"{plan.price_toman:,} تومان",
         reply_markup=_summary_keyboard(subscription.id, plan.id),
     )
 
