@@ -7,6 +7,7 @@ from aiogram.utils.i18n import I18n
 from aiogram.utils.i18n import gettext as _
 from aiogram.utils.i18n import lazy_gettext as __
 from aiohttp.web import Application
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import ServicesContainer, SubscriptionData
@@ -120,12 +121,12 @@ class PaymentGateway(ABC):
                 if not success:
                     raise RuntimeError(f"Failed to create subscription for user {user.tg_id}")
 
-                # create_subscription historically did not receive plan_id.
-                # Persist the original purchase plan immediately after the new
-                # subscription is created so future renewals can always use it.
+                # Persist the original purchased plan. create_subscription has
+                # historically not received plan_id, so we attach it immediately
+                # to the newly created subscription. Renewal code never changes it.
                 if data.plan_id:
                     result = await session.execute(
-                        __import__("sqlalchemy").select(Subscription)
+                        select(Subscription)
                         .where(Subscription.user_id == user.id)
                         .order_by(Subscription.id.desc())
                     )
