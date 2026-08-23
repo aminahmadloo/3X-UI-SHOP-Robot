@@ -366,7 +366,7 @@ class VPNService:
                 query = query.order_by(Subscription.id.desc())
 
             result = await session.execute(query)
-            target = result.scalar_one_or_none()
+            target = result.scalars().first()
 
             if not target or not target.client_id:
                 logger.warning(
@@ -413,6 +413,112 @@ class VPNService:
             user.tg_id,
         )
         return key
+
+    async def get_active_subscription_keys(
+        self,
+        user: User,
+    ) -> list[tuple[int, str, str]]:
+        """Return all active subscription connection keys, newest first.
+
+        Each tuple contains:
+            (subscription_id, config_name, connection_key)
+
+        Client ID is intentionally not exposed to the user.
+        """
+        async with self.session() as session:
+            fresh_user = await User.get(session=session, tg_id=user.tg_id)
+
+            if not fresh_user:
+                logger.warning("User %s not found.", user.tg_id)
+                return []
+
+            result = await session.execute(
+                select(Subscription)
+                .where(
+                    Subscription.user_id == fresh_user.id,
+                    Subscription.status == "active",
+                    Subscription.client_id.is_not(None),
+                )
+                .order_by(Subscription.id.desc())
+            )
+
+            subscriptions = result.scalars().all()
+
+            if not subscriptions:
+                logger.info(
+                    "No active subscriptions found for user %s.",
+                    user.tg_id,
+                )
+                return []
+
+            settings = await SubscriptionSettings.get_or_create(session)
+
+            keys: list[tuple[int, str, str]] = []
+
+            for subscription in subscriptions:
+                server_host = None
+
+                if subscription.server_id is not None:
+                    server_result = await session.execute(
+                        select(Server).where(Server.id == subscription.server_id)
+                    )
+                    target_server = server_result.scalar_one_or_none()
+
+                    if target_server is not None:
+                        server_connection = (
+                            await self.server_pool_service.get_connection_for_server(
+                                target_server
+                            )
+                        )
+
+                        if server_connection is not None:
+                            server_host = server_connection.server.host
+
+                base_host = (
+                    settings.domain
+                    or server_host
+                    or (user.server.host if user.server else None)
+                )
+
+                if not base_host:
+                    logger.warning(
+                        "No subscription domain/server host available "
+                        "for subscription %s.",
+                        subscription.id,
+                    )
+                    continue
+
+                subscription_base = extract_base_url(
+                    url=base_host,
+                    port=settings.port,
+                    path=settings.path,
+                )
+
+                connection_key = (
+                    f"{subscription_base}{subscription.client_id}"
+                )
+
+                config_name = (
+                    getattr(subscription, "config_name", None)
+                    or getattr(subscription, "name", None)
+                    or f"Subscription #{subscription.id}"
+                )
+
+                keys.append(
+                    (
+                        subscription.id,
+                        str(config_name),
+                        connection_key,
+                    )
+                )
+
+            logger.info(
+                "Generated %s active subscription keys for user %s.",
+                len(keys),
+                user.tg_id,
+            )
+
+            return keys
 
     async def get_subscription_links(
         self,

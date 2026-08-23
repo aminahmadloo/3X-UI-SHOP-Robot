@@ -13,21 +13,21 @@ def profile_keyboard(language: str = "fa") -> InlineKeyboardMarkup:
         wallet_text = "💰 Wallet"
         referral_text = "🎁 Invite Friends"
         connection_text = "🔐 Connection Guide"
-        key_text = "🔑 Show Connection Key"
+        key_text = "🔑 Show Connection Keys"
         language_text = "🌐 Change Language"
     elif language == "ru":
         services_text = "📦 Мои сервисы"
         wallet_text = "💰 Кошелёк"
         referral_text = "🎁 Пригласить друзей"
         connection_text = "🔐 Как подключиться"
-        key_text = "🔑 Показать ключ подключения"
+        key_text = "🔑 Показать ключи подключения"
         language_text = "🌐 Изменить язык"
     else:
         services_text = "📦 سرویس‌های من"
         wallet_text = "💰 کیف پول"
         referral_text = "🎁 دعوت از دوستان"
         connection_text = "🔐 راهنمای اتصال"
-        key_text = "🔑 نمایش کلید اتصال"
+        key_text = "🔑 نمایش کلیدهای اتصال"
         language_text = "🌐 تغییر زبان"
 
     builder.row(

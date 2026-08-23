@@ -114,27 +114,76 @@ async def callback_show_key(
     user: User,
     services: ServicesContainer,
 ) -> None:
-    logger.info(f"User {user.tg_id} looked key.")
+    logger.info(f"User {user.tg_id} looked at connection keys.")
     await callback.answer()
-    key = await services.vpn.get_key(user)
+
+    keys = await services.vpn.get_active_subscription_keys(user)
 
     if user.language_code == "en":
-        header = "🔑 <b>Connection Key</b>"
+        header = "🔑 <b>Connection Keys</b>"
+        empty_text = "❌ No active connection keys were found."
         seconds_template = "⏱️ This message will be deleted in {seconds} seconds."
+        subscription_template = "{number}️⃣ <b>{name}</b>"
     elif user.language_code == "ru":
-        header = "🔑 <b>Ключ подключения</b>"
+        header = "🔑 <b>Ключи подключения</b>"
+        empty_text = "❌ Активные ключи подключения не найдены."
         seconds_template = "⏱️ Это сообщение будет удалено через {seconds} секунд."
+        subscription_template = "{number}️⃣ <b>{name}</b>"
     else:
-        header = "🔑 <b>کلید اتصال</b>"
+        header = "🔑 <b>کلیدهای اتصال</b>"
+        empty_text = "❌ هیچ کلید اتصال فعالی پیدا نشد."
         seconds_template = "⏱️ این پیام تا {seconds} ثانیه دیگر حذف می‌شود."
+        subscription_template = "{number}️⃣ <b>{name}</b>"
+
+    if not keys:
+        body = empty_text
+    else:
+        sections = []
+
+        for number, (_subscription_id, config_name, connection_key) in enumerate(
+            keys,
+            start=1,
+        ):
+            sections.append(
+                (
+                    subscription_template.format(
+                        number=number,
+                        name=config_name,
+                    )
+                    + f"\n<code>{connection_key}</code>"
+                )
+            )
+
+        body = "\n\n".join(sections)
+
+    seconds = 20
 
     message = await callback.message.answer(
-        f"{header}\n\n<code>{key}</code>\n\n{seconds_template.format(seconds=10)}"
+        f"{header}\n\n"
+        f"{body}\n\n"
+        f"{seconds_template.format(seconds=seconds)}"
     )
 
-    for seconds in range(9, 0, -1):
+    for remaining in range(seconds - 1, 0, -1):
         await asyncio.sleep(1)
-        await message.edit_text(
-            f"{header}\n\n<code>{key}</code>\n\n{seconds_template.format(seconds=seconds)}"
+
+        try:
+            await message.edit_text(
+                f"{header}\n\n"
+                f"{body}\n\n"
+                f"{seconds_template.format(seconds=remaining)}"
+            )
+        except Exception as exception:
+            logger.warning(
+                "Could not update connection keys countdown: %s",
+                exception,
+            )
+
+    try:
+        await message.delete()
+    except Exception as exception:
+        logger.warning(
+            "Could not delete connection keys message: %s",
+            exception,
         )
-    await message.delete()
+

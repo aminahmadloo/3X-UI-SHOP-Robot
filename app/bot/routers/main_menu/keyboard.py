@@ -77,6 +77,15 @@ def main_menu_keyboard(
         ),
     )
 
+    # تمدید سرویس — callback مستقل و جدا از افزایش زمان سرویس
+    builder.row(
+        InlineKeyboardButton(
+            text="🔄 تمدید سرویس",
+            callback_data="main_menu:renew_service_placeholder",
+        ),
+    )
+
+    # پشتیبانی + تغییر زبان — منطق قبلی بدون تغییر
     builder.row(
         InlineKeyboardButton(
             text=_("main_menu:button:support"),

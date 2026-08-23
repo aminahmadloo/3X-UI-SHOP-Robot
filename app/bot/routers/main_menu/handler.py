@@ -279,9 +279,12 @@ async def callback_custom_service_buy(callback: CallbackQuery) -> None:
     await callback.answer("این بخش در مرحله بعد فعال می‌شود.", show_alert=True)
 
 
-@router.callback_query(F.data == NavMain.MY_SERVICES)
-async def callback_my_services(callback: CallbackQuery) -> None:
-    await callback.answer("📦 بخش سرویس های من به‌زودی فعال می‌شود.", show_alert=True)
+@router.callback_query(F.data == "main_menu:renew_service_placeholder")
+async def callback_renew_service_placeholder(callback: CallbackQuery) -> None:
+    await callback.answer(
+        "📦 بخش سرویس های من به‌زودی فعال می‌شود.",
+        show_alert=True,
+    )
 
 
 @router.callback_query(F.data == NavMain.WALLET)
