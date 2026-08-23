@@ -21,7 +21,7 @@ from app.bot.utils.constants import (
 )
 from app.bot.utils.formatting import format_device_count, format_subscription_period
 from app.config import Config
-from app.db.models import Transaction, User
+from app.db.models import Subscription, Transaction, User
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +75,6 @@ class PaymentGateway(ABC):
             if user is None:
                 raise RuntimeError(f"User {data.user_id} was not found for payment {payment_id}")
 
-        # Provision/extend first. The transaction must remain pending until the
-        # VPN operation succeeds; otherwise a failed renewal could be recorded
-        # as completed and the customer would be charged without receiving the
-        # purchased extension.
         try:
             if data.is_extend:
                 if data.subscription_id:
@@ -123,6 +119,21 @@ class PaymentGateway(ABC):
                 )
                 if not success:
                     raise RuntimeError(f"Failed to create subscription for user {user.tg_id}")
+
+                # create_subscription historically did not receive plan_id.
+                # Persist the original purchase plan immediately after the new
+                # subscription is created so future renewals can always use it.
+                if data.plan_id:
+                    result = await session.execute(
+                        __import__("sqlalchemy").select(Subscription)
+                        .where(Subscription.user_id == user.id)
+                        .order_by(Subscription.id.desc())
+                    )
+                    created_subscription = result.scalars().first()
+                    if created_subscription is not None:
+                        created_subscription.plan_id = data.plan_id
+                        await session.commit()
+
                 logger.info(f"Subscription created for user {user.tg_id}")
         except Exception:
             logger.exception(
