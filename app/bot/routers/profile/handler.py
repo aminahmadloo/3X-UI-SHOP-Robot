@@ -1,67 +1,62 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
-from aiogram.utils.i18n import gettext as _
-from babel.dates import format_datetime
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.models import ClientData
-from app.bot.services import ServicesContainer
+from app.bot.models import ServicesContainer
 from app.bot.utils.constants import PREVIOUS_CALLBACK_KEY, TransactionStatus
 from app.bot.utils.navigation import NavProfile
 from app.db.models import User
 
-from .keyboard import buy_subscription_keyboard, profile_keyboard
+from .keyboard import profile_keyboard
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 
 
-async def prepare_message(
-    user: User,
-    client_data: ClientData | None,
-    wallet_balance: int = 0,
-) -> str:
-    profile = _("profile:message:main").format(name=user.first_name, id=user.tg_id)
+def _profile_text(user: User, language: str, wallet_balance: int, purchased_services_count: int) -> str:
+    balance = f"{wallet_balance:,}"
 
-    if not client_data:
-        purchased_services_count = sum(
-            1
-            for transaction in user.transactions
-            if transaction.status == TransactionStatus.COMPLETED
-        )
-        tehran_now = datetime.now(timezone(timedelta(hours=3, minutes=30)))
-        current_datetime = format_datetime(
-            tehran_now,
-            "EEEE d MMMM yyyy — HH:mm:ss",
-            locale="fa_IR",
-        )
+    if language == "en":
         return (
-            f"{profile}\n\n"
-            f"💰 موجودی کیف پول: {wallet_balance:,} تومان\n"
-            f"🛍️ تعداد سرویس‌های خریداری‌شده: {purchased_services_count}\n\n"
-            f"شما هنوز هیچ سرویسی خریداری نکرده‌اید.\n\n"
-            f"📅 {current_datetime}"
+            "👤 <b>Account</b>\n"
+            "━━━━━━━━━━━━━━━━\n\n"
+            f"👋 Hello <b>{user.first_name}</b>!\n\n"
+            f"🆔 <b>Telegram ID:</b> <code>{user.tg_id}</code>\n\n"
+            "📊 <b>Account Overview</b>\n"
+            f"📦 Purchased services: <b>{purchased_services_count}</b>\n"
+            f"💰 Wallet balance: <b>{balance} Toman</b>\n\n"
+            "━━━━━━━━━━━━━━━━\n"
+            "Manage your services, wallet, referrals and connection information from here."
         )
 
-    subscription = _("profile:message:subscription").format(devices=client_data.max_devices)
+    if language == "ru":
+        return (
+            "👤 <b>Аккаунт</b>\n"
+            "━━━━━━━━━━━━━━━━\n\n"
+            f"👋 Здравствуйте, <b>{user.first_name}</b>!\n\n"
+            f"🆔 <b>Telegram ID:</b> <code>{user.tg_id}</code>\n\n"
+            "📊 <b>Обзор аккаунта</b>\n"
+            f"📦 Куплено сервисов: <b>{purchased_services_count}</b>\n"
+            f"💰 Баланс кошелька: <b>{balance} томан</b>\n\n"
+            "━━━━━━━━━━━━━━━━\n"
+            "Здесь вы можете управлять сервисами, кошельком, приглашениями и подключением."
+        )
 
-    subscription += (
-        _("profile:message:subscription_expiry_time").format(expiry_time=client_data.expiry_time)
-        if not client_data.has_subscription_expired
-        else _("profile:message:subscription_expired")
+    return (
+        "👤 <b>حساب کاربری</b>\n"
+        "━━━━━━━━━━━━━━━━\n\n"
+        f"👋 سلام <b>{user.first_name}</b> عزیز!\n\n"
+        f"🆔 <b>شناسه تلگرام:</b> <code>{user.tg_id}</code>\n\n"
+        "📊 <b>خلاصه حساب</b>\n"
+        f"📦 تعداد سرویس‌های خریداری‌شده: <b>{purchased_services_count}</b>\n"
+        f"💰 موجودی کیف پول: <b>{balance} تومان</b>\n\n"
+        "━━━━━━━━━━━━━━━━\n"
+        "از این بخش می‌توانید سرویس‌ها، کیف پول، دعوت دوستان و اطلاعات اتصال خود را مدیریت کنید."
     )
-
-    statistics = _("profile:message:statistics").format(
-        total=client_data.traffic_used_formatted,
-        up=client_data.traffic_up_formatted,
-        down=client_data.traffic_down_formatted,
-    )
-
-    return profile + subscription + statistics
 
 
 @router.callback_query(F.data == NavProfile.MAIN)
@@ -70,33 +65,25 @@ async def callback_profile(
     user: User,
     services: ServicesContainer,
     state: FSMContext,
+    session: AsyncSession,
 ) -> None:
-    logger.info(f"User {user.tg_id} opened profile page.")
+    logger.info(f"User {user.tg_id} opened account page.")
     await callback.answer()
     await state.update_data({PREVIOUS_CALLBACK_KEY: NavProfile.MAIN})
 
-    client_data = None
-    if user.server_id:
-        client_data = await services.vpn.get_client_data(user)
-        if client_data is None:
-            logger.warning(
-                f"No active VPN client data for user {user.tg_id}; showing profile without subscription."
-            )
-
-    reply_markup = (
-        profile_keyboard()
-        if client_data and not client_data.has_subscription_expired
-        else buy_subscription_keyboard()
+    purchased_services_count = sum(
+        1 for transaction in user.transactions if transaction.status == TransactionStatus.COMPLETED
     )
     wallet_balance = await services.wallet.get_balance(user.tg_id)
 
     await callback.message.edit_text(
-        text=await prepare_message(
+        text=_profile_text(
             user=user,
-            client_data=client_data,
+            language=user.language_code or "fa",
             wallet_balance=wallet_balance,
+            purchased_services_count=purchased_services_count,
         ),
-        reply_markup=reply_markup,
+        reply_markup=profile_keyboard(user.language_code or "fa"),
     )
 
 
@@ -109,11 +96,24 @@ async def callback_show_key(
     logger.info(f"User {user.tg_id} looked key.")
     await callback.answer()
     key = await services.vpn.get_key(user)
-    key_text = _("profile:message:key")
-    message = await callback.message.answer(key_text.format(key=key, seconds_text=_("10 seconds")))
+
+    if user.language_code == "en":
+        header = "🔑 <b>Connection Key</b>"
+        seconds_template = "⏱️ This message will be deleted in {seconds} seconds."
+    elif user.language_code == "ru":
+        header = "🔑 <b>Ключ подключения</b>"
+        seconds_template = "⏱️ Это сообщение будет удалено через {seconds} секунд."
+    else:
+        header = "🔑 <b>کلید اتصال</b>"
+        seconds_template = "⏱️ این پیام تا {seconds} ثانیه دیگر حذف می‌شود."
+
+    message = await callback.message.answer(
+        f"{header}\n\n<code>{key}</code>\n\n{seconds_template.format(seconds=10)}"
+    )
 
     for seconds in range(9, 0, -1):
-        seconds_text = _("1 second", "{} seconds", seconds).format(seconds)
         await asyncio.sleep(1)
-        await message.edit_text(text=key_text.format(key=key, seconds_text=seconds_text))
+        await message.edit_text(
+            f"{header}\n\n<code>{key}</code>\n\n{seconds_template.format(seconds=seconds)}"
+        )
     await message.delete()
