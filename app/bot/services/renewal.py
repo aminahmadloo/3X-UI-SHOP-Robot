@@ -26,9 +26,17 @@ async def extend_existing_subscription(
     duration_days: int,
     plan_id: int | None = None,
 ) -> bool:
-    """Extend an existing subscription without changing its original plan identity."""
+    """Extend an existing subscription without changing its original plan identity.
 
-    if duration_days <= 0:
+    The current operation may be either:
+    - time-only: duration_days > 0 and plan.volume_gb == 0
+    - traffic-only: duration_days == 0 and plan.volume_gb > 0
+
+    ``Subscription.plan_id`` is the immutable original purchase plan. ``plan_id``
+    here identifies only the add-on/renewal operation currently being fulfilled.
+    """
+
+    if duration_days < 0:
         return False
 
     async with services.vpn.session() as session:
@@ -49,6 +57,14 @@ async def extend_existing_subscription(
 
         plan = await ServicePurchasePlan.get(session, plan_id) if plan_id is not None else None
         if not plan:
+            return False
+
+        # A renewal/add-on must actually change something.  Traffic-only add-ons
+        # intentionally have duration_days == 0, so rejecting zero duration here
+        # would make every card-to-card/wallet traffic add-on fail at provisioning.
+        if duration_days == 0 and plan.volume_gb <= 0:
+            return False
+        if duration_days > 0 and plan.duration_days <= 0:
             return False
 
         connection = await services.server_pool.get_connection_for_server(subscription.server)
@@ -85,19 +101,25 @@ async def extend_existing_subscription(
         now_ms = get_current_timestamp()
         current_expiry_ms = int(client.expiry_time or 0)
         base_expiry_ms = max(current_expiry_ms, now_ms)
-        new_expiry_ms = add_days_to_timestamp(base_expiry_ms, duration_days)
-        client.expiry_time = new_expiry_ms
+
+        if duration_days > 0:
+            new_expiry_ms = add_days_to_timestamp(base_expiry_ms, duration_days)
+            client.expiry_time = new_expiry_ms
+        else:
+            new_expiry_ms = current_expiry_ms
 
         if plan.volume_gb > 0:
             subscription.volume_gb += plan.volume_gb
             current_total_bytes = int(client.total_gb or 0)
             client.total_gb = current_total_bytes + plan.volume_gb * BYTES_PER_GB
 
-        subscription.duration_days += duration_days
-        subscription.expire_date = datetime.fromtimestamp(
-            new_expiry_ms / 1000,
-            tz=timezone.utc,
-        ).replace(tzinfo=None)
+        if duration_days > 0:
+            subscription.duration_days += duration_days
+            subscription.expire_date = datetime.fromtimestamp(
+                new_expiry_ms / 1000,
+                tz=timezone.utc,
+            ).replace(tzinfo=None)
+
         subscription.status = "active"
 
         # IMPORTANT: plan_id is the original purchase plan and must remain immutable.
