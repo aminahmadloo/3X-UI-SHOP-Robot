@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.bot.models import ServicesContainer
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.routers.my_services.handler import _status,_sync_subscriptions_with_xui
+from app.bot.routers.subscription.dynamic_renewal_handler import _original_plan
 from app.bot.routers.subscription.keyboard import managed_payment_method_keyboard_traffic
 from app.bot.services.renewal import is_traffic_addon_type
 from app.bot.utils.navigation import NavMain,NavSubscription
@@ -49,8 +50,13 @@ async def entry(callback:CallbackQuery,user,session:AsyncSession,services:Servic
 async def add(callback:CallbackQuery,user,session:AsyncSession,services:ServicesContainer):
     x=await _sub(session,user,int(callback.data.rsplit(':',1)[1]),services)
     if not x or x.status!="active" or _status(x)[1]=="منقضی شده": await callback.answer("❌ این سرویس فعال نیست.",show_alert=True); return
-    p=await _period(session,x.duration_days)
-    if not p: await callback.answer("❌ دوره این سرویس فعال نیست.",show_alert=True); return
+    original_plan=await _original_plan(session,x)
+    if not original_plan: await callback.answer("❌ پلن اولیه این سرویس قابل تشخیص نیست. لطفاً اطلاعات خرید اولیه سرویس را بررسی کنید.",show_alert=True); return
+    if x.plan_id != original_plan.id:
+        x.plan_id=original_plan.id
+        await session.commit()
+    p=await _period(session,original_plan.duration_days)
+    if not p: await callback.answer("❌ دوره پلن اولیه این سرویس فعال نیست.",show_alert=True); return
     ps=await _plans(session,p); await callback.answer()
     if not ps: await callback.message.edit_text(f"📈 <b>افزایش حجم {p.name}</b>\n\nدر حال حاضر هیچ بسته افزایش حجمی برای این دوره فعال نشده است.",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت به سرویس",callback_data=f"my_services:view:{x.id}")],[_home()]])); return
     cd=await services.vpn.get_client_data(user,subscription_id=x.id); total=cd.traffic_total_formatted if cd else f"{x.volume_gb} GB"; remain=cd.traffic_remaining_formatted if cd else "در دسترس نیست"
@@ -58,14 +64,20 @@ async def add(callback:CallbackQuery,user,session:AsyncSession,services:Services
 
 @router.callback_query(F.data.regexp(r"^traffic:plan:\d+:\d+$"))
 async def plan(callback:CallbackQuery,user,session:AsyncSession,services:ServicesContainer,state:FSMContext):
-    _,_,sid,pid=callback.data.split(':'); x=await _sub(session,user,int(sid),services); p=await _period(session,x.duration_days) if x else None; z=await ServicePurchasePlan.get(session,int(pid))
-    if not x or not p or not z or z.service_type!=p.traffic_addon_service_type or z.duration_days!=0: await callback.answer("❌ بسته افزایش حجم نامعتبر است.",show_alert=True); return
+    _,_,sid,pid=callback.data.split(':'); x=await _sub(session,user,int(sid),services); original_plan=await _original_plan(session,x) if x else None; p=await _period(session,original_plan.duration_days) if original_plan else None; z=await ServicePurchasePlan.get(session,int(pid))
+    if not x or not original_plan or not p or not z or z.service_type!=p.traffic_addon_service_type or z.duration_days!=0: await callback.answer("❌ بسته افزایش حجم نامعتبر است.",show_alert=True); return
+    if x.plan_id != original_plan.id:
+        x.plan_id=original_plan.id
+        await session.commit()
     await state.update_data(subscription_data={"state":"config_name","is_extend":True,"is_change":False,"user_id":user.tg_id,"devices":x.devices,"duration":0,"price":z.price_toman,"plan_id":z.id,"volume_gb":z.volume_gb,"config_name":x.config_name,"subscription_id":x.id}); cd=await services.vpn.get_client_data(user,subscription_id=x.id); total=cd.traffic_total_formatted if cd else f"{x.volume_gb} GB"; remain=cd.traffic_remaining_formatted if cd else "در دسترس نیست"; await callback.answer(); await callback.message.edit_text("🧾 <b>خلاصه سفارش افزایش حجم</b>\n\n"+f"📦 سرویس: <code>{x.config_name}</code>\n💾 حجم کل فعلی: {total}\n📊 حجم باقی‌مانده: {remain}\n➕ حجم افزوده‌شده: <b>{z.volume_gb} GB</b>\n💰 مبلغ: <b>{z.price_toman:,} تومان</b>\n\nزمان انقضا و مشخصات اتصال تغییر نمی‌کند.",reply_markup=_summary(x.id,z.id))
 
 @router.callback_query(F.data.regexp(r"^traffic:payment:\d+:\d+$"))
 async def payment(callback:CallbackQuery,user,session:AsyncSession,services:ServicesContainer,state:FSMContext,gateway_factory:GatewayFactory):
     _,_,sid,pid=callback.data.split(':'); data=(await state.get_data()).get('subscription_data');
     if not isinstance(data,dict) or int(data.get('subscription_id',0))!=int(sid) or int(data.get('plan_id',0))!=int(pid): await state.clear(); await callback.answer("❌ اطلاعات سفارش منقضی شده است.",show_alert=True); return
-    x=await _sub(session,user,int(sid),services); p=await _period(session,x.duration_days) if x else None; z=await ServicePurchasePlan.get(session,int(pid))
-    if not x or not p or not z or z.service_type!=p.traffic_addon_service_type: await state.clear(); await callback.answer("❌ سرویس یا بسته دیگر معتبر نیست.",show_alert=True); return
+    x=await _sub(session,user,int(sid),services); original_plan=await _original_plan(session,x) if x else None; p=await _period(session,original_plan.duration_days) if original_plan else None; z=await ServicePurchasePlan.get(session,int(pid))
+    if not x or not original_plan or not p or not z or z.service_type!=p.traffic_addon_service_type: await state.clear(); await callback.answer("❌ سرویس یا بسته دیگر معتبر نیست.",show_alert=True); return
+    if x.plan_id != original_plan.id:
+        x.plan_id=original_plan.id
+        await session.commit()
     data.update(price=z.price_toman,volume_gb=z.volume_gb,duration=0,config_name=x.config_name,devices=x.devices,subscription_id=x.id); await state.update_data(subscription_data=data); await callback.answer(); await callback.message.edit_text("💳 <b>انتخاب روش پرداخت افزایش حجم</b>\n\n"+f"📦 سرویس: <code>{x.config_name}</code>\n➕ حجم افزوده: <b>{z.volume_gb} GB</b>\n💰 مبلغ: <b>{z.price_toman:,} تومان</b>\n\nروش پرداخت را انتخاب کنید:",reply_markup=managed_payment_method_keyboard_traffic(x.id,z.id,z.price_toman,gateway_factory.get_gateways()))
