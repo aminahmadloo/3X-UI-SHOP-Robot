@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.models import ClientData, ServicesContainer, SubscriptionData
 from app.bot.routers.download.keyboard import platforms_keyboard
 from app.bot.routers.profile.handler import prepare_message
-from app.bot.routers.profile.keyboard import buy_subscription_keyboard, profile_keyboard
+from app.bot.routers.profile.keyboard import profile_keyboard
 from app.bot.routers.referral.handler import generate_referral_summary_text
 from app.bot.routers.referral.keyboard import referral_keyboard
 from app.bot.routers.subscription.keyboard import subscription_keyboard
@@ -40,15 +40,17 @@ async def command_profile(
     user: User,
     services: ServicesContainer,
 ) -> None:
+    """Open the same redesigned account view used by the main-menu button."""
     client_data = await _get_client_data(user, services)
-    reply_markup = (
-        profile_keyboard()
-        if client_data and not client_data.has_subscription_expired
-        else buy_subscription_keyboard()
-    )
+    wallet_balance = await services.wallet.get_balance(user.tg_id)
+
     await message.answer(
-        text=await prepare_message(user=user, client_data=client_data),
-        reply_markup=reply_markup,
+        text=await prepare_message(
+            user=user,
+            client_data=client_data,
+            wallet_balance=wallet_balance,
+        ),
+        reply_markup=profile_keyboard(user.language_code or "fa"),
     )
 
 
