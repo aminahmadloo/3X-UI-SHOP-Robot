@@ -5,8 +5,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .server_pool import ServerPoolService
 
+import asyncio
+import base64
 import copy
 import logging
+import urllib.request
 import uuid
 
 from py3xui import Client, Inbound
@@ -375,10 +378,21 @@ class VPNService:
 
             client_id = str(target.client_id)
             server_host = None
+
             if target.server_id is not None:
-                server = await self.server_pool_service.get_connection_for_server(target.server)
-                if server is not None:
-                    server_host = server.server.host
+                server_result = await session.execute(
+                    select(Server).where(Server.id == target.server_id)
+                )
+                target_server = server_result.scalar_one_or_none()
+
+                if target_server is not None:
+                    server_connection = (
+                        await self.server_pool_service.get_connection_for_server(
+                            target_server
+                        )
+                    )
+                    if server_connection is not None:
+                        server_host = server_connection.server.host
 
             settings = await SubscriptionSettings.get_or_create(session)
             base_host = settings.domain or server_host or (user.server.host if user.server else None)
@@ -399,6 +413,111 @@ class VPNService:
             user.tg_id,
         )
         return key
+
+    async def get_subscription_links(
+        self,
+        user: User,
+        subscription_id: int | None = None,
+    ) -> list[str]:
+        """Return the individual live connection links for one subscription.
+
+        The subscription URL is resolved from the same 3X-UI subscription
+        settings used by get_key(). 3X-UI returns the individual protocol
+        share links from that subscription endpoint. This keeps My Services
+        dynamically synchronized with the live XUI configuration.
+        """
+        subscription_url = await self.get_key(
+            user,
+            subscription_id=subscription_id,
+        )
+
+        if not subscription_url:
+            return []
+
+        def _fetch() -> bytes:
+            request = urllib.request.Request(
+                subscription_url,
+                headers={
+                    "Accept": "text/plain, */*;q=0.1",
+                    "User-Agent": "ToonelVPN/1.0",
+                },
+                method="GET",
+            )
+            with urllib.request.urlopen(request, timeout=15) as response:
+                return response.read()
+
+        try:
+            raw = await asyncio.to_thread(_fetch)
+        except Exception as exception:
+            logger.warning(
+                "Could not fetch subscription links for user %s subscription %s: %s",
+                user.tg_id,
+                subscription_id,
+                exception,
+            )
+            return []
+
+        body = raw.decode("utf-8", errors="replace").strip()
+
+        if not body:
+            return []
+
+        # 3X-UI may return the standard subscription body as base64.
+        decoded = body
+        try:
+            normalized = "".join(body.split())
+            padding = "=" * (-len(normalized) % 4)
+            decoded_bytes = base64.b64decode(
+                normalized + padding,
+                validate=True,
+            )
+            decoded_candidate = decoded_bytes.decode(
+                "utf-8",
+                errors="replace",
+            ).strip()
+
+            if decoded_candidate:
+                decoded = decoded_candidate
+        except Exception:
+            # Plain-text subscription response; keep it unchanged.
+            pass
+
+        links: list[str] = []
+
+        for line in decoded.replace("\r\n", "\n").split("\n"):
+            line = line.strip()
+
+            if not line:
+                continue
+
+            # Only accept actual proxy share links.
+            if "://" not in line:
+                continue
+
+            scheme = line.split("://", 1)[0].lower()
+
+            if scheme in {
+                "vless",
+                "vmess",
+                "trojan",
+                "ss",
+                "socks",
+                "http",
+                "hysteria",
+                "hysteria2",
+                "hy2",
+            }:
+                if line not in links:
+                    links.append(line)
+
+        logger.info(
+            "Retrieved %s individual live subscription links for user %s subscription %s.",
+            len(links),
+            user.tg_id,
+            subscription_id,
+        )
+
+        return links
 
     async def create_client(
         self,
