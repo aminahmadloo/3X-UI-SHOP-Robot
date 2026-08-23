@@ -20,6 +20,12 @@ class GatewayFactory:
         self._gateways: dict[str, PaymentGateway] = {}
 
     def register_gateway(self, gateway: PaymentGateway) -> None:
+        # Gateway classes currently use NavSubscription members for callbacks.
+        # Normalize str/Enum callbacks to their actual value so compact managed
+        # payment buttons produce the same callback string expected by routers.
+        callback = gateway.callback
+        if hasattr(callback, "value"):
+            gateway.callback = callback.value
         self._gateways[gateway.callback] = gateway
 
     def get_gateway(self, name: str) -> PaymentGateway:
