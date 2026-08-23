@@ -26,10 +26,7 @@ async def extend_existing_subscription(
     duration_days: int,
     plan_id: int | None = None,
 ) -> bool:
-    """
-    Extend an existing subscription by merging new purchase data
-    into the original subscription.
-    """
+    """Extend an existing subscription without changing its original plan identity."""
 
     if duration_days <= 0:
         return False
@@ -45,23 +42,16 @@ async def extend_existing_subscription(
                 Subscription.server_id.is_not(None),
             )
         )
-
         subscription = result.scalar_one_or_none()
 
         if not subscription or not subscription.server or not subscription.client_id:
             return False
 
-        plan = None
-        if plan_id is not None:
-            plan = await ServicePurchasePlan.get(session, plan_id)
-
+        plan = await ServicePurchasePlan.get(session, plan_id) if plan_id is not None else None
         if not plan:
             return False
 
-        connection = await services.server_pool.get_connection_for_server(
-            subscription.server
-        )
-
+        connection = await services.server_pool.get_connection_for_server(subscription.server)
         if connection is None:
             return False
 
@@ -72,7 +62,6 @@ async def extend_existing_subscription(
 
         target = None
         target_client_id = str(subscription.client_id).strip()
-
         for inbound in inbounds:
             for client in inbound.settings.clients or []:
                 if (
@@ -95,45 +84,29 @@ async def extend_existing_subscription(
 
         now_ms = get_current_timestamp()
         current_expiry_ms = int(client.expiry_time or 0)
-
         base_expiry_ms = max(current_expiry_ms, now_ms)
-        new_expiry_ms = add_days_to_timestamp(
-            base_expiry_ms,
-            duration_days,
-        )
-
+        new_expiry_ms = add_days_to_timestamp(base_expiry_ms, duration_days)
         client.expiry_time = new_expiry_ms
 
-        # merge new purchase data into old subscription
         if plan.volume_gb > 0:
             subscription.volume_gb += plan.volume_gb
-
             current_total_bytes = int(client.total_gb or 0)
-            client.total_gb = (
-                current_total_bytes
-                + plan.volume_gb * BYTES_PER_GB
-            )
+            client.total_gb = current_total_bytes + plan.volume_gb * BYTES_PER_GB
 
         subscription.duration_days += duration_days
         subscription.expire_date = datetime.fromtimestamp(
             new_expiry_ms / 1000,
             tz=timezone.utc,
         ).replace(tzinfo=None)
-
         subscription.status = "active"
 
-        if plan_id is not None:
-            subscription.plan_id = plan_id
+        # IMPORTANT: plan_id is the original purchase plan and must remain immutable.
+        # The current renewal/add-on plan is intentionally NOT written back here.
 
         try:
-            await connection.api.client.update(
-                client_uuid=client.id,
-                client=client,
-            )
+            await connection.api.client.update(client_uuid=client.id, client=client)
         except Exception:
             return False
 
         await session.commit()
-
         return True
-
