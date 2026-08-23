@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.bot.models import ServicesContainer, SubscriptionData
 from app.bot.routers.my_services.handler import _status,_sync_subscriptions_with_xui
 from app.bot.routers.subscription.renewal_handler import _effective_expire_date,_format_remaining_time,_format_expire,_get_user_subscription
+from app.bot.routers.subscription.keyboard import pay_keyboard
 from app.bot.utils.navigation import NavMain,NavSubscription
 from app.bot.payment_gateways import GatewayFactory
 from app.db.models import Server,ServicePurchasePlan,Subscription,User
@@ -79,3 +80,23 @@ async def callback_renewal_payment_methods(callback:CallbackQuery,user:User,sess
     subscription=await _get_user_subscription(session,user,subscription_id,services); plan=await ServicePurchasePlan.get(session,plan_id)
     if not subscription or not plan or plan.volume_gb!=0 or plan.duration_days<=0: await callback.answer("❌ سرویس یا پلن افزایش زمان دیگر معتبر نیست.",show_alert=True); await state.clear(); return
     packed.update({"duration":plan.duration_days,"price":plan.price_toman,"volume_gb":subscription.volume_gb,"config_name":subscription.config_name,"devices":subscription.devices,"subscription_id":subscription.id}); await state.update_data(subscription_data=packed); await callback.answer(); await callback.message.edit_text("💳 <b>انتخاب روش پرداخت افزایش زمان</b>\n\n"+f"📦 <b>سرویس:</b> <code>{subscription.config_name}</code>\n"+f"💾 <b>حجم:</b> {subscription.volume_gb} GB\n"+f"📅 <b>مدت:</b> {plan.duration_days} روز\n"+f"💰 <b>مبلغ:</b> {plan.price_toman:,} تومان\n\nروش پرداخت را انتخاب کنید:",reply_markup=_payment_keyboard(subscription.id,plan.id,plan.price_toman,gateway_factory.get_gateways()))
+
+@router.callback_query(F.data.regexp(r"^mp:pay_[^:]+:\d+$"))
+async def callback_managed_payment_from_dynamic_flows(callback:CallbackQuery,user:User,session:AsyncSession,gateway_factory:GatewayFactory,state:FSMContext)->None:
+    gateway_callback,plan_id_text=callback.data[3:].rsplit(":",1)
+    data=await state.get_data(); packed=data.get("subscription_data")
+    if not isinstance(packed,dict):
+        await callback.answer("اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید.",show_alert=True); await state.clear(); return
+    subscription_data=SubscriptionData(state=NavSubscription.CONFIG_NAME,is_extend=packed.get("is_extend",False),is_change=packed.get("is_change",False),user_id=packed.get("user_id",user.tg_id),devices=packed.get("devices",0),duration=packed.get("duration",0),price=packed.get("price",0),plan_id=packed.get("plan_id",0),volume_gb=packed.get("volume_gb",0),config_name=packed.get("config_name","")); subscription_data.subscription_id=packed.get("subscription_id",0)
+    if subscription_data.user_id!=user.tg_id or subscription_data.plan_id!=int(plan_id_text):
+        await callback.answer("❌ اطلاعات سفارش با پلن انتخاب‌شده مطابقت ندارد.",show_alert=True); return
+    plan=await ServicePurchasePlan.get(session,int(plan_id_text))
+    if not plan:
+        await callback.answer("❌ این پلن دیگر وجود ندارد.",show_alert=True); return
+    gateway=gateway_factory.get_gateway(gateway_callback)
+    try:
+        pay_url=await gateway.create_payment(subscription_data)
+        await callback.answer()
+        await callback.message.edit_text("🧾 <b>سفارش شما</b>\n\n"+f"📝 نام کانفیگ: <code>{subscription_data.config_name}</code>\n"+f"📱 تعداد دستگاه: <b>{subscription_data.devices}</b>\n"+f"💾 حجم: <b>{subscription_data.volume_gb} گیگ</b>\n"+f"📅 مدت: <b>{subscription_data.duration} روز</b>\n"+f"💰 مبلغ: <b>{subscription_data.price:,} تومان</b>",reply_markup=pay_keyboard(pay_url,subscription_data))
+    except Exception:
+        await callback.answer("❌ خطا در ایجاد پرداخت.",show_alert=True)
