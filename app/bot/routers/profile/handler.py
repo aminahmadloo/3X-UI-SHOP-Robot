@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.models import ServicesContainer
+from app.bot.models import ClientData, ServicesContainer
 from app.bot.utils.constants import PREVIOUS_CALLBACK_KEY, TransactionStatus
 from app.bot.utils.navigation import NavProfile
 from app.db.models import User
@@ -56,6 +56,27 @@ def _profile_text(user: User, language: str, wallet_balance: int, purchased_serv
         f"💰 موجودی کیف پول: <b>{balance} تومان</b>\n\n"
         "━━━━━━━━━━━━━━━━\n"
         "از این بخش می‌توانید سرویس‌ها، کیف پول، دعوت دوستان و اطلاعات اتصال خود را مدیریت کنید."
+    )
+
+
+async def prepare_message(
+    user: User,
+    client_data: ClientData | None = None,
+    wallet_balance: int = 0,
+) -> str:
+    """Backward-compatible profile message used by the /profile command.
+
+    The account page is now rendered by ``callback_profile``.  This helper is
+    intentionally kept because ``routers.commands`` still imports it.
+    """
+    purchased_services_count = sum(
+        1 for transaction in user.transactions if transaction.status == TransactionStatus.COMPLETED
+    )
+    return _profile_text(
+        user=user,
+        language=user.language_code or "fa",
+        wallet_balance=wallet_balance,
+        purchased_services_count=purchased_services_count,
     )
 
 
