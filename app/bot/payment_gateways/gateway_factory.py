@@ -8,11 +8,7 @@ from app.bot.models import ServicesContainer
 from app.config import Config
 
 from ._gateway import PaymentGateway
-from .cryptomus import Cryptomus
-from .heleket import Heleket
-from .telegram_stars import TelegramStars
-from .yookassa import Yookassa
-from .yoomoney import Yoomoney
+from .zarinpal import ZarinPal
 
 
 class GatewayFactory:
@@ -20,9 +16,6 @@ class GatewayFactory:
         self._gateways: dict[str, PaymentGateway] = {}
 
     def register_gateway(self, gateway: PaymentGateway) -> None:
-        # Gateway classes currently use NavSubscription members for callbacks.
-        # Normalize str/Enum callbacks to their actual value so compact managed
-        # payment buttons produce the same callback string expected by routers.
         callback = gateway.callback
         if hasattr(callback, "value"):
             gateway.callback = callback.value
@@ -49,14 +42,5 @@ class GatewayFactory:
     ) -> None:
         dependencies = [app, config, session, storage, bot, i18n, services]
 
-        gateways = [
-            (config.shop.PAYMENT_STARS_ENABLED, TelegramStars),
-            (config.shop.PAYMENT_CRYPTOMUS_ENABLED, Cryptomus),
-            (config.shop.PAYMENT_HELEKET_ENABLED, Heleket),
-            (config.shop.PAYMENT_YOOKASSA_ENABLED, Yookassa),
-            (config.shop.PAYMENT_YOOMONEY_ENABLED, Yoomoney),
-        ]
-
-        for enabled, gateway_cls in gateways:
-            if enabled:
-                self.register_gateway(gateway_cls(*dependencies))
+        if config.shop.PAYMENT_ZARINPAL_ENABLED:
+            self.register_gateway(ZarinPal(*dependencies))
