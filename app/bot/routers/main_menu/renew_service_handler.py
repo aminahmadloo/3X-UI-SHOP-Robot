@@ -15,7 +15,6 @@ from sqlalchemy.orm import selectinload
 from app.bot.models import ServicesContainer, SubscriptionData
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.routers.my_services.handler import _status, _sync_subscriptions_with_xui
-from app.bot.routers.subscription.keyboard import pay_keyboard
 from app.bot.routers.wallet.handler import has_pending_payment
 from app.db.models import Server, ServicePurchasePlan, Subscription, User
 
@@ -75,6 +74,21 @@ def _payment_methods_keyboard(
     )
     builder.row(_home_button())
     return builder.as_markup()
+
+
+def _payment_link_keyboard(pay_url: str, subscription_id: int, plan_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="💳 پرداخت در زرین‌پال", url=pay_url)],
+            [
+                InlineKeyboardButton(
+                    text="🔙 تغییر روش پرداخت",
+                    callback_data=f"{PAYMENT_METHODS_PREFIX}{subscription_id}:{plan_id}",
+                )
+            ],
+            [_home_button()],
+        ]
+    )
 
 
 def _subscription_data(subscription: Subscription, plan: ServicePurchasePlan, user: User) -> SubscriptionData:
@@ -384,7 +398,7 @@ async def gateway_payment(
         f"📅 زمان افزوده: <b>{plan.duration_days} روز</b>\n"
         f"💰 مبلغ: <b>{plan.price_toman:,} تومان</b>\n\n"
         "برای تکمیل پرداخت روی دکمه زیر بزنید:",
-        reply_markup=pay_keyboard(pay_url=pay_url, callback_data=data),
+        reply_markup=_payment_link_keyboard(pay_url, subscription.id, plan.id),
     )
 
 
@@ -395,7 +409,6 @@ async def card_payment(
     session: AsyncSession,
     services: ServicesContainer,
     state: FSMContext,
-    config,
 ) -> None:
     subscription_id, plan_id = [int(x) for x in (callback.data or "").split(":")[-2:]]
 
