@@ -26,8 +26,10 @@ class ZarinPal(PaymentGateway):
     currency = Currency.TOMAN
     callback = NavSubscription.PAY_ZARINPAL
 
+    API_HOST = "https://api.zarinpal.com"
     REQUEST_PATH = "/pg/v4/payment/request.json"
     VERIFY_PATH = "/pg/v4/payment/verify.json"
+    PAYMENT_HOST = "https://www.zarinpal.com"
 
     def __init__(
         self,
@@ -50,14 +52,6 @@ class ZarinPal(PaymentGateway):
         self.app.router.add_get(ZARINPAL_WEBHOOK, self.callback_handler)
         logger.info("ZarinPal payment gateway initialized.")
 
-    @property
-    def api_host(self) -> str:
-        return "https://sandbox.zarinpal.com" if self.config.zarinpal.SANDBOX else "https://api.zarinpal.com"
-
-    @property
-    def payment_host(self) -> str:
-        return "https://sandbox.zarinpal.com" if self.config.zarinpal.SANDBOX else "https://www.zarinpal.com"
-
     @staticmethod
     def _to_rial(amount_toman: float) -> int:
         try:
@@ -77,7 +71,7 @@ class ZarinPal(PaymentGateway):
         timeout = ClientTimeout(total=20)
         async with ClientSession(timeout=timeout) as client:
             async with client.post(
-                f"{self.api_host}{path}",
+                f"{self.API_HOST}{path}",
                 json=payload,
                 headers={"Content-Type": "application/json"},
             ) as response:
@@ -87,8 +81,7 @@ class ZarinPal(PaymentGateway):
                 return body
 
     async def create_payment(self, data: SubscriptionData) -> str:
-        amount_toman = data.price
-        amount_rial = self._to_rial(amount_toman)
+        amount_rial = self._to_rial(data.price)
         description = _("payment:invoice:description").format(
             devices=format_device_count(data.devices),
             duration=format_subscription_period(data.duration),
@@ -127,7 +120,7 @@ class ZarinPal(PaymentGateway):
             if transaction is None:
                 raise RuntimeError(f"Could not create ZarinPal transaction for authority {authority}")
 
-        pay_url = f"{self.payment_host}/pg/StartPay/{authority}"
+        pay_url = f"{self.PAYMENT_HOST}/pg/StartPay/{authority}"
         logger.info("ZarinPal payment link created for user %s: %s", data.user_id, authority)
         return pay_url
 
