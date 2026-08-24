@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import timezone
+from datetime import datetime, timezone, timedelta
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -53,26 +53,41 @@ def _payment_methods_keyboard(
     gateway_factory: GatewayFactory,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+
+    # 1) درگاه‌های بانکی
     for gateway in gateway_factory.get_gateways():
         builder.row(
             InlineKeyboardButton(
-                text=f"{gateway.name} | {price:,} تومان",
+                text=f"🏦 {gateway.name} | {price:,} تومان",
                 callback_data=f"{GATEWAY_PREFIX}{subscription_id}:{plan_id}:{gateway.callback}",
             )
         )
+
+    # 2) کارت به کارت
     builder.row(
         InlineKeyboardButton(
             text=f"💳 کارت به کارت | {price:,} تومان",
             callback_data=f"{CARD_PREFIX}{subscription_id}:{plan_id}",
         )
     )
+
+    # 3) کیف پول
+    builder.row(
+        InlineKeyboardButton(
+            text=f"👛 پرداخت از کیف پول | {price:,} تومان",
+            callback_data=f"wallet_renewal:{subscription_id}:{plan_id}",
+        )
+    )
+
     builder.row(
         InlineKeyboardButton(
             text="🔙 تغییر سرویس",
             callback_data=f"{SERVICE_CALLBACK_PREFIX}{subscription_id}",
         )
     )
+
     builder.row(_home_button())
+
     return builder.as_markup()
 
 
@@ -234,20 +249,59 @@ async def service_selected(
     expire = subscription.expire_date
     if expire is not None and expire.tzinfo is None:
         expire = expire.replace(tzinfo=timezone.utc)
+
     expire_text = expire.strftime("%Y/%m/%d %H:%M") if expire else "نامحدود"
+
+    client_data = await services.vpn.get_client_data(
+        user,
+        subscription_id=subscription.id,
+    )
+
+    traffic_remaining = (
+        client_data.traffic_remaining_formatted
+        if client_data
+        else "در دسترس نیست"
+    )
+
+    if client_data:
+        remaining_gb = client_data.traffic_remaining / (1024 ** 3)
+        traffic_remaining_value = round(remaining_gb, 2)
+        final_traffic_gb = round(
+            remaining_gb + original_plan.volume_gb,
+            2,
+        )
+    else:
+        traffic_remaining_value = subscription.volume_gb
+        final_traffic_gb = subscription.volume_gb + original_plan.volume_gb
+
+    remaining_days = 0
+    if expire:
+        diff = expire - datetime.now(timezone.utc)
+        remaining_days = max(diff.days, 0)
+
+    final_days = remaining_days + original_plan.duration_days
+
+    new_expire_text = "نامحدود"
+    if expire:
+        new_expire = expire + timedelta(days=original_plan.duration_days)
+        new_expire_text = new_expire.strftime("%Y/%m/%d %H:%M")
+
     icon, status_text = _status(subscription)
 
     await callback.answer()
     await callback.message.edit_text(
         "🔄 <b>خلاصه تمدید سرویس</b>\n\n"
-        f"{icon} <b>سرویس:</b> <code>{subscription.config_name}</code>\n"
-        f"📦 <b>حجم افزوده:</b> {original_plan.volume_gb} GB\n"
-        f"📅 <b>زمان افزوده:</b> {original_plan.duration_days} روز\n"
-        f"⏳ <b>وضعیت فعلی:</b> {status_text}\n"
-        f"🗓 <b>انقضای فعلی:</b> {expire_text}\n"
+        f"{icon} <b>سرویس:</b> <code>{subscription.config_name}</code>\n\n"
+        f"📊 <b>حجم باقی‌مانده:</b> {traffic_remaining_value} GB\n"
+        f"➕ <b>حجم تمدید:</b> {original_plan.volume_gb} GB\n"
+        f"💾 <b>حجم نهایی پس از تمدید:</b> {final_traffic_gb} GB\n\n"
+        f"⏳ <b>زمان باقی‌مانده:</b> {remaining_days} روز\n"
+        f"📅 <b>زمان تمدید:</b> {original_plan.duration_days} روز\n"
+        f"🗓 <b>مدت نهایی پس از تمدید:</b> {final_days} روز\n"
+        f"📆 <b>تاریخ انقضا پس از تمدید:</b> {new_expire_text}\n\n"
         f"💰 <b>مبلغ تمدید:</b> {original_plan.price_toman:,} تومان\n\n"
-        "این عملیات دقیقاً همان حجم و همان مدت پلن اصلی را دوباره به همین سرویس اضافه می‌کند.\n"
-        "کلید اتصال، کلاینت، سرور و مشخصات اتصال موجود حفظ می‌شوند.",
+        "این عملیات همان سرویس و همان کلاینت فعلی را تمدید می‌کند.\n"
+        "کلید اتصال، سرور و مشخصات اتصال موجود حفظ می‌شوند.",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -324,6 +378,7 @@ async def payment_methods(
     await callback.answer()
     await callback.message.edit_text(
         "💳 <b>انتخاب روش پرداخت تمدید سرویس</b>\n\n"
+        f"🟢 <b>سرویس:</b> <code>{subscription.config_name}</code>\n\n"
         f"📦 حجم افزوده: <b>{plan.volume_gb} GB</b>\n"
         f"📅 زمان افزوده: <b>{plan.duration_days} روز</b>\n"
         f"💰 مبلغ: <b>{plan.price_toman:,} تومان</b>\n\n"
