@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
@@ -24,6 +25,86 @@ from app.db.models import Server, Subscription, User
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
+
+
+async def _countdown_delete_text_message(message, text: str, delay: int = 10) -> None:
+    """Update a temporary text message countdown and always delete it."""
+    try:
+        for remaining in range(delay - 1, 0, -1):
+            await asyncio.sleep(1)
+            try:
+                await message.edit_text(
+                    text=(
+                        f"{text}\n\n"
+                        f"⏱️ این پیام پس از {remaining} ثانیه حذف می‌شود."
+                    )
+                )
+            except Exception:
+                logger.debug(
+                    "Could not update temporary text message %s at %s seconds.",
+                    getattr(message, "message_id", None),
+                    remaining,
+                    exc_info=True,
+                )
+
+        await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        raise
+    finally:
+        try:
+            await message.delete()
+        except Exception:
+            logger.debug(
+                "Could not delete temporary text message %s.",
+                getattr(message, "message_id", None),
+                exc_info=True,
+            )
+
+
+async def _countdown_delete_photo_message(
+    message,
+    caption: str,
+    delay: int = 10,
+) -> None:
+    """Update a temporary QR caption countdown and always delete it."""
+    try:
+        for remaining in range(delay - 1, 0, -1):
+            await asyncio.sleep(1)
+            try:
+                await message.edit_caption(
+                    caption=(
+                        f"{caption}\n"
+                        f"⏱️ این پیام پس از {remaining} ثانیه حذف می‌شود."
+                    )
+                )
+            except Exception:
+                logger.debug(
+                    "Could not update temporary QR message %s at %s seconds.",
+                    getattr(message, "message_id", None),
+                    remaining,
+                    exc_info=True,
+                )
+
+        await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        raise
+    finally:
+        try:
+            await message.delete()
+        except Exception:
+            logger.debug(
+                "Could not delete temporary QR message %s.",
+                getattr(message, "message_id", None),
+                exc_info=True,
+            )
+
+
+def _schedule_text_countdown(message, text: str, delay: int = 10) -> None:
+    asyncio.create_task(_countdown_delete_text_message(message, text, delay))
+
+
+def _schedule_photo_countdown(message, caption: str, delay: int = 10) -> None:
+    asyncio.create_task(_countdown_delete_photo_message(message, caption, delay))
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -986,10 +1067,8 @@ async def callback_my_service_subscription(
         "ℹ️ این لینک را می‌توانید در کلاینت‌های سازگار با Subscription وارد کنید."
     )
 
-    await callback.message.edit_text(
-        text=text,
-        reply_markup=_connection_menu(subscription.id),
-    )
+    message = await callback.message.answer(text=text)
+    _schedule_text_countdown(message, text, 10)
 
 
 @router.callback_query(F.data.regexp(r"^my_services:links:\d+$"))
@@ -1042,10 +1121,10 @@ async def callback_my_service_individual_links(
             ]
         )
 
-    await callback.message.edit_text(
-        text="\n".join(lines),
-        reply_markup=_connection_menu(subscription.id),
-    )
+    links_text = "\n".join(lines)
+
+    message = await callback.message.answer(text=links_text)
+    _schedule_text_countdown(message, links_text, 10)
 
 
 def _make_qr_png(content: str) -> bytes:
@@ -1106,16 +1185,19 @@ async def callback_my_service_qr(
     if subscription_url:
         try:
             png = _make_qr_png(subscription_url)
-            await callback.message.answer_photo(
+            caption = (
+                "🖼 <b>QR Code لینک اشتراک</b>\n\n"
+                f"📌 {subscription.config_name}"
+            )
+
+            message = await callback.message.answer_photo(
                 BufferedInputFile(
                     png,
                     filename=f"subscription-{subscription.id}.png",
                 ),
-                caption=(
-                    "🖼 <b>QR Code لینک اشتراک</b>\n\n"
-                    f"📌 {subscription.config_name}"
-                ),
+                caption=caption,
             )
+            _schedule_photo_countdown(message, caption, 10)
         except Exception:
             logger.exception(
                 "Could not generate subscription QR for subscription %s.",
@@ -1125,16 +1207,19 @@ async def callback_my_service_qr(
     for index, link in enumerate(links, start=1):
         try:
             png = _make_qr_png(link)
-            await callback.message.answer_photo(
+            caption = (
+                f"🖼 <b>QR Code اتصال {index}</b>\n\n"
+                f"📌 {subscription.config_name}"
+            )
+
+            message = await callback.message.answer_photo(
                 BufferedInputFile(
                     png,
                     filename=f"connection-{subscription.id}-{index}.png",
                 ),
-                caption=(
-                    f"🖼 <b>QR Code اتصال {index}</b>\n\n"
-                    f"📌 {subscription.config_name}"
-                ),
+                caption=caption,
             )
+            _schedule_photo_countdown(message, caption, 10)
         except Exception:
             logger.exception(
                 "Could not generate QR for subscription %s link %s.",
@@ -1216,10 +1301,10 @@ async def callback_my_service_all_connection_data(
                 ]
             )
 
-    await callback.message.edit_text(
-        text="\n".join(lines),
-        reply_markup=_connection_menu(subscription.id),
-    )
+    all_text = "\n".join(lines)
+
+    message = await callback.message.answer(text=all_text)
+    _schedule_text_countdown(message, all_text, 15)
 
     # Also deliver QR codes as part of "دریافت همه".
     qr_items: list[tuple[str, str]] = []
@@ -1243,13 +1328,19 @@ async def callback_my_service_all_connection_data(
     for index, (label, content) in enumerate(qr_items, start=1):
         try:
             png = _make_qr_png(content)
-            await callback.message.answer_photo(
+            caption = (
+                f"🖼 <b>QR Code {label}</b>\n"
+                f"📌 {subscription.config_name}"
+            )
+
+            message = await callback.message.answer_photo(
                 BufferedInputFile(
                     png,
                     filename=f"toonelvpn-{subscription.id}-{index}.png",
                 ),
-                caption=f"🖼 <b>QR Code {label}</b>\n📌 {subscription.config_name}",
+                caption=caption,
             )
+            _schedule_photo_countdown(message, caption, 15)
         except Exception:
             logger.exception(
                 "Could not generate QR for subscription %s item %s.",
