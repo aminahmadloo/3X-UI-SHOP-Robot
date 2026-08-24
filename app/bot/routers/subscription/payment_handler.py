@@ -1,19 +1,16 @@
 import logging
 
-from aiogram import Bot, F, Router
+from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message, PreCheckoutQuery
+from aiogram.types import CallbackQuery
 from aiogram.utils.i18n import gettext as _
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.filters.is_dev import IsDev
 from app.bot.models import ServicesContainer, SubscriptionData
 from app.bot.payment_gateways import GatewayFactory
-from app.bot.utils.constants import TransactionStatus
 from app.bot.utils.formatting import format_subscription_period
 from app.bot.utils.navigation import NavSubscription
-from app.db.models import Transaction, User
+from app.db.models import User
 
 from .keyboard import pay_keyboard
 
@@ -31,12 +28,11 @@ async def callback_payment_method_selected(
     user: User,
     callback_data: SubscriptionData,
     services: ServicesContainer,
-    bot: Bot,
     gateway_factory: GatewayFactory,
     state: FSMContext,
 ) -> None:
     if await state.get_state() == PaymentState.processing:
-        logger.debug(f"User {user.tg_id} is already processing payment.")
+        logger.debug("User %s is already processing payment.", user.tg_id)
         return
 
     await state.set_state(PaymentState.processing)
@@ -46,10 +42,13 @@ async def callback_payment_method_selected(
         devices = callback_data.devices
         duration = callback_data.duration
         volume_gb = callback_data.volume_gb
-        logger.info(f"User {user.tg_id} selected payment method: {method}")
+        logger.info("User %s selected payment method: %s", user.tg_id, method)
         logger.info(
-            f"User {user.tg_id} selected {devices} devices, "
-            f"{duration} days and {volume_gb} GB."
+            "User %s selected %s devices, %s days and %s GB.",
+            user.tg_id,
+            devices,
+            duration,
+            volume_gb,
         )
 
         gateway = gateway_factory.get_gateway(method)
@@ -58,6 +57,8 @@ async def callback_payment_method_selected(
             price = callback_data.price
         else:
             plan = services.plan.get_plan(devices)
+            if plan is None:
+                raise RuntimeError(f"Plan for {devices} devices was not found")
             price = plan.get_price(currency=gateway.currency, duration=duration)
             callback_data.price = price
 
@@ -81,57 +82,7 @@ async def callback_payment_method_selected(
             reply_markup=pay_keyboard(pay_url=pay_url, callback_data=callback_data),
         )
     except Exception as exception:
-        logger.error(f"Error processing payment: {exception}")
+        logger.exception("Error processing payment for user %s: %s", user.tg_id, exception)
         await services.notification.show_popup(callback=callback, text=_("payment:popup:error"))
     finally:
         await state.set_state(None)
-
-
-@router.pre_checkout_query()
-async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery, user: User) -> None:
-    logger.info(f"Pre-checkout query received from user {user.tg_id}")
-    if pre_checkout_query.invoice_payload:
-        await pre_checkout_query.answer(ok=True)
-    else:
-        await pre_checkout_query.answer(ok=False)
-
-
-@router.message(F.successful_payment)
-async def successful_payment(
-    message: Message,
-    user: User,
-    session: AsyncSession,
-    bot: Bot,
-    gateway_factory: GatewayFactory,
-) -> None:
-    if await IsDev()(user_id=user.tg_id):
-        await bot.refund_star_payment(
-            user_id=user.tg_id,
-            telegram_payment_charge_id=message.successful_payment.telegram_payment_charge_id,
-        )
-
-    data = SubscriptionData.unpack(message.successful_payment.invoice_payload)
-    transaction = await Transaction.create(
-        session=session,
-        tg_id=user.tg_id,
-        subscription=data.serialize(),
-        payment_id=message.successful_payment.telegram_payment_charge_id,
-        status=TransactionStatus.PENDING,
-    )
-
-    if transaction is None:
-        logger.error(
-            "Could not create Telegram Stars transaction for user %s, payment=%s",
-            user.tg_id,
-            message.successful_payment.telegram_payment_charge_id,
-        )
-        return
-
-    gateway = gateway_factory.get_gateway(NavSubscription.PAY_TELEGRAM_STARS)
-    try:
-        await gateway.handle_payment_succeeded(payment_id=transaction.payment_id)
-    except Exception:
-        logger.exception(
-            "Telegram Stars payment %s was received but provisioning failed; transaction remains pending.",
-            transaction.payment_id,
-        )

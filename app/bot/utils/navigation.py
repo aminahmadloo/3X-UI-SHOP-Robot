@@ -53,11 +53,7 @@ class NavSubscription(str, Enum):
     PROMOCODE = "promocode"
     GET_TRIAL = "get_trial"
     PAY = "pay"
-    PAY_YOOKASSA = f"{PAY}_yookassa"
-    PAY_TELEGRAM_STARS = f"{PAY}_telegram_stars"
-    PAY_CRYPTOMUS = f"{PAY}_cryptomus"
-    PAY_HELEKET = f"{PAY}_heleket"
-    PAY_YOOMONEY = f"{PAY}_yoomoney"
+    PAY_ZARINPAL = f"{PAY}_zarinpal"
     BACK_TO_DURATION = "back_to_duration"
     BACK_TO_PAYMENT = "back_to_payment"
 
