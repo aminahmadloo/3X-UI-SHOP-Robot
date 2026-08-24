@@ -17,7 +17,6 @@ from app.bot.payment_gateways import GatewayFactory
 from app.bot.routers.my_services.handler import _status, _sync_subscriptions_with_xui
 from app.bot.routers.wallet.handler import has_pending_payment
 from app.db.models import Server, ServicePurchasePlan, Subscription, User
-from app.bot.utils.jalali import format_jalali
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -244,14 +243,6 @@ async def service_selected(
         )
         return
 
-    logger.warning(
-        "RENEW DEBUG subscription=%s plan_id=%s original_plan=%s user=%s",
-        subscription.id,
-        subscription.plan_id,
-        original_plan.id if original_plan else None,
-        user.tg_id,
-    )
-
     data = _subscription_data(subscription, original_plan, user)
     await state.update_data(subscription_data=data.serialize())
 
@@ -259,7 +250,7 @@ async def service_selected(
     if expire is not None and expire.tzinfo is None:
         expire = expire.replace(tzinfo=timezone.utc)
 
-    expire_text = format_jalali(expire) if expire else "نامحدود"
+    expire_text = expire.strftime("%Y/%m/%d %H:%M") if expire else "نامحدود"
 
     client_data = await services.vpn.get_client_data(
         user,
@@ -293,7 +284,7 @@ async def service_selected(
     new_expire_text = "نامحدود"
     if expire:
         new_expire = expire + timedelta(days=original_plan.duration_days)
-        new_expire_text = format_jalali(new_expire)
+        new_expire_text = new_expire.strftime("%Y/%m/%d %H:%M")
 
     icon, status_text = _status(subscription)
 
@@ -419,12 +410,7 @@ async def gateway_payment(
         await callback.answer("⏳ یک درخواست پرداخت شما در حال بررسی است. لطفاً ابتدا همان درخواست را تعیین تکلیف کنید.", show_alert=True)
         return
 
-    current_state = await state.get_data()
-    logger.warning("GATEWAY DEBUG FULL STATE=%s", current_state)
-
-    packed = current_state.get("subscription_data")
-    logger.warning("GATEWAY DEBUG PACKED=%s", packed)
-
+    packed = (await state.get_data()).get("subscription_data")
     try:
         data = SubscriptionData.deserialize(packed or "")
     except Exception:

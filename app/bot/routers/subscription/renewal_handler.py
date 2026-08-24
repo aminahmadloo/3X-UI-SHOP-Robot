@@ -20,6 +20,7 @@ from app.bot.routers.subscription.keyboard import managed_payment_method_keyboar
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.utils.navigation import NavMain, NavSubscription
 from app.db.models import Server, ServicePurchasePlan, Subscription, User
+from app.bot.utils.jalali import format_jalali
 
 router = Router(name=__name__)
 
@@ -80,7 +81,7 @@ def _summary_keyboard(subscription_id: int, plan_id: int) -> InlineKeyboardMarku
 def _format_expire(value: datetime | None) -> str:
     if not value:
         return "نامحدود"
-    return value.astimezone(timezone.utc).strftime("%Y/%m/%d %H:%M")
+    return format_jalali(value)
 
 
 def _format_remaining_time(value: datetime | None) -> str:

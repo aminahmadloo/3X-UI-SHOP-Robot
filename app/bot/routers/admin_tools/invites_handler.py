@@ -22,6 +22,8 @@ from .keyboard import (
     invite_list_keyboard,
 )
 
+from app.bot.utils.jalali import format_jalali
+
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 
@@ -182,7 +184,7 @@ async def callback_invite_details(
             name=invite.name,
             link=invite_link,
             clicks=invite.clicks,
-            created_at=invite.created_at.strftime("%Y-%m-%d %H:%M"),
+            created_at=invite.format_jalali(created_at),
             status=status,
             revenue_text=revenue_text,
             users_count=stats.users_count,

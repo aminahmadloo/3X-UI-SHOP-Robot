@@ -11,6 +11,7 @@ python = "^3.12"
 aiogram = "^3.15.0"
 qrcode = {extras = ["pil"], version = "^8.0.0"}
 babel = "^2.16.0"
+persiantools = "^5.0.0"
 environs = "^11.2.1"
 cachetools = "^5.5.0"
 py3xui = "==0.7.0"

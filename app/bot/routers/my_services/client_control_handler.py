@@ -24,6 +24,8 @@ from .handler import (
     _time_progress,
 )
 
+from app.bot.utils.jalali import format_jalali
+
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 
@@ -120,9 +122,9 @@ async def _render_details(
 
     start = _effective_start_date(subscription)
     if start:
-        text += f"🗓 <b>شروع:</b> {start.strftime('%Y/%m/%d %H:%M')}\n"
+        text += f"🗓 <b>شروع:</b> {format_jalali(start)}\n"
     if expire:
-        text += f"⏳ <b>انقضا:</b> {expire.strftime('%Y/%m/%d %H:%M')}\n"
+        text += f"⏳ <b>انقضا:</b> {format_jalali(expire)}\n"
         if days is not None:
             if days <= 3 and days > 0:
                 text += f"🟠 <b>فقط {days} روز باقی‌مانده</b>\n"

@@ -57,6 +57,7 @@ async def managed_card_payment(
         return
 
     await state.update_data(
+        subscription_data=subscription_data.serialize(),
         custom_service_subscription=subscription_data.serialize(),
         custom_service_days=subscription_data.duration,
         custom_service_gigabytes=subscription_data.volume_gb,

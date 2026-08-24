@@ -10,6 +10,7 @@ from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
 from app.bot.utils.navigation import NavAdminTools
 from app.db.models import CardPayment, User
+from app.bot.utils.jalali import format_jalali
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -89,7 +90,7 @@ async def card_payment_user_view(callback: CallbackQuery, session, services: Ser
     username = f"@{target.username}" if target.username else "ندارد"
     server_name = target.server.name if target.server else "اختصاص داده نشده"
 
-    created_at = target.created_at.strftime("%Y-%m-%d %H:%M:%S") if target.created_at else "نامشخص"
+    created_at = format_jalali(target.created_at) if target.created_at else "نامشخص"
 
     text = (
         "👤 <b>اطلاعات کاربر</b>\n\n"

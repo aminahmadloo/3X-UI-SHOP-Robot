@@ -37,7 +37,7 @@ class CustomServiceCardPaymentState(StatesGroup):
 
 
 def _build_subscription_data(data: dict, user_tg_id: int) -> SubscriptionData | None:
-    stored = data.get("custom_service_subscription")
+    stored = data.get("subscription_data") or data.get("custom_service_subscription")
     if stored:
         try:
             subscription_data = SubscriptionData.deserialize(stored)
