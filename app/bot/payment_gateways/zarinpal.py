@@ -3,17 +3,15 @@ from __future__ import annotations
 import logging
 from decimal import Decimal, InvalidOperation
 
-from aiogram import Bot
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.utils.i18n import I18n
 from aiogram.utils.i18n import gettext as _
-from aiogram.utils.i18n import lazy_gettext as __
 from aiohttp import ClientSession, ClientTimeout
 from aiohttp.web import Application, Request, Response
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import ServicesContainer, SubscriptionData
-from app.bot.payment_gateways import PaymentGateway
+from app.bot.payment_gateways._gateway import PaymentGateway
 from app.bot.utils.constants import Currency, TransactionStatus, ZARINPAL_WEBHOOK
 from app.bot.utils.formatting import format_device_count, format_subscription_period
 from app.bot.utils.navigation import NavSubscription
@@ -24,14 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 class ZarinPal(PaymentGateway):
-    name = ""
+    name = "🏦 زرین‌پال"
     currency = Currency.TOMAN
     callback = NavSubscription.PAY_ZARINPAL
 
-    API_HOST = "https://sandbox.zarinpal.com" if False else "https://api.zarinpal.com"
     REQUEST_PATH = "/pg/v4/payment/request.json"
     VERIFY_PATH = "/pg/v4/payment/verify.json"
-    PAYMENT_HOST = "https://www.zarinpal.com"
 
     def __init__(
         self,
@@ -39,11 +35,10 @@ class ZarinPal(PaymentGateway):
         config: Config,
         session: async_sessionmaker,
         storage: RedisStorage,
-        bot: Bot,
+        bot,
         i18n: I18n,
         services: ServicesContainer,
     ) -> None:
-        self.name = __("payment:gateway:zarinpal")
         self.app = app
         self.config = config
         self.session = session
@@ -137,44 +132,50 @@ class ZarinPal(PaymentGateway):
         return pay_url
 
     async def handle_payment_succeeded(self, payment_id: str) -> None:
-        async with self.session() as session:
-            transaction = await Transaction.get_by_id(session=session, payment_id=payment_id)
-            if transaction is None:
-                raise RuntimeError(f"ZarinPal transaction {payment_id} was not found")
-            if transaction.status == TransactionStatus.COMPLETED:
-                logger.info("ZarinPal transaction %s was already completed; ignoring duplicate callback.", payment_id)
-                return
-            if transaction.status == TransactionStatus.CANCELED:
-                logger.warning("Ignoring success callback for canceled ZarinPal transaction %s", payment_id)
-                return
-
-            data = SubscriptionData.deserialize(transaction.subscription)
-            amount_rial = self._to_rial(data.price)
-
-        response = await self._request(
-            self.VERIFY_PATH,
-            {
-                "merchant_id": self.config.zarinpal.MERCHANT_ID,
-                "amount": amount_rial,
-                "authority": payment_id,
-            },
+        lock = self.storage.redis.lock(
+            f"payment:zarinpal:{payment_id}",
+            timeout=180,
+            blocking_timeout=10,
         )
-        errors = response.get("errors") or []
-        result = response.get("data") or {}
-        code = result.get("code")
+        async with lock:
+            async with self.session() as session:
+                transaction = await Transaction.get_by_id(session=session, payment_id=payment_id)
+                if transaction is None:
+                    raise RuntimeError(f"ZarinPal transaction {payment_id} was not found")
+                if transaction.status == TransactionStatus.COMPLETED:
+                    logger.info("ZarinPal transaction %s was already completed; ignoring duplicate callback.", payment_id)
+                    return
+                if transaction.status == TransactionStatus.CANCELED:
+                    logger.warning("Ignoring success callback for canceled ZarinPal transaction %s", payment_id)
+                    return
 
-        if errors and code not in (100, 101):
-            raise RuntimeError(f"ZarinPal verification failed: errors={errors}, data={result}")
-        if code not in (100, 101):
-            raise RuntimeError(f"ZarinPal verification failed: data={result}")
+                data = SubscriptionData.deserialize(transaction.subscription)
+                amount_rial = self._to_rial(data.price)
 
-        logger.info(
-            "ZarinPal payment verified: authority=%s ref_id=%s code=%s",
-            payment_id,
-            result.get("ref_id"),
-            code,
-        )
-        await self._on_payment_succeeded(payment_id)
+            response = await self._request(
+                self.VERIFY_PATH,
+                {
+                    "merchant_id": self.config.zarinpal.MERCHANT_ID,
+                    "amount": amount_rial,
+                    "authority": payment_id,
+                },
+            )
+            errors = response.get("errors") or []
+            result = response.get("data") or {}
+            code = result.get("code")
+
+            if errors and code not in (100, 101):
+                raise RuntimeError(f"ZarinPal verification failed: errors={errors}, data={result}")
+            if code not in (100, 101):
+                raise RuntimeError(f"ZarinPal verification failed: data={result}")
+
+            logger.info(
+                "ZarinPal payment verified: authority=%s ref_id=%s code=%s",
+                payment_id,
+                result.get("ref_id"),
+                code,
+            )
+            await self._on_payment_succeeded(payment_id)
 
     async def handle_payment_canceled(self, payment_id: str) -> None:
         async with self.session() as session:
@@ -187,13 +188,10 @@ class ZarinPal(PaymentGateway):
 
         await self._on_payment_canceled(payment_id)
 
-    async def _redirect_to_bot(self, request: Request) -> Response:
+    async def _redirect_to_bot(self) -> Response:
         bot_username = (await self.bot.get_me()).username
         if bot_username:
-            return Response(
-                status=302,
-                headers={"Location": f"https://t.me/{bot_username}"},
-            )
+            return Response(status=302, headers={"Location": f"https://t.me/{bot_username}"})
         return Response(text="بازگشت به ربات انجام شد.", content_type="text/plain")
 
     async def callback_handler(self, request: Request) -> Response:
@@ -206,10 +204,10 @@ class ZarinPal(PaymentGateway):
         try:
             if status != "OK":
                 await self.handle_payment_canceled(authority)
-                return await self._redirect_to_bot(request)
+                return await self._redirect_to_bot()
 
             await self.handle_payment_succeeded(authority)
-            return await self._redirect_to_bot(request)
+            return await self._redirect_to_bot()
         except Exception as exc:
             logger.exception("Error processing ZarinPal callback for %s: %s", authority, exc)
             return Response(
