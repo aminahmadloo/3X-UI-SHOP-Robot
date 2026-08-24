@@ -9,6 +9,7 @@ from aiogram.utils.i18n import gettext as _
 from app.bot.models import ServicesContainer, SubscriptionData
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.utils.formatting import format_subscription_period
+from app.bot.utils.navigation import NavSubscription
 from app.db.models import User
 
 from .keyboard import pay_keyboard
@@ -21,7 +22,7 @@ class PaymentState(StatesGroup):
     processing = State()
 
 
-@router.callback_query(SubscriptionData.filter(F.state.startswith("pay")))
+@router.callback_query(SubscriptionData.filter(F.state.startswith(NavSubscription.PAY)))
 async def callback_payment_method_selected(
     callback: CallbackQuery,
     user: User,
