@@ -27,6 +27,7 @@ from .admin_tools.dynamic_service_period_handler import router as dynamic_servic
 from .admin_tools.dynamic_renewal_management_handler import router as dynamic_renewal_admin_router
 from .admin_tools.dynamic_traffic_addon_management_handler import router as dynamic_traffic_admin_router
 from .admin_tools.server_handler import router as server_router
+from .main_menu.renew_service_handler import router as main_menu_renewal_router
 from .subscription.dynamic_service_purchase_handler import router as dynamic_service_purchase_router
 from .subscription.dynamic_traffic_addon_handler import router as dynamic_traffic_router
 
@@ -44,6 +45,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         my_services.traffic_addon_ui.router,
         my_services.client_control_handler.router,
         my_services.handler.router,
+        main_menu_renewal_router,
         main_menu.handler.router,
         profile.handler.router,
         referral.handler.router,
