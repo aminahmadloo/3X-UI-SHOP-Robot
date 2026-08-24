@@ -98,7 +98,6 @@ class XUIConfig:
 @dataclass
 class ZarinPalConfig:
     MERCHANT_ID: str | None
-    SANDBOX: bool
 
 
 @dataclass
@@ -260,10 +259,7 @@ def load_config() -> Config:
                 default=DEFAULT_SUBSCRIPTION_PATH,
             ),
         ),
-        zarinpal=ZarinPalConfig(
-            MERCHANT_ID=zarinpal_merchant_id,
-            SANDBOX=env.bool("ZARINPAL_SANDBOX", default=False),
-        ),
+        zarinpal=ZarinPalConfig(MERCHANT_ID=zarinpal_merchant_id),
         database=DatabaseConfig(
             HOST=env.str("DB_HOST", default=None),
             PORT=env.int("DB_PORT", default=None),
