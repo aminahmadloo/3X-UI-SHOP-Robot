@@ -75,7 +75,7 @@ def _payment_methods_keyboard(
     builder.row(
         InlineKeyboardButton(
             text=f"👛 پرداخت از کیف پول | {price:,} تومان",
-            callback_data=f"wallet_renewal:{subscription_id}:{plan_id}",
+            callback_data=f"main_renewal:wallet:{subscription_id}:{plan_id}",
         )
     )
 
