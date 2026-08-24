@@ -21,6 +21,13 @@ WALLET_PAYMENT_PREFIX = "wallet_payment"
 
 def _subscription_from_state(data: dict, user_tg_id: int) -> SubscriptionData | None:
     packed = data.get("subscription_data")
+
+    if isinstance(packed, str):
+        try:
+            return SubscriptionData.deserialize(packed)
+        except Exception:
+            return None
+
     if not isinstance(packed, dict):
         return None
 
