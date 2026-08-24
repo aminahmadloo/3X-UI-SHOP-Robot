@@ -50,6 +50,131 @@ def _subscription_from_state(data: dict, user_tg_id: int) -> SubscriptionData | 
     return subscription
 
 
+
+
+@router.callback_query(F.data.regexp(r"^main_renewal:wallet:\d+:\d+$"))
+async def renewal_wallet_payment(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+    services: ServicesContainer,
+    config: Config,
+) -> None:
+    parts = (callback.data or "").split(":")
+    subscription_id = int(parts[2])
+    plan_id = int(parts[3])
+
+    data = await state.get_data()
+    subscription = _subscription_from_state(data, user.tg_id)
+
+    if not subscription or subscription.subscription_id != subscription_id or subscription.plan_id != plan_id:
+        await callback.answer(
+            "❌ اطلاعات تمدید منقضی یا نامعتبر است. دوباره تلاش کنید.",
+            show_alert=True,
+        )
+        await state.clear()
+        return
+
+    plan = await ServicePurchasePlan.get(session, plan_id)
+    if not plan:
+        await callback.answer("❌ پلن تمدید پیدا نشد.", show_alert=True)
+        return
+
+    payment_id = f"{WALLET_PAYMENT_PREFIX}:renewal:{uuid4().hex}"
+
+    transaction = await Transaction.create(
+        session=session,
+        tg_id=user.tg_id,
+        subscription=subscription.serialize(),
+        payment_id=payment_id,
+        status=TransactionStatus.PENDING,
+    )
+
+    if transaction is None:
+        await callback.answer(
+            "❌ ایجاد تراکنش ناموفق بود.",
+            show_alert=True,
+        )
+        return
+
+    try:
+        await services.wallet.debit(
+            user_tg_id=user.tg_id,
+            amount=int(subscription.price),
+            transaction_type="renewal",
+            description=(
+                f"تمدید سرویس {subscription.config_name} - "
+                f"{subscription.volume_gb}GB / {subscription.duration}D"
+            ),
+            reference_id=payment_id,
+        )
+
+    except ValueError:
+        await Transaction.update(
+            session=session,
+            payment_id=payment_id,
+            status=TransactionStatus.CANCELED,
+        )
+
+        await callback.answer(
+            "❌ موجودی کیف پول کافی نیست.",
+            show_alert=True,
+        )
+        return
+
+    success = False
+
+    try:
+        success = await extend_existing_subscription(
+            services=services,
+            user=user,
+            subscription_id=subscription.subscription_id,
+            duration_days=subscription.duration,
+            plan_id=subscription.plan_id,
+        )
+
+    except Exception:
+        logger.exception(
+            "Renewal wallet payment failed for %s",
+            user.tg_id,
+        )
+
+    if not success:
+        await services.wallet.credit(
+            user_tg_id=user.tg_id,
+            amount=int(subscription.price),
+            transaction_type="renewal_refund",
+            description="بازگشت وجه تمدید ناموفق",
+            reference_id=f"{payment_id}:refund",
+        )
+
+        await Transaction.update(
+            session=session,
+            payment_id=payment_id,
+            status=TransactionStatus.CANCELED,
+        )
+
+        await callback.answer(
+            "❌ تمدید انجام نشد و مبلغ به کیف پول برگشت داده شد.",
+            show_alert=True,
+        )
+        return
+
+    await Transaction.update(
+        session=session,
+        payment_id=payment_id,
+        status=TransactionStatus.COMPLETED,
+    )
+
+    await state.clear()
+
+    await callback.answer(
+        "✅ تمدید سرویس با کیف پول انجام شد.",
+        show_alert=True,
+    )
+
+
 @router.callback_query(F.data.regexp(r"^mp_wallet:\d+$"))
 async def managed_wallet_payment(
     callback: CallbackQuery,
