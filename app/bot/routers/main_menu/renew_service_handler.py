@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import timezone
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -263,7 +263,7 @@ async def payment_methods(
     state: FSMContext,
     gateway_factory: GatewayFactory,
 ) -> None:
-    _, _, _, subscription_id_text, plan_id_text = (callback.data or "").split(":")
+    _, _, subscription_id_text, plan_id_text = (callback.data or "").split(":")
     subscription_id = int(subscription_id_text)
     plan_id = int(plan_id_text)
 
@@ -431,9 +431,6 @@ async def card_payment(
     data.subscription_id = subscription.id
     await state.update_data(subscription_data=data.serialize())
 
-    # The existing card-to-card implementation consumes the same persisted
-    # SubscriptionData, but its callback name is part of the legacy payment UI.
-    # We bridge into that flow without changing any of its renewal/addon logic.
     await callback.answer()
     await callback.message.edit_text(
         "💳 <b>کارت به کارت تمدید سرویس</b>\n\n"
