@@ -28,7 +28,6 @@ from .admin_tools.dynamic_renewal_management_handler import router as dynamic_re
 from .admin_tools.dynamic_traffic_addon_management_handler import router as dynamic_traffic_admin_router
 from .admin_tools.server_handler import router as server_router
 from .subscription.dynamic_service_purchase_handler import router as dynamic_service_purchase_router
-from .subscription.dynamic_renewal_handler import router as dynamic_renewal_router
 from .subscription.dynamic_traffic_addon_handler import router as dynamic_traffic_router
 
 
@@ -52,7 +51,6 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         download.handler.router,
 
         dynamic_service_purchase_router,
-        dynamic_renewal_router,
         dynamic_traffic_router,
 
         subscription.renewal_handler.router,
