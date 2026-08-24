@@ -28,12 +28,9 @@ NOTIFICATION_PRE_MESSAGE_TEXT_KEY = "notification_pre_message_text"
 # endregion
 
 # region: Webhook paths
-TELEGRAM_WEBHOOK = "/webhook"  # Telegram webhook path
+TELEGRAM_WEBHOOK = "/webhook"
 CONNECTION_WEBHOOK = "/connection"
-CRYPTOMUS_WEBHOOK = "/cryptomus"
-HELEKET_WEBHOOK = "/heleket"
-YOOKASSA_WEBHOOK = "/yookassa"
-YOOMONEY_WEBHOOK = "/yoomoney"
+ZARINPAL_WEBHOOK = "/zarinpal"
 # endregion
 
 # region: Notification tags
@@ -77,9 +74,7 @@ class TransactionStatus(Enum):
 
 
 class Currency(Enum):
-    RUB = ("RUB", "₽")
-    USD = ("USD", "$")
-    XTR = ("XTR", "★")
+    TOMAN = ("IRT", "تومان")
 
     @property
     def symbol(self) -> str:
