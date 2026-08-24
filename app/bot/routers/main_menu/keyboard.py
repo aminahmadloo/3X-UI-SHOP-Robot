@@ -81,7 +81,7 @@ def main_menu_keyboard(
     builder.row(
         InlineKeyboardButton(
             text="🔄 تمدید سرویس",
-            callback_data="main_menu:renew_service_placeholder",
+            callback_data="main_menu:renew_service",
         ),
     )
 
