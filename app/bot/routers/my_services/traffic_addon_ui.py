@@ -63,7 +63,7 @@ async def callback_my_service_details_with_traffic_button(
     builder.row(
         InlineKeyboardButton(
             text="🔄 تمدید سرویس",
-            callback_data=NavSubscription.RENEW_SERVICE,
+            callback_data="main_menu:renew_service",
         )
     )
     builder.row(
