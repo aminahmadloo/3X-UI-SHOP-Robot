@@ -20,14 +20,7 @@ def main_menu_keyboard(
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    # Main menu layout:
-    # 1. Buy Service
-    # 2. Custom Service
-    # 3. My Services + Wallet
-    # 4. Renew Service + Add Traffic
-    # 5. Account + Referral
-    # 6. Support + Language
-    # 7. Admin (admin only)
+    # 1. خرید سرویس
     builder.row(
         InlineKeyboardButton(
             text="🛒 خرید سرویس",
@@ -36,6 +29,7 @@ def main_menu_keyboard(
         )
     )
 
+    # 2. خرید سرویس با مشخصات دلخواه
     builder.row(
         InlineKeyboardButton(
             text="⚙️ خرید سرویس با مشخصات دلخواه",
@@ -44,6 +38,8 @@ def main_menu_keyboard(
         )
     )
 
+    # 3. سرویس های من | کیف پول
+    # callbackهای هر دو دکمه بدون تغییر
     builder.row(
         InlineKeyboardButton(
             text="📦 سرویس های من",
@@ -55,48 +51,32 @@ def main_menu_keyboard(
         ),
     )
 
-    builder.row(
-        InlineKeyboardButton(
-            text="⏳ افزایش زمان سرویس",
-            callback_data=NavSubscription.RENEW_SERVICE,
-        ),
-        InlineKeyboardButton(
-            text="➕ افزایش حجم",
-            callback_data=NavSubscription.ADD_TRAFFIC,
-        ),
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="👤 حساب کاربری",
-            callback_data=NavProfile.MAIN,
-        ),
-        InlineKeyboardButton(
-            text="🤝 معرفی به دوستان",
-            callback_data=NavReferral.MAIN,
-        ),
-    )
-
-    # تمدید سرویس — callback مستقل و جدا از افزایش زمان سرویس
+    # 4. تمدید سرویس | حساب کاربری
+    # callbackهای هر دو دکمه بدون تغییر
     builder.row(
         InlineKeyboardButton(
             text="🔄 تمدید سرویس",
             callback_data="main_menu:renew_service",
         ),
+        InlineKeyboardButton(
+            text="👤 حساب کاربری",
+            callback_data=NavProfile.MAIN,
+        ),
     )
 
-    # پشتیبانی + تغییر زبان — منطق قبلی بدون تغییر
+    # 5. معرفی به دوستان | پشتیبانی
     builder.row(
+        InlineKeyboardButton(
+            text="🤝 معرفی به دوستان",
+            callback_data=NavReferral.MAIN,
+        ),
         InlineKeyboardButton(
             text=_("main_menu:button:support"),
             callback_data=NavSupport.MAIN,
         ),
-        InlineKeyboardButton(
-            text="🌐 تغییر زبان",
-            callback_data=NavMain.LANGUAGE,
-        ),
     )
 
+    # 6. مدیریت — فقط برای ادمین
     if is_admin:
         builder.row(
             InlineKeyboardButton(

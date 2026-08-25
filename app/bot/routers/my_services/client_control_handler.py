@@ -164,12 +164,6 @@ async def _render_details(
                 callback_data=f"my_services:key:{subscription.id}",
             )
         )
-        builder.row(
-            InlineKeyboardButton(
-                text="⏳ افزایش زمان سرویس",
-                callback_data=NavSubscription.RENEW_SERVICE,
-            )
-        )
 
     builder.row(InlineKeyboardButton(text="🛒 خرید سرویس جدید", callback_data=NavSubscription.BUY))
 
@@ -195,7 +189,7 @@ async def _render_details(
     await callback.message.edit_text(text=text, reply_markup=builder.as_markup())
 
 
-@router.callback_query(F.data.regexp(r"^my_services:view:\d+$"))
+# DISABLED: my_services:view is handled exclusively by handler.py
 async def callback_my_service_details_with_control(
     callback: CallbackQuery,
     user: User,

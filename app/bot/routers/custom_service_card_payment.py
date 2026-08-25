@@ -95,6 +95,7 @@ async def custom_service_payment_card(
     config: Config,
 ) -> None:
     data = await state.get_data()
+    logger.warning("PAYMENT STATE DATA => %s", data)
     subscription_data = _build_subscription_data(data, user.tg_id)
     if not subscription_data:
         await state.clear()

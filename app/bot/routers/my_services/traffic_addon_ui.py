@@ -16,7 +16,7 @@ from app.db.models import Server, Subscription, SubscriptionSettings, User
 router = Router(name=__name__)
 
 
-@router.callback_query(F.data.regexp(r"^my_services:view:\d+$"))
+# DISABLED: my_services:view is handled exclusively by handler.py
 async def callback_my_service_details_with_traffic_button(
     callback: CallbackQuery,
     user: User,
@@ -64,18 +64,6 @@ async def callback_my_service_details_with_traffic_button(
         InlineKeyboardButton(
             text="🔄 تمدید سرویس",
             callback_data=f"main_renewal:service:{subscription.id}",
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="⏳ افزایش زمان سرویس",
-            callback_data=NavSubscription.RENEW_SERVICE,
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="📈 افزایش حجم",
-            callback_data=f"traffic:add:{subscription.id}",
         )
     )
     builder.row(InlineKeyboardButton(text="🛒 خرید سرویس جدید", callback_data=NavSubscription.BUY))
