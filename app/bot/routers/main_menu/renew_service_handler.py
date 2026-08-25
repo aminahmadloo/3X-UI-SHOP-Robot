@@ -151,26 +151,92 @@ async def _original_plan(
     session: AsyncSession,
     subscription: Subscription,
 ) -> ServicePurchasePlan | None:
+    """
+    Resolve the original purchase plan using a safe fallback chain:
+
+    1. subscription.plan_id
+    2. volume + duration encoded in config_name
+       (e.g. 50GB-90D-tg123-1)
+    3. subscription's persisted volume_gb + duration_days
+
+    The first successful match wins.
+    """
+
+    # --------------------------------------------------------
+    # 1) Strongest source: persisted plan_id
+    # --------------------------------------------------------
     if subscription.plan_id:
         plan = await ServicePurchasePlan.get(session, subscription.plan_id)
         if plan and plan.duration_days > 0 and plan.volume_gb > 0:
             return plan
 
-    match = re.search(r"(?P<volume>\d+)GB-(?P<days>\d+)D", subscription.config_name or "")
-    if not match:
-        return None
+    # --------------------------------------------------------
+    # 2) Recover from config_name
+    #    Example: 50GB-90D-tg78797797-1
+    # --------------------------------------------------------
+    match = re.search(
+        r"(?P<volume>\d+)GB-(?P<days>\d+)D",
+        subscription.config_name or "",
+        re.IGNORECASE,
+    )
 
-    volume = int(match.group("volume"))
-    days = int(match.group("days"))
-    candidates: list[ServicePurchasePlan] = []
-    for service_type in ("one_month", "three_month"):
-        candidates.extend(await ServicePurchasePlan.list_by_type(session, service_type))
-    candidates = [
-        plan
-        for plan in candidates
-        if plan.volume_gb == volume and plan.duration_days == days and plan.price_toman > 0
-    ]
-    return candidates[0] if candidates else None
+    if match:
+        volume = int(match.group("volume"))
+        days = int(match.group("days"))
+
+        result = await session.execute(
+            select(ServicePurchasePlan)
+            .where(
+                ServicePurchasePlan.volume_gb == volume,
+                ServicePurchasePlan.duration_days == days,
+                ServicePurchasePlan.volume_gb > 0,
+                ServicePurchasePlan.duration_days > 0,
+                ServicePurchasePlan.price_toman > 0,
+                ServicePurchasePlan.service_type.in_(
+                    ("one_month", "period_2m", "three_month")
+                ),
+            )
+            .order_by(ServicePurchasePlan.id)
+        )
+
+        plan = result.scalars().first()
+        if plan:
+            return plan
+
+    # --------------------------------------------------------
+    # 3) Final fallback: persisted subscription values
+    # --------------------------------------------------------
+    if subscription.volume_gb > 0 and subscription.duration_days > 0:
+        result = await session.execute(
+            select(ServicePurchasePlan)
+            .where(
+                ServicePurchasePlan.volume_gb == subscription.volume_gb,
+                ServicePurchasePlan.duration_days == subscription.duration_days,
+                ServicePurchasePlan.volume_gb > 0,
+                ServicePurchasePlan.duration_days > 0,
+                ServicePurchasePlan.price_toman > 0,
+                ServicePurchasePlan.service_type.in_(
+                    ("one_month", "period_2m", "three_month")
+                ),
+            )
+            .order_by(ServicePurchasePlan.id)
+        )
+
+        plan = result.scalars().first()
+        if plan:
+            return plan
+
+    logger.warning(
+        "Unable to resolve original plan for subscription id=%s "
+        "(plan_id=%s, config_name=%r, volume_gb=%s, duration_days=%s)",
+        subscription.id,
+        subscription.plan_id,
+        subscription.config_name,
+        subscription.volume_gb,
+        subscription.duration_days,
+    )
+
+    return None
 
 
 @router.callback_query(F.data == ENTRY_CALLBACK)
