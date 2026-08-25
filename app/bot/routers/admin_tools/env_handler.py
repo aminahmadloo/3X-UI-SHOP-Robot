@@ -1,9 +1,14 @@
 import logging
+import os
+import re
 from pathlib import Path
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.bot.filters import IsAdmin
 from app.db.models import User
@@ -15,20 +20,145 @@ router = Router(name=__name__)
 ENV_CALLBACK = "admin_env"
 ENV_SCAN_CALLBACK = "admin_env:scan"
 ENV_BACK_CALLBACK = "admin_env:back"
+ENV_REFRESH_CALLBACK = "admin_env:refresh"
 
-# مسیرهایی که نباید برای جستجوی .env وارد آنها شویم.
-SKIP_DIRS = {
-    "/proc",
-    "/sys",
-    "/dev",
-    "/run",
-    "/snap",
-    "/var/lib/docker/overlay2",
-    "/var/lib/docker/containers",
-}
-
-# برای جلوگیری از اسکن بی‌نهایت، فقط فایل‌های کوچک و واقعی .env را قبول می‌کنیم.
 MAX_ENV_SIZE = 1024 * 1024
+
+# فقط فایل‌هایی که واقعاً از داخل کانتینر قابل دسترسی هستند.
+ENV_SEARCH_ROOTS = [
+    Path("/app"),
+    Path("/root"),
+    Path("/opt"),
+    Path("/tmp"),
+    Path("/etc"),
+]
+
+# متغیرهایی که مقدارشان نباید در Telegram نمایش داده شود.
+SECRET_PATTERNS = (
+    "TOKEN",
+    "PASSWORD",
+    "PASSWD",
+    "SECRET",
+    "PRIVATE",
+    "API_KEY",
+    "ACCESS_KEY",
+    "AUTH",
+    "CREDENTIAL",
+)
+
+
+class EnvStates(StatesGroup):
+    waiting_for_value = State()
+
+
+def _is_secret(name: str) -> bool:
+    upper = name.upper()
+    return any(pattern in upper for pattern in SECRET_PATTERNS)
+
+
+def _mask_value(value: str) -> str:
+    if not value:
+        return "—"
+
+    if len(value) <= 6:
+        return "••••••"
+
+    return value[:3] + "••••••" + value[-3:]
+
+
+def _find_env_files() -> list[Path]:
+    found: list[Path] = []
+    seen: set[str] = set()
+
+    priority_paths = [
+        Path("/app/.env"),
+        Path("/app/data/.env"),
+        Path("/root/.env"),
+        Path("/opt/toonelvpn-bot/.env"),
+        Path("/opt/3xui-shop/.env"),
+    ]
+
+    for path in priority_paths:
+        try:
+            if (
+                path.is_file()
+                and path.stat().st_size <= MAX_ENV_SIZE
+                and str(path) not in seen
+            ):
+                found.append(path)
+                seen.add(str(path))
+        except (OSError, PermissionError):
+            pass
+
+    for root in ENV_SEARCH_ROOTS:
+        if not root.exists():
+            continue
+
+        try:
+            for path in root.rglob(".env"):
+                try:
+                    path_str = str(path)
+
+                    if path_str in seen:
+                        continue
+
+                    if not path.is_file():
+                        continue
+
+                    if path.stat().st_size > MAX_ENV_SIZE:
+                        continue
+
+                    found.append(path)
+                    seen.add(path_str)
+
+                    if len(found) >= 30:
+                        return found
+
+                except (OSError, PermissionError):
+                    continue
+
+        except (OSError, PermissionError):
+            continue
+
+    return found
+
+
+def _parse_env(path: Path) -> list[tuple[str, str, str]]:
+    """
+    Returns:
+        (name, value, original_line)
+    """
+    result = []
+
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return result
+
+    for line in content.splitlines():
+        stripped = line.strip()
+
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        match = re.match(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$", line)
+
+        if not match:
+            continue
+
+        name = match.group(1)
+        value = match.group(2)
+
+        if (
+            len(value) >= 2
+            and value[0] == value[-1]
+            and value[0] in ("'", '"')
+        ):
+            value = value[1:-1]
+
+        result.append((name, value, line))
+
+    return result
 
 
 def _env_keyboard(found: list[Path] | None = None) -> InlineKeyboardMarkup:
@@ -49,6 +179,7 @@ def _env_keyboard(found: list[Path] | None = None) -> InlineKeyboardMarkup:
             callback_data=ENV_SCAN_CALLBACK,
         )
     )
+
     builder.row(
         InlineKeyboardButton(
             text="⬅️ بازگشت به مدیریت",
@@ -59,78 +190,143 @@ def _env_keyboard(found: list[Path] | None = None) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def _find_env_files() -> list[Path]:
-    found: list[Path] = []
+def _variables_keyboard(path_index: int, variables: list[tuple[str, str, str]]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
 
-    # مسیرهای محتمل ابتدا بررسی می‌شوند.
-    priority_paths = [
-        Path("/tmp/toonelvpn-repo/.env"),
-        Path("/opt/toonelvpn-bot/.env"),
-        Path("/opt/3xui-shop/.env"),
-        Path("/root/.env"),
-        Path("/.env"),
-    ]
+    for index, (name, value, _) in enumerate(variables):
+        shown = _mask_value(value) if _is_secret(name) else value
 
-    seen: set[str] = set()
+        if len(shown) > 35:
+            shown = shown[:32] + "..."
 
-    for path in priority_paths:
-        try:
-            if (
-                path.is_file()
-                and path.stat().st_size <= MAX_ENV_SIZE
-                and str(path) not in seen
-            ):
-                found.append(path)
-                seen.add(str(path))
-        except (OSError, PermissionError):
-            continue
+        builder.row(
+            InlineKeyboardButton(
+                text=f"✏️ {name} = {shown}",
+                callback_data=f"admin_env:edit:{path_index}:{index}",
+            )
+        )
 
-    # سپس جستجوی عمومی روی فایل‌سیستم.
-    roots = [
-        Path("/tmp"),
-        Path("/opt"),
-        Path("/root"),
-        Path("/home"),
-        Path("/etc"),
-    ]
+    builder.row(
+        InlineKeyboardButton(
+            text="🔄 بازخوانی",
+            callback_data=f"admin_env:open:{path_index}",
+        )
+    )
 
-    for root in roots:
-        if not root.exists():
-            continue
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ فایل‌های ENV",
+            callback_data=ENV_SCAN_CALLBACK,
+        )
+    )
 
-        try:
-            for path in root.rglob(".env"):
-                try:
-                    path_str = str(path)
+    return builder.as_markup()
 
-                    if path_str in seen:
-                        continue
 
-                    if any(
-                        path_str == skip or path_str.startswith(skip + "/")
-                        for skip in SKIP_DIRS
-                    ):
-                        continue
+def _get_env_path(index: int) -> Path | None:
+    files = _find_env_files()
 
-                    if not path.is_file():
-                        continue
+    if index < 0 or index >= len(files):
+        return None
 
-                    if path.stat().st_size > MAX_ENV_SIZE:
-                        continue
+    return files[index]
 
-                    found.append(path)
-                    seen.add(path_str)
 
-                    if len(found) >= 50:
-                        return found
+def _update_env_value(path: Path, key: str, new_value: str) -> bool:
+    """
+    مقدار یک متغیر ENV را مستقیماً داخل فایل به‌روزرسانی می‌کند.
 
-                except (OSError, PermissionError):
-                    continue
+    توجه:
+    فایل .env ممکن است bind-mounted باشد؛ بنابراین نباید از os.replace()
+    برای جایگزین کردن فایل استفاده کنیم.
+    """
+    try:
+        if not path.is_file():
+            return False
 
-        except (OSError, PermissionError):
-            continue
+        original = path.read_text(encoding="utf-8")
 
-    return found
+        lines = original.splitlines(keepends=True)
+        key_prefix = f"{key}="
+
+        found = False
+        updated_lines = []
+
+        for line in lines:
+            stripped = line.lstrip()
+
+            if stripped.startswith("#"):
+                updated_lines.append(line)
+                continue
+
+            if stripped.startswith(key_prefix):
+                newline = "\n" if line.endswith("\n") else ""
+                updated_lines.append(f"{key}={new_value}{newline}")
+                found = True
+            else:
+                updated_lines.append(line)
+
+        if not found:
+            return False
+
+        updated = "".join(updated_lines)
+
+        # مستقیماً خود فایل bind-mounted را بازنویسی می‌کنیم.
+        with path.open("w", encoding="utf-8") as f:
+            f.write(updated)
+            f.flush()
+
+        return True
+
+    except (OSError, UnicodeError) as exc:
+        logger.exception(
+            "Failed to update ENV variable %s in %s: %s",
+            key,
+            path,
+            exc,
+        )
+        return False
+
+async def _show_env_file(
+    callback: CallbackQuery,
+    path_index: int,
+) -> None:
+    """نمایش متغیرهای یک فایل ENV."""
+
+    path = _get_env_path(path_index)
+
+    if path is None:
+        await callback.message.edit_text(
+            "⚙️ <b>مدیریت متغیرهای ENV.</b>\n\n"
+            "❌ فایل ENV موردنظر دیگر قابل دسترسی نیست.\n\n"
+            "لطفاً دوباره جستجو کنید.",
+            reply_markup=_env_keyboard(),
+        )
+        return
+
+    variables = _parse_env(path)
+
+    if not variables:
+        await callback.message.edit_text(
+            "⚙️ <b>مدیریت متغیرهای ENV.</b>\n\n"
+            f"📄 فایل: <code>{path}</code>\n\n"
+            "❌ هیچ متغیر ENV قابل شناسایی در این فایل پیدا نشد.",
+            reply_markup=_variables_keyboard(path_index, variables),
+        )
+        return
+
+    text = (
+        "⚙️ <b>مدیریت متغیرهای ENV</b>\n\n"
+        f"📄 فایل: <code>{path}</code>\n"
+        f"تعداد متغیرها: <b>{len(variables)}</b>\n\n"
+        "🔐 مقادیر حساس به‌صورت مخفی نمایش داده می‌شوند.\n"
+        "برای تغییر هر متغیر، روی آن بزنید:"
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=_variables_keyboard(path_index, variables),
+    )
 
 
 @router.callback_query(F.data == ENV_CALLBACK, IsAdmin())
@@ -142,9 +338,10 @@ async def env_main(
 
     await callback.message.edit_text(
         "⚙️ <b>مدیریت متغیرهای ENV.</b>\n\n"
-        "از این بخش می‌توانید فایل‌های <code>.env</code> موجود روی سرور "
-        "را پیدا و مدیریت کنید.\n\n"
-        "برای شروع، دکمه «جستجوی فایل‌های ENV» را بزنید.",
+        "فایل‌های <code>.env</code> قابل دسترسی از داخل ربات "
+        "را می‌توانید از این بخش مدیریت کنید.\n\n"
+        "فایل ENV اصلی ربات از مسیر <code>/app/.env</code> "
+        "در دسترس است.",
         reply_markup=_env_keyboard(),
     )
 
@@ -161,7 +358,8 @@ async def env_scan(
     if not found:
         await callback.message.edit_text(
             "⚙️ <b>مدیریت متغیرهای ENV.</b>\n\n"
-            "❌ هیچ فایل <code>.env</code> قابل دسترسی پیدا نشد.",
+            "❌ هیچ فایل <code>.env</code> قابل دسترسی پیدا نشد.\n\n"
+            "مسیرهای قابل بررسی داخل کانتینر بررسی شدند.",
             reply_markup=_env_keyboard(),
         )
         return
@@ -172,28 +370,9 @@ async def env_scan(
         "فایل موردنظر را انتخاب کنید:"
     )
 
-    # فعلاً فقط نمایش مسیر؛ محتوای ENV در این مرحله خوانده نمی‌شود.
     await callback.message.edit_text(
         text,
         reply_markup=_env_keyboard(found),
-    )
-
-
-@router.callback_query(F.data == ENV_BACK_CALLBACK, IsAdmin())
-async def env_back(
-    callback: CallbackQuery,
-    user: User,
-) -> None:
-    from app.bot.routers.admin_tools.keyboard import admin_tools_keyboard
-    from app.bot.filters import IsDev
-
-    await callback.answer()
-
-    is_dev = await IsDev()(user_id=user.tg_id)
-
-    await callback.message.edit_text(
-        "⚙️ <b>مدیریت ربات</b>",
-        reply_markup=admin_tools_keyboard(is_dev),
     )
 
 
@@ -202,7 +381,158 @@ async def env_file_selected(
     callback: CallbackQuery,
     user: User,
 ) -> None:
-    await callback.answer(
-        "این بخش در مرحله بعد فعال می‌شود.",
-        show_alert=True,
+    await callback.answer()
+
+    try:
+        path_index = int(callback.data.rsplit(":", 1)[1])
+    except (ValueError, AttributeError):
+        await callback.answer("❌ فایل نامعتبر است.", show_alert=True)
+        return
+
+    await _show_env_file(callback, path_index)
+
+
+@router.callback_query(F.data.startswith("admin_env:open:"), IsAdmin())
+async def env_file_open(
+    callback: CallbackQuery,
+    user: User,
+) -> None:
+    await callback.answer("🔄 در حال بازخوانی...")
+
+    try:
+        path_index = int(callback.data.rsplit(":", 1)[1])
+    except (ValueError, AttributeError):
+        await callback.answer("❌ فایل نامعتبر است.", show_alert=True)
+        return
+
+    await _show_env_file(callback, path_index)
+
+
+@router.callback_query(F.data.startswith("admin_env:edit:"), IsAdmin())
+async def env_edit(
+    callback: CallbackQuery,
+    user: User,
+    state: FSMContext,
+) -> None:
+    await callback.answer()
+
+    parts = callback.data.split(":")
+
+    try:
+        path_index = int(parts[2])
+        variable_index = int(parts[3])
+    except (ValueError, IndexError):
+        await callback.answer("❌ متغیر نامعتبر است.", show_alert=True)
+        return
+
+    path = _get_env_path(path_index)
+
+    if path is None:
+        await callback.answer("❌ فایل ENV پیدا نشد.", show_alert=True)
+        return
+
+    variables = _parse_env(path)
+
+    if variable_index < 0 or variable_index >= len(variables):
+        await callback.answer("❌ متغیر پیدا نشد.", show_alert=True)
+        return
+
+    name, value, _ = variables[variable_index]
+
+    await state.set_state(EnvStates.waiting_for_value)
+    await state.update_data(
+        env_path=str(path),
+        env_key=name,
+        env_path_index=path_index,
+    )
+
+    current = _mask_value(value) if _is_secret(name) else value
+
+    await callback.message.edit_text(
+        "✏️ <b>ویرایش متغیر ENV</b>\n\n"
+        f"📄 فایل: <code>{path}</code>\n"
+        f"🔑 نام متغیر: <code>{name}</code>\n"
+        f"📌 مقدار فعلی: <code>{current}</code>\n\n"
+        "مقدار جدید را در یک پیام ارسال کنید.\n\n"
+        "⚠️ اگر این متغیر حساس است، مقدار ارسال‌شده در چت قابل مشاهده خواهد بود؛ "
+        "پس بعد از ارسال، پیام خود را حذف کنید.",
+    )
+
+
+@router.message(EnvStates.waiting_for_value, IsAdmin())
+async def env_value_received(
+    message: Message,
+    user: User,
+    state: FSMContext,
+) -> None:
+    data = await state.get_data()
+
+    path_str = data.get("env_path")
+    key = data.get("env_key")
+    path_index = data.get("env_path_index")
+
+    if not path_str or not key:
+        await state.clear()
+        await message.answer("❌ اطلاعات ویرایش منقضی شده است.")
+        return
+
+    new_value = message.text or ""
+
+    if "\n" in new_value or "\r" in new_value:
+        await message.answer(
+            "❌ مقدار باید تک‌خطی باشد. دوباره ارسال کنید."
+        )
+        return
+
+    path = Path(path_str)
+
+    if not path.is_file():
+        await state.clear()
+        await message.answer("❌ فایل ENV دیگر وجود ندارد.")
+        return
+
+    if not _update_env_value(path, key, new_value):
+        await state.clear()
+        await message.answer(
+            "❌ ذخیره مقدار جدید انجام نشد."
+        )
+        return
+
+    await state.clear()
+
+    await message.answer(
+        "✅ <b>متغیر با موفقیت ذخیره شد.</b>\n\n"
+        f"🔑 <code>{key}</code>\n"
+        "📁 فایل ENV به‌روزرسانی شد.",
+    )
+
+    # نمایش دوباره پنل
+    if isinstance(path_index, int):
+        variables = _parse_env(path)
+
+        await message.answer(
+            "⚙️ <b>متغیرهای ENV</b>\n\n"
+            f"📄 <code>{path}</code>\n\n"
+            "برای ویرایش یک متغیر، آن را انتخاب کنید:",
+            reply_markup=_variables_keyboard(path_index, variables),
+        )
+
+
+@router.callback_query(F.data == ENV_BACK_CALLBACK, IsAdmin())
+async def env_back(
+    callback: CallbackQuery,
+    user: User,
+    state: FSMContext,
+) -> None:
+    from app.bot.routers.admin_tools.keyboard import admin_tools_keyboard
+    from app.bot.filters import IsDev
+
+    await state.clear()
+    await callback.answer()
+
+    is_dev = await IsDev()(user_id=user.tg_id)
+
+    await callback.message.edit_text(
+        "⚙️ <b>مدیریت ربات</b>",
+        reply_markup=admin_tools_keyboard(is_dev),
     )
