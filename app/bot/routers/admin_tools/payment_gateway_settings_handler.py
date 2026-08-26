@@ -20,7 +20,6 @@ class PaymentGatewaySettingsState(StatesGroup):
 
 def menu_markup(settings: PaymentGatewaySettings | None) -> InlineKeyboardMarkup:
     configured = bool(settings and settings.zarinpal_payment_base_url_configured)
-    url = (settings.zarinpal_payment_base_url if settings else "").strip()
     rows = [
         [InlineKeyboardButton(text="✏️ ویرایش مسیر پرداخت زرین‌پال", callback_data="paymentgateway:edit_zarinpal_url")],
     ]
@@ -31,18 +30,10 @@ def menu_markup(settings: PaymentGatewaySettings | None) -> InlineKeyboardMarkup
                 callback_data="paymentgateway:disable_custom_url",
             )
         ])
-        if url:
-            rows.append([
-                InlineKeyboardButton(
-                    text="♻️ بازگشت به مقدار .env",
-                    callback_data="paymentgateway:reset_env",
-                )
-            ])
-    else:
         rows.append([
             InlineKeyboardButton(
-                text="🟢 استفاده از مسیر .env",
-                callback_data="paymentgateway:use_env",
+                text="♻️ بازگشت به مقدار .env",
+                callback_data="paymentgateway:reset_env",
             )
         ])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavAdminTools.MAIN)])
@@ -59,11 +50,11 @@ async def show_menu(callback: CallbackQuery, session: AsyncSession, config: Conf
             status = "🟢 فعال (تنظیم مدیریت)"
             effective_url = custom_url
         else:
-            status = "🔴 غیرفعال؛ پرداخت مستقیم زرین‌پال"
-            effective_url = "https://www.zarinpal.com"
+            status = "🔵 مستقیم زرین‌پال (تنظیم مدیریت)"
+            effective_url = config.zarinpal.DIRECT_PAYMENT_BASE_URL
     else:
         status = "🟢 فعال از .env" if config.zarinpal.PAYMENT_BASE_URL else "🔵 مستقیم زرین‌پال"
-        effective_url = config.zarinpal.PAYMENT_BASE_URL or "https://www.zarinpal.com"
+        effective_url = config.zarinpal.PAYMENT_BASE_URL or config.zarinpal.DIRECT_PAYMENT_BASE_URL
 
     text = (
         "💳 <b>تنظیمات درگاه‌های پرداخت</b>\n\n"
@@ -97,8 +88,15 @@ async def edit_zarinpal_url_start(callback: CallbackQuery, state: FSMContext) ->
     )
 
 
+@router.callback_query(F.data == NavAdminTools.PAYMENT_GATEWAY_SETTINGS, IsAdmin())
+async def payment_gateway_settings_menu_while_editing(callback: CallbackQuery, state: FSMContext, session: AsyncSession, config: Config) -> None:
+    await state.clear()
+    await callback.answer()
+    await show_menu(callback, session, config)
+
+
 @router.message(PaymentGatewaySettingsState.waiting_zarinpal_payment_base_url, IsAdmin())
-async def receive_zarinpal_url(message: Message, state: FSMContext, session: AsyncSession, config: Config) -> None:
+async def receive_zarinpal_url(message: Message, state: FSMContext, session: AsyncSession) -> None:
     value = (message.text or "").strip().rstrip("/")
     if value:
         parsed = urlparse(value)
@@ -153,8 +151,3 @@ async def reset_to_env(callback: CallbackQuery, session: AsyncSession, config: C
     await session.commit()
     await callback.answer("مقدار .env دوباره فعال شد.", show_alert=True)
     await show_menu(callback, session, config)
-
-
-@router.callback_query(F.data == "paymentgateway:use_env", IsAdmin())
-async def use_env(callback: CallbackQuery, session: AsyncSession, config: Config) -> None:
-    await reset_to_env(callback, session, config)
