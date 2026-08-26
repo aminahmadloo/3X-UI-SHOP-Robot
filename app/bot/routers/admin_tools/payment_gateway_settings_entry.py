@@ -1,5 +1,6 @@
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton
+from aiogram.utils.i18n import gettext as _
 
 from app.bot.filters import IsAdmin, IsDev
 from app.bot.routers.admin_tools.keyboard import admin_tools_keyboard
@@ -18,4 +19,4 @@ async def payment_gateway_settings_admin_menu(callback: CallbackQuery, user: Use
         [InlineKeyboardButton(text="💳 تنظیمات درگاه‌های پرداخت", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
     )
     await callback.answer()
-    await callback.message.edit_text(text="🛠 <b>ابزارهای مدیریت</b>", reply_markup=markup)
+    await callback.message.edit_text(text=_("admin_tools:message:main"), reply_markup=markup)
