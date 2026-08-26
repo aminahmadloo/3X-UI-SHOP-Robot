@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.models import SubscriptionData
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.routers.wallet.handler import has_pending_payment
-from app.bot.utils.navigation import NavSubscription
+from app.bot.utils.navigation import NavMain, NavSubscription
 from app.db.models import User
 
 router = Router(name=__name__)
@@ -60,7 +60,7 @@ async def callback_wallet_payment_gateway(
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="💳 پرداخت در زرین‌پال", url=pay_url)],
-                [InlineKeyboardButton(text="🔙 تغییر روش پرداخت", callback_data=NavSubscription.MAIN)],
+                [InlineKeyboardButton(text="🔙 تغییر روش پرداخت", callback_data=NavMain.WALLET)],
             ]
         ),
     )
