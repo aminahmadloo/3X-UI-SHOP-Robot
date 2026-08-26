@@ -46,7 +46,7 @@ async def callback_wallet_payment_gateway(
     )
 
     try:
-        gateway = gateway_factory.get_gateway(NavSubscription.PAY_ZARINPAL)
+        gateway = gateway_factory.get_gateway(NavSubscription.PAY_ZARINPAL.value)
         pay_url = await gateway.create_payment(data)
     except Exception:
         await callback.answer("❌ ایجاد لینک پرداخت شارژ کیف پول انجام نشد. لطفاً دوباره تلاش کنید.", show_alert=True)
