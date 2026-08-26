@@ -83,13 +83,13 @@ async def edit_zarinpal_url_start(callback: CallbackQuery, state: FSMContext) ->
         "<code>https://payment.yashginartgallery.com</code>\n\n"
         "برای استفاده مستقیم از زرین‌پال، مقدار خالی را ذخیره کنید.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 انصراف", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)]
+            [InlineKeyboardButton(text="🔙 انصراف", callback_data="paymentgateway:cancel_edit")]
         ]),
     )
 
 
-@router.callback_query(F.data == NavAdminTools.PAYMENT_GATEWAY_SETTINGS, IsAdmin())
-async def payment_gateway_settings_menu_while_editing(callback: CallbackQuery, state: FSMContext, session: AsyncSession, config: Config) -> None:
+@router.callback_query(F.data == "paymentgateway:cancel_edit", IsAdmin())
+async def cancel_edit(callback: CallbackQuery, state: FSMContext, session: AsyncSession, config: Config) -> None:
     await state.clear()
     await callback.answer()
     await show_menu(callback, session, config)
