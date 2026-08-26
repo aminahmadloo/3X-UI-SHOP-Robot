@@ -21,6 +21,8 @@ from . import (
 )
 from .admin_tools.card_payment_handler import router as card_payment_router
 from .admin_tools.card_settings_handler import router as card_settings_router
+from .admin_tools.payment_gateway_settings_entry import router as payment_gateway_settings_entry_router
+from .admin_tools.payment_gateway_settings_handler import router as payment_gateway_settings_router
 from .admin_tools.wallet_amounts_handler import router as wallet_amounts_router
 from .admin_tools.service_purchase_management_menu_handler import router as service_purchase_management_menu_router
 from .admin_tools.dynamic_service_period_handler import router as dynamic_service_period_router
@@ -63,6 +65,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         dynamic_service_period_router,
         dynamic_traffic_admin_router,
         server_router,
+        payment_gateway_settings_entry_router,
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,
         admin_tools.inbound_management_handler.router,
@@ -77,5 +80,6 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         admin_tools.user_handler.router,
         card_payment_router,
         card_settings_router,
+        payment_gateway_settings_router,
         wallet_amounts_router,
     )
