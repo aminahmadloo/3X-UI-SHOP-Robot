@@ -26,11 +26,6 @@ class ZarinPal(PaymentGateway):
     name = "🏦 زرین‌پال"
     currency = Currency.TOMAN
     callback = NavSubscription.PAY_ZARINPAL
-
-    API_HOST = "https://api.zarinpal.com"
-    REQUEST_PATH = "/pg/v4/payment/request.json"
-    VERIFY_PATH = "/pg/v4/payment/verify.json"
-    PAYMENT_HOST = "https://www.zarinpal.com"
     CUSTOM_PAYMENT_PATH = "/pg/StartPay/{authority}"
 
     def __init__(
@@ -70,19 +65,6 @@ class ZarinPal(PaymentGateway):
             raise ValueError(f"Payment amount must resolve to whole Rials: {amount_toman}")
         return int(rial)
 
-    async def _request(self, path: str, payload: dict) -> dict:
-        timeout = ClientTimeout(total=20)
-        async with ClientSession(timeout=timeout) as client:
-            async with client.post(
-                f"{self.API_HOST}{path}",
-                json=payload,
-                headers={"Content-Type": "application/json"},
-            ) as response:
-                body = await response.json(content_type=None)
-                if response.status >= 400:
-                    raise RuntimeError(f"ZarinPal HTTP {response.status}: {body}")
-                return body
-
     async def _get_custom_payment_base_url(self, session: AsyncSession) -> str | None:
         settings = await PaymentGatewaySettings.get(session)
         if settings and settings.zarinpal_payment_base_url_configured:
@@ -96,7 +78,20 @@ class ZarinPal(PaymentGateway):
 
         if base_url:
             return f"{base_url}{self.CUSTOM_PAYMENT_PATH.format(authority=quote(authority, safe=''))}"
-        return f"{self.PAYMENT_HOST}/pg/StartPay/{authority}"
+        return f"{self.config.zarinpal.DIRECT_PAYMENT_BASE_URL}/pg/StartPay/{authority}"
+
+    async def _request(self, path: str, payload: dict) -> dict:
+        timeout = ClientTimeout(total=self.config.zarinpal.HTTP_TIMEOUT)
+        async with ClientSession(timeout=timeout) as client:
+            async with client.post(
+                f"{self.config.zarinpal.API_BASE_URL}{path}",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+            ) as response:
+                body = await response.json(content_type=None)
+                if response.status >= 400:
+                    raise RuntimeError(f"ZarinPal HTTP {response.status}: {body}")
+                return body
 
     async def create_payment(self, data: SubscriptionData) -> str:
         amount_rial = self._to_rial(data.price)
@@ -117,7 +112,7 @@ class ZarinPal(PaymentGateway):
             },
         }
 
-        response = await self._request(self.REQUEST_PATH, payload)
+        response = await self._request(self.config.zarinpal.REQUEST_PATH, payload)
         errors = response.get("errors") or []
         result = response.get("data") or {}
         code = result.get("code")
@@ -153,7 +148,7 @@ class ZarinPal(PaymentGateway):
         if not base_url:
             return Response(text="مسیر پرداخت اختصاصی فعال نیست.", status=404, content_type="text/plain")
 
-        location = f"{self.PAYMENT_HOST}/pg/StartPay/{quote(authority, safe='')}"
+        location = f"{self.config.zarinpal.DIRECT_PAYMENT_BASE_URL}/pg/StartPay/{quote(authority, safe='')}"
         logger.info("Redirecting custom payment URL to ZarinPal: authority=%s", authority)
         return Response(status=302, headers={"Location": location})
 
@@ -179,7 +174,7 @@ class ZarinPal(PaymentGateway):
                 amount_rial = self._to_rial(data.price)
 
             response = await self._request(
-                self.VERIFY_PATH,
+                self.config.zarinpal.VERIFY_PATH,
                 {
                     "merchant_id": self.config.zarinpal.MERCHANT_ID,
                     "amount": amount_rial,
