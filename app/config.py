@@ -46,6 +46,12 @@ DEFAULT_REDIS_PORT = 6379
 DEFAULT_SUBSCRIPTION_PORT = 2096
 DEFAULT_SUBSCRIPTION_PATH = "/user/"
 
+DEFAULT_ZARINPAL_API_BASE_URL = "https://api.zarinpal.com"
+DEFAULT_ZARINPAL_REQUEST_PATH = "/pg/v4/payment/request.json"
+DEFAULT_ZARINPAL_VERIFY_PATH = "/pg/v4/payment/verify.json"
+DEFAULT_ZARINPAL_DIRECT_PAYMENT_BASE_URL = "https://www.zarinpal.com"
+DEFAULT_ZARINPAL_PAYMENT_TIMEOUT = 20
+
 DEFAULT_LOG_LEVEL = "DEBUG"
 DEFAULT_LOG_FORMAT = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
 DEFAULT_LOG_ARCHIVE_FORMAT = LOG_ZIP_ARCHIVE_FORMAT
@@ -98,6 +104,12 @@ class XUIConfig:
 @dataclass
 class ZarinPalConfig:
     MERCHANT_ID: str | None
+    PAYMENT_BASE_URL: str | None
+    API_BASE_URL: str
+    REQUEST_PATH: str
+    VERIFY_PATH: str
+    DIRECT_PAYMENT_BASE_URL: str
+    HTTP_TIMEOUT: int
 
 
 @dataclass
@@ -166,6 +178,32 @@ def load_config() -> Config:
     if payment_zarinpal_enabled and not zarinpal_merchant_id:
         logger.error("ZARINPAL_MERCHANT_ID is not set. ZarinPal payment is disabled.")
         payment_zarinpal_enabled = False
+
+    zarinpal_payment_base_url = env.str("ZARINPAL_PAYMENT_BASE_URL", default=None)
+    if zarinpal_payment_base_url:
+        zarinpal_payment_base_url = zarinpal_payment_base_url.rstrip("/")
+
+    zarinpal_api_base_url = env.str(
+        "ZARINPAL_API_BASE_URL",
+        default=DEFAULT_ZARINPAL_API_BASE_URL,
+    ).rstrip("/")
+    zarinpal_request_path = env.str(
+        "ZARINPAL_REQUEST_PATH",
+        default=DEFAULT_ZARINPAL_REQUEST_PATH,
+    )
+    zarinpal_verify_path = env.str(
+        "ZARINPAL_VERIFY_PATH",
+        default=DEFAULT_ZARINPAL_VERIFY_PATH,
+    )
+    zarinpal_direct_payment_base_url = env.str(
+        "ZARINPAL_DIRECT_PAYMENT_BASE_URL",
+        default=DEFAULT_ZARINPAL_DIRECT_PAYMENT_BASE_URL,
+    ).rstrip("/")
+    zarinpal_payment_timeout = env.int(
+        "ZARINPAL_HTTP_TIMEOUT",
+        default=DEFAULT_ZARINPAL_PAYMENT_TIMEOUT,
+        validate=Range(min=1, error="ZARINPAL_HTTP_TIMEOUT must be >= 1"),
+    )
 
     referrer_reward_type = env.str(
         "SHOP_REFERRED_REWARD_TYPE",
@@ -259,7 +297,15 @@ def load_config() -> Config:
                 default=DEFAULT_SUBSCRIPTION_PATH,
             ),
         ),
-        zarinpal=ZarinPalConfig(MERCHANT_ID=zarinpal_merchant_id),
+        zarinpal=ZarinPalConfig(
+            MERCHANT_ID=zarinpal_merchant_id,
+            PAYMENT_BASE_URL=zarinpal_payment_base_url,
+            API_BASE_URL=zarinpal_api_base_url,
+            REQUEST_PATH=zarinpal_request_path,
+            VERIFY_PATH=zarinpal_verify_path,
+            DIRECT_PAYMENT_BASE_URL=zarinpal_direct_payment_base_url,
+            HTTP_TIMEOUT=zarinpal_payment_timeout,
+        ),
         database=DatabaseConfig(
             HOST=env.str("DB_HOST", default=None),
             PORT=env.int("DB_PORT", default=None),

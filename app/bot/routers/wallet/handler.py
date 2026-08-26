@@ -238,15 +238,6 @@ async def handle_custom_amount(
     )
 
 
-@router.callback_query(F.data.regexp(r"^wallet:method:gateway:\d+$"))
-async def callback_payment_gateway(callback: CallbackQuery, user: User, session: AsyncSession, state: FSMContext) -> None:
-    amount = int(callback.data.rsplit(":", 1)[1])
-    if await has_pending_payment(session, user.tg_id):
-        await callback.answer("⏳ یک درخواست پرداخت شما در حال بررسی است. لطفاً منتظر بمانید.", show_alert=True)
-        return
-    await callback.answer("🏦 درگاه بانکی به‌زودی فعال می‌شود.", show_alert=True)
-
-
 @router.callback_query(F.data.regexp(r"^wallet:method:card:\d+$"))
 async def callback_payment_card(
     callback: CallbackQuery,

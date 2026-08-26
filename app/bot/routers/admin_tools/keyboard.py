@@ -17,6 +17,8 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text=_("admin_tools:button:invite_editor"), callback_data=NavAdminTools.INVITE_EDITOR), InlineKeyboardButton(text=_("admin_tools:button:promocode_editor"), callback_data=NavAdminTools.PROMOCODE_EDITOR))
     builder.row(InlineKeyboardButton(text=_("admin_tools:button:notification"), callback_data=NavAdminTools.NOTIFICATION), InlineKeyboardButton(text="💳 مدیریت کارت به کارت", callback_data=NavAdminTools.CARD_SETTINGS))
     builder.row(InlineKeyboardButton(text="⚙️ تنظیمات خرید سرویس ها با مشخصات دلخواه", callback_data=NavAdminTools.CUSTOM_SERVICE_PRICING))
+    builder.row(InlineKeyboardButton(text="💳 تنظیمات درگاه‌های پرداخت", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS))
+    builder.row(InlineKeyboardButton(text="⚙️ تنظیمات .env", callback_data=NavAdminTools.ENV_SETTINGS))
     builder.row(InlineKeyboardButton(text="🛒 تنظیمات خرید سرویس|حجم سرویس|زمان سرویس", callback_data=NavAdminTools.SERVICE_PURCHASE_MANAGEMENT))
     builder.row(InlineKeyboardButton(text="⚙️ مدیریت تنظیمات سابسکریپشن", callback_data=NavAdminTools.SUBSCRIPTION_SETTINGS))
     builder.row(InlineKeyboardButton(text=_("admin_tools:button:test_button"), callback_data=NavAdminTools.TEST), InlineKeyboardButton(text=_("admin_tools:button:create_backup"), callback_data=NavAdminTools.CREATE_BACKUP))

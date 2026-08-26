@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import logging
+import ssl
+import certifi
 from decimal import Decimal, InvalidOperation
 from urllib.parse import quote
 
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.utils.i18n import I18n
 from aiogram.utils.i18n import gettext as _
-from aiohttp import ClientSession, ClientTimeout
+from aiohttp import ClientSession, ClientTimeout, TCPConnector
 from aiohttp.web import Application, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -26,7 +28,7 @@ class ZarinPal(PaymentGateway):
     name = "🏦 زرین‌پال"
     currency = Currency.TOMAN
     callback = NavSubscription.PAY_ZARINPAL
-    CUSTOM_PAYMENT_PATH = "/pg/StartPay/{authority}"
+    CUSTOM_PAYMENT_PATH = "/pg/checkout/{authority}"
 
     def __init__(
         self,
@@ -47,7 +49,6 @@ class ZarinPal(PaymentGateway):
         self.services = services
 
         self.app.router.add_get(ZARINPAL_WEBHOOK, self.callback_handler)
-        self.app.router.add_get("/pg/StartPay/{authority}", self.custom_payment_redirect_handler)
         logger.info("ZarinPal payment gateway initialized.")
 
     @staticmethod
@@ -82,7 +83,19 @@ class ZarinPal(PaymentGateway):
 
     async def _request(self, path: str, payload: dict) -> dict:
         timeout = ClientTimeout(total=self.config.zarinpal.HTTP_TIMEOUT)
-        async with ClientSession(timeout=timeout) as client:
+
+        # Use certifi explicitly because the Debian 11 container's
+        # system CA store is not being loaded correctly by Python/OpenSSL.
+        # Certificate verification remains fully enabled.
+        ssl_context = ssl.create_default_context(
+            cafile=certifi.where()
+        )
+        connector = TCPConnector(ssl=ssl_context)
+
+        async with ClientSession(
+            timeout=timeout,
+            connector=connector,
+        ) as client:
             async with client.post(
                 f"{self.config.zarinpal.API_BASE_URL}{path}",
                 json=payload,
@@ -152,21 +165,6 @@ class ZarinPal(PaymentGateway):
         pay_url = await self._build_payment_url(authority)
         logger.info("ZarinPal payment link created for user %s: %s", data.user_id, authority)
         return pay_url
-
-    async def custom_payment_redirect_handler(self, request: Request) -> Response:
-        authority = (request.match_info.get("authority") or "").strip()
-        if not authority:
-            return Response(text="شناسه پرداخت نامعتبر است.", status=400, content_type="text/plain")
-
-        async with self.session() as session:
-            base_url = await self._get_custom_payment_base_url(session)
-
-        if not base_url:
-            return Response(text="مسیر پرداخت اختصاصی فعال نیست.", status=404, content_type="text/plain")
-
-        location = f"{self.config.zarinpal.DIRECT_PAYMENT_BASE_URL}/pg/StartPay/{quote(authority, safe='')}"
-        logger.info("Redirecting custom payment URL to ZarinPal: authority=%s", authority)
-        return Response(status=302, headers={"Location": location})
 
     async def handle_payment_succeeded(self, payment_id: str) -> None:
         lock = self.storage.redis.lock(

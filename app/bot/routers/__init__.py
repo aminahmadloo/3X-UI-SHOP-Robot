@@ -21,7 +21,7 @@ from . import (
 )
 from .admin_tools.card_payment_handler import router as card_payment_router
 from .admin_tools.card_settings_handler import router as card_settings_router
-from .admin_tools.payment_gateway_settings_entry import router as payment_gateway_settings_entry_router
+from .admin_tools.env_settings_handler import router as env_settings_router
 from .admin_tools.payment_gateway_settings_handler import router as payment_gateway_settings_router
 from .admin_tools.wallet_amounts_handler import router as wallet_amounts_router
 from .admin_tools.service_purchase_management_menu_handler import router as service_purchase_management_menu_router
@@ -31,6 +31,7 @@ from .admin_tools.dynamic_traffic_addon_management_handler import router as dyna
 from .admin_tools.server_handler import router as server_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
 from .subscription.dynamic_service_purchase_handler import router as dynamic_service_purchase_router
+from .subscription.managed_payment_compat_handler import router as managed_payment_compat_router
 from .wallet.gateway_payment import router as wallet_gateway_router
 
 
@@ -61,11 +62,12 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         subscription.trial_handler.router,
         subscription.wallet_payment.router,
         service_purchase_management_menu_router,
+        managed_payment_compat_router,
         dynamic_renewal_admin_router,
         dynamic_service_period_router,
         dynamic_traffic_admin_router,
         server_router,
-        payment_gateway_settings_entry_router,
+        env_settings_router,
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,
         admin_tools.inbound_management_handler.router,

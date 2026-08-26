@@ -102,6 +102,7 @@ class NavAdminTools(str, Enum):
     RESTART_BOT = "restart_bot"
     CARD_SETTINGS = "card_settings"
     PAYMENT_GATEWAY_SETTINGS = "payment_gateway_settings"
+    ENV_SETTINGS = "env_settings"
     CUSTOM_SERVICE_PRICING = "custom_service_pricing"
     SERVICE_PURCHASE_MANAGEMENT = "service_purchase_management"
     SERVICE_PURCHASE_ONE_MONTH = "service_purchase_one_month"

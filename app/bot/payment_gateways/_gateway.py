@@ -10,8 +10,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import ServicesContainer, SubscriptionData
-from app.bot.routers.main_menu.handler import redirect_to_main_menu
-from app.bot.services.renewal import extend_existing_subscription
 from app.bot.utils.constants import (
     DEFAULT_LANGUAGE,
     EVENT_PAYMENT_CANCELED_TAG,
@@ -81,6 +79,8 @@ class PaymentGateway(ABC):
         try:
             if data.is_extend:
                 if data.subscription_id:
+                    from app.bot.services.renewal import extend_existing_subscription
+
                     success = await extend_existing_subscription(services=self.services, user=user, subscription_id=data.subscription_id, duration_days=data.duration, plan_id=data.plan_id)
                     if not success:
                         raise RuntimeError(f"Failed to extend subscription {data.subscription_id} for user {user.tg_id}")
@@ -119,6 +119,8 @@ class PaymentGateway(ABC):
 
         locale = user.language_code if user else DEFAULT_LANGUAGE
         with self.i18n.use_locale(locale):
+            from app.bot.routers.main_menu.handler import redirect_to_main_menu
+
             await redirect_to_main_menu(bot=self.bot, user=user, services=self.services, config=self.config, storage=self.storage)
             if data.is_extend:
                 await self.services.notification.notify_extend_success(user_id=user.tg_id, data=data)
