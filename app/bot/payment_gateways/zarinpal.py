@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal, InvalidOperation
+from urllib.parse import quote
 
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.utils.i18n import I18n
 from aiogram.utils.i18n import gettext as _
 from aiohttp import ClientSession, ClientTimeout
 from aiohttp.web import Application, Request, Response
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.models import ServicesContainer, SubscriptionData
 from app.bot.payment_gateways._gateway import PaymentGateway
@@ -16,7 +17,7 @@ from app.bot.utils.constants import Currency, TransactionStatus, ZARINPAL_WEBHOO
 from app.bot.utils.formatting import format_device_count, format_subscription_period
 from app.bot.utils.navigation import NavSubscription
 from app.config import Config
-from app.db.models import Transaction
+from app.db.models import PaymentGatewaySettings, ServicePurchasePlan, Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +26,7 @@ class ZarinPal(PaymentGateway):
     name = "🏦 زرین‌پال"
     currency = Currency.TOMAN
     callback = NavSubscription.PAY_ZARINPAL
-
-    API_HOST = "https://api.zarinpal.com"
-    REQUEST_PATH = "/pg/v4/payment/request.json"
-    VERIFY_PATH = "/pg/v4/payment/verify.json"
-    PAYMENT_HOST = "https://www.zarinpal.com"
+    CUSTOM_PAYMENT_PATH = "/pg/StartPay/{authority}"
 
     def __init__(
         self,
@@ -50,6 +47,7 @@ class ZarinPal(PaymentGateway):
         self.services = services
 
         self.app.router.add_get(ZARINPAL_WEBHOOK, self.callback_handler)
+        self.app.router.add_get("/pg/StartPay/{authority}", self.custom_payment_redirect_handler)
         logger.info("ZarinPal payment gateway initialized.")
 
     @staticmethod
@@ -67,11 +65,26 @@ class ZarinPal(PaymentGateway):
             raise ValueError(f"Payment amount must resolve to whole Rials: {amount_toman}")
         return int(rial)
 
+    async def _get_custom_payment_base_url(self, session: AsyncSession) -> str | None:
+        settings = await PaymentGatewaySettings.get(session)
+        if settings and settings.zarinpal_payment_base_url_configured:
+            base_url = settings.zarinpal_payment_base_url.strip().rstrip("/")
+            return base_url or None
+        return self.config.zarinpal.PAYMENT_BASE_URL
+
+    async def _build_payment_url(self, authority: str) -> str:
+        async with self.session() as session:
+            base_url = await self._get_custom_payment_base_url(session)
+
+        if base_url:
+            return f"{base_url}{self.CUSTOM_PAYMENT_PATH.format(authority=quote(authority, safe=''))}"
+        return f"{self.config.zarinpal.DIRECT_PAYMENT_BASE_URL}/pg/StartPay/{authority}"
+
     async def _request(self, path: str, payload: dict) -> dict:
-        timeout = ClientTimeout(total=20)
+        timeout = ClientTimeout(total=self.config.zarinpal.HTTP_TIMEOUT)
         async with ClientSession(timeout=timeout) as client:
             async with client.post(
-                f"{self.API_HOST}{path}",
+                f"{self.config.zarinpal.API_BASE_URL}{path}",
                 json=payload,
                 headers={"Content-Type": "application/json"},
             ) as response:
@@ -81,11 +94,27 @@ class ZarinPal(PaymentGateway):
                 return body
 
     async def create_payment(self, data: SubscriptionData) -> str:
+        # Only these payment kinds may use the bank gateway:
+        # normal service purchase, the dedicated main-menu renewal flow,
+        # and wallet top-up. Dynamic time/traffic add-ons are intentionally
+        # excluded so their payment logic cannot accidentally reuse this flow.
+        if data.payment_kind not in {"subscription", "wallet_topup"}:
+            raise RuntimeError(f"Unsupported ZarinPal payment kind: {data.payment_kind}")
+
+        if data.is_extend:
+            async with self.session() as session:
+                plan = await ServicePurchasePlan.get(session, data.plan_id)
+            if plan is None or plan.volume_gb <= 0 or plan.duration_days <= 0:
+                raise RuntimeError("ZarinPal is available only for full service renewal plans.")
+
         amount_rial = self._to_rial(data.price)
-        description = _("payment:invoice:description").format(
-            devices=format_device_count(data.devices),
-            duration=format_subscription_period(data.duration),
-        )
+        if data.payment_kind == "wallet_topup":
+            description = f"شارژ کیف پول کاربر {data.user_id}"
+        else:
+            description = _("payment:invoice:description").format(
+                devices=format_device_count(data.devices),
+                duration=format_subscription_period(data.duration),
+            )
         callback_url = f"{self.config.bot.DOMAIN}{ZARINPAL_WEBHOOK}"
 
         payload = {
@@ -99,7 +128,7 @@ class ZarinPal(PaymentGateway):
             },
         }
 
-        response = await self._request(self.REQUEST_PATH, payload)
+        response = await self._request(self.config.zarinpal.REQUEST_PATH, payload)
         errors = response.get("errors") or []
         result = response.get("data") or {}
         code = result.get("code")
@@ -120,9 +149,24 @@ class ZarinPal(PaymentGateway):
             if transaction is None:
                 raise RuntimeError(f"Could not create ZarinPal transaction for authority {authority}")
 
-        pay_url = f"{self.PAYMENT_HOST}/pg/StartPay/{authority}"
+        pay_url = await self._build_payment_url(authority)
         logger.info("ZarinPal payment link created for user %s: %s", data.user_id, authority)
         return pay_url
+
+    async def custom_payment_redirect_handler(self, request: Request) -> Response:
+        authority = (request.match_info.get("authority") or "").strip()
+        if not authority:
+            return Response(text="شناسه پرداخت نامعتبر است.", status=400, content_type="text/plain")
+
+        async with self.session() as session:
+            base_url = await self._get_custom_payment_base_url(session)
+
+        if not base_url:
+            return Response(text="مسیر پرداخت اختصاصی فعال نیست.", status=404, content_type="text/plain")
+
+        location = f"{self.config.zarinpal.DIRECT_PAYMENT_BASE_URL}/pg/StartPay/{quote(authority, safe='')}"
+        logger.info("Redirecting custom payment URL to ZarinPal: authority=%s", authority)
+        return Response(status=302, headers={"Location": location})
 
     async def handle_payment_succeeded(self, payment_id: str) -> None:
         lock = self.storage.redis.lock(
@@ -146,7 +190,7 @@ class ZarinPal(PaymentGateway):
                 amount_rial = self._to_rial(data.price)
 
             response = await self._request(
-                self.VERIFY_PATH,
+                self.config.zarinpal.VERIFY_PATH,
                 {
                     "merchant_id": self.config.zarinpal.MERCHANT_ID,
                     "amount": amount_rial,
