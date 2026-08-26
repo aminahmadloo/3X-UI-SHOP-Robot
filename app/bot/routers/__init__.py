@@ -30,6 +30,7 @@ from .admin_tools.server_handler import router as server_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
 from .subscription.dynamic_service_purchase_handler import router as dynamic_service_purchase_router
 from .subscription.dynamic_traffic_addon_handler import router as dynamic_traffic_router
+from .wallet.gateway_payment import router as wallet_gateway_router
 
 
 def include(app: Application, dispatcher: Dispatcher) -> None:
@@ -41,6 +42,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         custom_service_card_payment.router,
         managed_card_payment.router,
         custom_service.router,
+        wallet_gateway_router,
         wallet.handler.router,
         my_services.traffic_addon_ui.router,
         my_services.client_control_handler.router,
@@ -51,23 +53,19 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         referral.handler.router,
         support.handler.router,
         download.handler.router,
-
         dynamic_service_purchase_router,
         dynamic_traffic_router,
-
         subscription.renewal_handler.router,
         subscription.subscription_handler.router,
         subscription.payment_handler.router,
         subscription.promocode_handler.router,
         subscription.trial_handler.router,
         subscription.wallet_payment.router,
-
         service_purchase_management_menu_router,
         dynamic_renewal_admin_router,
         dynamic_service_period_router,
         dynamic_traffic_admin_router,
         server_router,
-
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,
         admin_tools.inbound_management_handler.router,
@@ -80,7 +78,6 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         admin_tools.subscription_settings_handler.router,
         admin_tools.statistics_handler.router,
         admin_tools.user_handler.router,
-
         card_payment_router,
         card_settings_router,
         wallet_amounts_router,
