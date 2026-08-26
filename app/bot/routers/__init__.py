@@ -29,7 +29,6 @@ from .admin_tools.dynamic_traffic_addon_management_handler import router as dyna
 from .admin_tools.server_handler import router as server_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
 from .subscription.dynamic_service_purchase_handler import router as dynamic_service_purchase_router
-from .subscription.dynamic_traffic_addon_handler import router as dynamic_traffic_router
 from .wallet.gateway_payment import router as wallet_gateway_router
 
 
@@ -44,7 +43,6 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         custom_service.router,
         wallet_gateway_router,
         wallet.handler.router,
-        my_services.traffic_addon_ui.router,
         my_services.client_control_handler.router,
         my_services.handler.router,
         main_menu_renewal_router,
@@ -54,7 +52,6 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         support.handler.router,
         download.handler.router,
         dynamic_service_purchase_router,
-        dynamic_traffic_router,
         subscription.renewal_handler.router,
         subscription.subscription_handler.router,
         subscription.payment_handler.router,
