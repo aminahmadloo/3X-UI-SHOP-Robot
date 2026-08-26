@@ -47,22 +47,32 @@ async def show_menu(callback: CallbackQuery, session: AsyncSession, config: Conf
     if settings and settings.zarinpal_payment_base_url_configured:
         custom_url = settings.zarinpal_payment_base_url.strip()
         if custom_url:
-            status = "🟢 فعال (تنظیم مدیریت)"
+            payment_method = "🟢 مسیر اختصاصی"
             effective_url = custom_url
+            custom_status = "🟢 فعال"
         else:
-            status = "🔴 غیرفعال؛ پرداخت مستقیم زرین‌پال"
-            effective_url = "https://www.zarinpal.com"
+            payment_method = "🔵 مستقیم زرین‌پال"
+            effective_url = config.zarinpal.DIRECT_PAYMENT_BASE_URL
+            custom_status = "⚪ غیرفعال"
     else:
-        status = "🟢 فعال از .env" if config.zarinpal.PAYMENT_BASE_URL else "🔵 مستقیم زرین‌پال"
-        effective_url = config.zarinpal.PAYMENT_BASE_URL or "https://www.zarinpal.com"
+        if config.zarinpal.PAYMENT_BASE_URL:
+            payment_method = "🟢 مسیر .env"
+            effective_url = config.zarinpal.PAYMENT_BASE_URL
+            custom_status = "⚪ استفاده نمی‌شود"
+        else:
+            payment_method = "🔵 مستقیم زرین‌پال"
+            effective_url = config.zarinpal.DIRECT_PAYMENT_BASE_URL
+            custom_status = "⚪ استفاده نمی‌شود"
 
     text = (
         "💳 <b>تنظیمات درگاه‌های پرداخت</b>\n\n"
         "🏦 <b>زرین‌پال</b>\n"
-        f"وضعیت مسیر پرداخت: <b>{status}</b>\n"
-        f"مسیر مؤثر: <code>{effective_url}</code>\n\n"
-        f"مقدار .env: <code>{env_url}</code>\n\n"
-        "اگر مسیر پرداخت اختصاصی خالی باشد یا حالت مستقیم انتخاب شود، مشتری مستقیماً به صفحه پرداخت زرین‌پال هدایت می‌شود."
+        "وضعیت درگاه: <b>🟢 فعال</b>\n"
+        f"روش نمایش پرداخت: <b>{payment_method}</b>\n"
+        f"مسیر پرداخت مؤثر: <code>{effective_url}</code>\n"
+        f"مسیر سفارشی: <code>{env_url}</code>\n"
+        f"وضعیت مسیر سفارشی: <b>{custom_status}</b>\n\n"
+        "در حالت مستقیم، مشتری مستقیماً به صفحه پرداخت زرین‌پال هدایت می‌شود."
     )
     await callback.message.edit_text(text, reply_markup=menu_markup(settings))
 
@@ -81,11 +91,39 @@ async def edit_zarinpal_url_start(callback: CallbackQuery, state: FSMContext) ->
         "✏️ <b>مسیر پرداخت اختصاصی زرین‌پال</b>\n\n"
         "آدرس پایه را وارد کنید. مثال:\n"
         "<code>https://payment.yashginartgallery.com</code>\n\n"
-        "برای استفاده مستقیم از زرین‌پال، مقدار خالی را ذخیره کنید.",
+        "یا برای نمایش مستقیم صفحه پرداخت زرین‌پال، گزینه زیر را انتخاب کنید.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 انصراف", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)]
+            [
+                InlineKeyboardButton(
+                    text="🔴 استفاده مستقیم از زرین‌پال",
+                    callback_data="paymentgateway:set_direct",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 انصراف",
+                    callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS,
+                )
+            ],
         ]),
     )
+
+
+@router.callback_query(F.data == "paymentgateway:set_direct", IsAdmin())
+async def set_direct_payment(callback: CallbackQuery, state: FSMContext, session: AsyncSession, config: Config) -> None:
+    settings = await PaymentGatewaySettings.get(session)
+    if settings is None:
+        settings = PaymentGatewaySettings(id=1)
+        session.add(settings)
+
+    settings.zarinpal_payment_base_url = ""
+    settings.zarinpal_payment_base_url_configured = True
+
+    await session.commit()
+    await state.clear()
+
+    await callback.answer("پرداخت مستقیم زرین‌پال فعال شد.", show_alert=True)
+    await show_menu(callback, session, config)
 
 
 @router.message(PaymentGatewaySettingsState.waiting_zarinpal_payment_base_url, IsAdmin())

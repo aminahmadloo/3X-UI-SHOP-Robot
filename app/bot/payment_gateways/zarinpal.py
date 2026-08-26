@@ -121,13 +121,7 @@ class ZarinPal(PaymentGateway):
                 raise RuntimeError("ZarinPal is available only for full service renewal plans.")
 
         amount_rial = self._to_rial(data.price)
-        if data.payment_kind == "wallet_topup":
-            description = f"شارژ کیف پول کاربر {data.user_id}"
-        else:
-            description = _("payment:invoice:description").format(
-                devices=format_device_count(data.devices),
-                duration=format_subscription_period(data.duration),
-            )
+        description = "پرداخت سفارش"
         callback_url = f"{self.config.bot.DOMAIN}{ZARINPAL_WEBHOOK}"
 
         payload = {
@@ -136,7 +130,6 @@ class ZarinPal(PaymentGateway):
             "description": description,
             "callback_url": callback_url,
             "metadata": {
-                "email": self.config.shop.EMAIL,
                 "order_id": f"toonel-{data.user_id}-{data.plan_id or data.duration}",
             },
         }
