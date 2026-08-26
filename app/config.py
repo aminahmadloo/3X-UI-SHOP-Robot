@@ -98,6 +98,7 @@ class XUIConfig:
 @dataclass
 class ZarinPalConfig:
     MERCHANT_ID: str | None
+    PAYMENT_BASE_URL: str | None
 
 
 @dataclass
@@ -166,6 +167,10 @@ def load_config() -> Config:
     if payment_zarinpal_enabled and not zarinpal_merchant_id:
         logger.error("ZARINPAL_MERCHANT_ID is not set. ZarinPal payment is disabled.")
         payment_zarinpal_enabled = False
+
+    zarinpal_payment_base_url = env.str("ZARINPAL_PAYMENT_BASE_URL", default=None)
+    if zarinpal_payment_base_url:
+        zarinpal_payment_base_url = zarinpal_payment_base_url.rstrip("/")
 
     referrer_reward_type = env.str(
         "SHOP_REFERRED_REWARD_TYPE",
@@ -259,7 +264,10 @@ def load_config() -> Config:
                 default=DEFAULT_SUBSCRIPTION_PATH,
             ),
         ),
-        zarinpal=ZarinPalConfig(MERCHANT_ID=zarinpal_merchant_id),
+        zarinpal=ZarinPalConfig(
+            MERCHANT_ID=zarinpal_merchant_id,
+            PAYMENT_BASE_URL=zarinpal_payment_base_url,
+        ),
         database=DatabaseConfig(
             HOST=env.str("DB_HOST", default=None),
             PORT=env.int("DB_PORT", default=None),
