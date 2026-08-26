@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal, InvalidOperation
+from urllib.parse import quote
 
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.utils.i18n import I18n
 from aiogram.utils.i18n import gettext as _
 from aiohttp import ClientSession, ClientTimeout
 from aiohttp.web import Application, Request, Response
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.models import ServicesContainer, SubscriptionData
 from app.bot.payment_gateways._gateway import PaymentGateway
@@ -16,7 +17,7 @@ from app.bot.utils.constants import Currency, TransactionStatus, ZARINPAL_WEBHOO
 from app.bot.utils.formatting import format_device_count, format_subscription_period
 from app.bot.utils.navigation import NavSubscription
 from app.config import Config
-from app.db.models import Transaction
+from app.db.models import PaymentGatewaySettings, Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class ZarinPal(PaymentGateway):
     REQUEST_PATH = "/pg/v4/payment/request.json"
     VERIFY_PATH = "/pg/v4/payment/verify.json"
     PAYMENT_HOST = "https://www.zarinpal.com"
+    CUSTOM_PAYMENT_PATH = "/pg/StartPay/{authority}"
 
     def __init__(
         self,
@@ -50,6 +52,7 @@ class ZarinPal(PaymentGateway):
         self.services = services
 
         self.app.router.add_get(ZARINPAL_WEBHOOK, self.callback_handler)
+        self.app.router.add_get("/pg/StartPay/{authority}", self.custom_payment_redirect_handler)
         logger.info("ZarinPal payment gateway initialized.")
 
     @staticmethod
@@ -79,6 +82,21 @@ class ZarinPal(PaymentGateway):
                 if response.status >= 400:
                     raise RuntimeError(f"ZarinPal HTTP {response.status}: {body}")
                 return body
+
+    async def _get_custom_payment_base_url(self, session: AsyncSession) -> str | None:
+        settings = await PaymentGatewaySettings.get(session)
+        if settings and settings.zarinpal_payment_base_url_configured:
+            base_url = settings.zarinpal_payment_base_url.strip().rstrip("/")
+            return base_url or None
+        return self.config.zarinpal.PAYMENT_BASE_URL
+
+    async def _build_payment_url(self, authority: str) -> str:
+        async with self.session() as session:
+            base_url = await self._get_custom_payment_base_url(session)
+
+        if base_url:
+            return f"{base_url}{self.CUSTOM_PAYMENT_PATH.format(authority=quote(authority, safe=''))}"
+        return f"{self.PAYMENT_HOST}/pg/StartPay/{authority}"
 
     async def create_payment(self, data: SubscriptionData) -> str:
         amount_rial = self._to_rial(data.price)
@@ -120,9 +138,24 @@ class ZarinPal(PaymentGateway):
             if transaction is None:
                 raise RuntimeError(f"Could not create ZarinPal transaction for authority {authority}")
 
-        pay_url = f"{self.PAYMENT_HOST}/pg/StartPay/{authority}"
+        pay_url = await self._build_payment_url(authority)
         logger.info("ZarinPal payment link created for user %s: %s", data.user_id, authority)
         return pay_url
+
+    async def custom_payment_redirect_handler(self, request: Request) -> Response:
+        authority = (request.match_info.get("authority") or "").strip()
+        if not authority:
+            return Response(text="شناسه پرداخت نامعتبر است.", status=400, content_type="text/plain")
+
+        async with self.session() as session:
+            base_url = await self._get_custom_payment_base_url(session)
+
+        if not base_url:
+            return Response(text="مسیر پرداخت اختصاصی فعال نیست.", status=404, content_type="text/plain")
+
+        location = f"{self.PAYMENT_HOST}/pg/StartPay/{quote(authority, safe='')}"
+        logger.info("Redirecting custom payment URL to ZarinPal: authority=%s", authority)
+        return Response(status=302, headers={"Location": location})
 
     async def handle_payment_succeeded(self, payment_id: str) -> None:
         lock = self.storage.redis.lock(
