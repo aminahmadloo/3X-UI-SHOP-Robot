@@ -40,6 +40,7 @@ from .subscription.managed_payment_compat_handler import router as managed_payme
 from .wallet.gateway_payment import router as wallet_gateway_router
 from .wallet.overview import router as wallet_overview_router
 from app.bot.routers.customer_level.handler import router as customer_level_router
+from app.bot.routers.support.training_handler import router as support_training_router
 
 
 def include(app: Application, dispatcher: Dispatcher) -> None:
@@ -62,6 +63,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         profile.handler.router,
         referral.handler.router,
         customer_level_router,
+        support_training_router,
         support.handler.router,
         download.handler.router,
         dynamic_service_purchase_router,
