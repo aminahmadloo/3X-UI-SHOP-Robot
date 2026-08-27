@@ -223,7 +223,7 @@ async def callback_my_tickets(
         builder.row(
             __import__("aiogram").types.InlineKeyboardButton(
                 text=f"#{ticket.id} — {_status_text(ticket.status)}",
-                callback_data=f"{NavSupport.TICKET_VIEW}:{ticket.id}",
+                callback_data=f"{NavSupport.TICKET_VIEW.value}:{ticket.id}",
             )
         )
     builder.row(__import__("aiogram").types.InlineKeyboardButton(text="🔙 ارتباط با پشتیبانی", callback_data=NavSupport.CONTACT))
