@@ -38,58 +38,55 @@ def main_menu_keyboard(
         )
     )
 
-    # 3. سرویس های من | تمدید سرویس
+    # 3. تمدید سرویس | سرویس های من
     builder.row(
-        InlineKeyboardButton(
-            text="📦 سرویس های من",
-            callback_data=NavMain.MY_SERVICES,
-        ),
         InlineKeyboardButton(
             text="🔄 تمدید سرویس",
             callback_data="main_menu:renew_service",
         ),
+        InlineKeyboardButton(
+            text="📦 سرویس های من",
+            callback_data=NavMain.MY_SERVICES,
+        ),
     )
 
-    # 4. کیف پول | حساب کاربری
+    # 4. حساب کاربری | کیف پول
     builder.row(
-        InlineKeyboardButton(
-            text="💰 کیف پول",
-            callback_data=NavMain.WALLET,
-        ),
         InlineKeyboardButton(
             text="👤 حساب کاربری",
             callback_data=NavProfile.MAIN,
         ),
+        InlineKeyboardButton(
+            text="💰 کیف پول",
+            callback_data=NavMain.WALLET,
+        ),
     )
 
-    # 5. سطح من | معرفی به دوستان
+    # 5. معرفی به دوستان | سطح من
     builder.row(
-        InlineKeyboardButton(
-            text="🏆 سطح من",
-            callback_data=NavMain.CUSTOMER_LEVEL,
-        ),
         InlineKeyboardButton(
             text="🤝 معرفی به دوستان",
             callback_data=NavReferral.MAIN,
         ),
+        InlineKeyboardButton(
+            text="🏆 سطح من",
+            callback_data=NavMain.CUSTOMER_LEVEL,
+        ),
     )
 
-    # 6. پشتیبانی | اکانت تست
-    support_button = InlineKeyboardButton(
-        text=_("main_menu:button:support"),
-        callback_data=NavSupport.MAIN,
+    # 6. اکانت تست | پشتیبانی
+    # اکانت تست فعلاً همیشه نمایش داده می‌شود.
+    # منطق نهایی دسترسی/فعال‌سازی بعداً جداگانه اصلاح خواهد شد.
+    builder.row(
+        InlineKeyboardButton(
+            text="🎁 اکانت تست",
+            callback_data=NavSubscription.GET_TRIAL,
+        ),
+        InlineKeyboardButton(
+            text=_("main_menu:button:support"),
+            callback_data=NavSupport.MAIN,
+        ),
     )
-
-    if is_trial_available:
-        builder.row(
-            support_button,
-            InlineKeyboardButton(
-                text="🎁 اکانت تست",
-                callback_data=NavSubscription.GET_TRIAL,
-            ),
-        )
-    else:
-        builder.row(support_button)
 
     # 7. مدیریت — فقط برای ادمین
     if is_admin:
