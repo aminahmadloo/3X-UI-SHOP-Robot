@@ -7,7 +7,7 @@ from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -84,6 +84,12 @@ async def redeem_gift_code(
     if promocode.is_activated:
         await message.answer("❌ این کد هدیه قبلاً استفاده شده است.", reply_markup=gift_prompt_keyboard())
         return
+    if promocode.is_expired:
+        await message.answer(
+            "❌ این کد هدیه منقضی شده و دیگر قابل استفاده نیست.",
+            reply_markup=gift_prompt_keyboard(),
+        )
+        return
 
     volume_gb = int(promocode.volume_gb or 0)
     duration_days = int(promocode.duration or 0)
@@ -133,15 +139,22 @@ async def redeem_gift_code(
         save_session.add(subscription)
         await save_session.flush()
 
-        # Atomically consume the code in the same DB transaction as the new subscription.
+        # Consume only if the code is still unused and not expired.
+        # This protects against a second concurrent redemption and against
+        # a code expiring while X-UI work is in progress.
+        now = datetime.utcnow()
         result = await save_session.execute(
             update(Promocode)
-            .where(Promocode.id == promocode.id, Promocode.is_activated.is_(False))
+            .where(
+                Promocode.id == promocode.id,
+                Promocode.is_activated.is_(False),
+                or_(Promocode.expires_at.is_(None), Promocode.expires_at > now),
+            )
             .values(is_activated=True, activated_by=fresh_user.tg_id)
         )
         if result.rowcount != 1:
             await save_session.rollback()
-            await message.answer("❌ این کد هدیه هم‌زمان توسط درخواست دیگری مصرف شده است.")
+            await message.answer("❌ این کد هدیه منقضی شده یا هم‌زمان توسط درخواست دیگری مصرف شده است.")
             return
 
         await save_session.commit()
