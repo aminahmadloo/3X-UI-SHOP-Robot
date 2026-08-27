@@ -7,6 +7,7 @@ from .payment_gateway_settings import PaymentGatewaySettings
 from .promocode import Promocode
 from .referral import Referral
 from .referrer_reward import ReferrerReward
+from .referral_settings import ReferralSettings
 from .server import Server
 from .transaction import Transaction
 from .user import User
