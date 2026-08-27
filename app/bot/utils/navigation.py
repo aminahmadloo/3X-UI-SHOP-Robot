@@ -87,6 +87,7 @@ class NavAdminTools(str, Enum):
     TOGGLE_INVITE_STATUS = "toggle_invite_status"
     CONFIRM_DELETE_INVITE = "confirm_delete_invite"
     PROMOCODE_EDITOR = "promocode_editor"
+    GIFT_REPORTS = "gift_reports"
     CREATE_PROMOCODE = "create_promocode"
     CREATE_AND_SEND_PROMOCODE_USER = "create_and_send_promocode_user"
     CREATE_AND_SEND_PROMOCODE_ALL = "create_and_send_promocode_all"
