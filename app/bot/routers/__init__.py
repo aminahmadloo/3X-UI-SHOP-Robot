@@ -25,6 +25,7 @@ from .admin_tools.env_settings_enhancer import router as env_settings_enhancer_r
 from .admin_tools.env_settings_handler import router as env_settings_router
 from .admin_tools.gift_promocode_handler import router as gift_promocode_router
 from .admin_tools.gift_reports_handler import router as gift_reports_router
+from .admin_tools.multi_card_settings_handler import router as multi_card_settings_router
 from .admin_tools.payment_gateway_settings_handler import router as payment_gateway_settings_router
 from .admin_tools.wallet_amounts_handler import router as wallet_amounts_router
 from .admin_tools.service_purchase_management_menu_handler import router as service_purchase_management_menu_router
@@ -35,6 +36,9 @@ from .admin_tools.server_handler import router as server_router
 from .admin_tools.referral_settings_handler import router as referral_settings_router
 from .gift_service_handler import router as gift_service_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
+from .multi_card_payment import router as multi_card_payment_router
+from .multi_card_service_receipt import router as multi_card_service_receipt_router
+from .multi_card_wallet_receipt import router as multi_card_wallet_receipt_router
 from .subscription.dynamic_service_purchase_handler import router as dynamic_service_purchase_router
 from .subscription.managed_payment_compat_handler import router as managed_payment_compat_router
 from .wallet.gateway_payment import router as wallet_gateway_router
@@ -49,6 +53,9 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         misc.error_handler.router,
         misc.notification_handler.router,
         commands.router,
+        multi_card_wallet_receipt_router,
+        multi_card_service_receipt_router,
+        multi_card_payment_router,
         custom_service_card_payment.router,
         managed_card_payment.router,
         custom_service.router,
@@ -98,6 +105,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         admin_tools.customer_level_settings_handler.router,
         referral_settings_router,
         card_payment_router,
+        multi_card_settings_router,
         card_settings_router,
         payment_gateway_settings_router,
         wallet_amounts_router,
