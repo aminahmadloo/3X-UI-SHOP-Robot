@@ -4,6 +4,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
@@ -13,7 +14,8 @@ from app.bot.routers.misc.keyboard import back_button, back_to_main_menu_button
 from app.bot.utils.jalali import format_jalali
 from app.bot.utils.navigation import NavAdminTools
 from app.bot.utils.validation import is_valid_user_id
-from app.db.models import Promocode, User
+from app.db.models import Promocode, Transaction, User
+from app.bot.utils.constants import TransactionStatus
 
 router = Router(name=__name__)
 
@@ -212,7 +214,7 @@ async def gift_to_user_create(message: Message, session: AsyncSession, state: FS
 async def gift_to_all_start(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(GiftPromocodeStates.all_volume)
     await callback.answer()
-    await callback.message.edit_text("🎁📢 <b>ارسال کد هدیه برای همه مشتریان</b>\n\n📦 حجم سرویس هدیه را به گیگابایت ارسال کنید.\nمثال: <code>30</code>", reply_markup=_config_back_keyboard())
+    await callback.message.edit_text("🎁📢 <b>ارسال کد هدیه برای مشتریان خریدار</b>\n\n📦 حجم سرویس هدیه را به گیگابایت ارسال کنید.\nمثال: <code>30</code>\n\n⚠️ فقط کاربرانی که حداقل یک تراکنش پرداخت‌شده موفق دارند، در ارسال گروهی قرار می‌گیرند.", reply_markup=_config_back_keyboard())
 
 
 @router.message(GiftPromocodeStates.all_volume, IsAdmin())
@@ -245,8 +247,18 @@ async def gift_to_all_create(message: Message, session: AsyncSession, state: FSM
     data = await state.get_data()
     volume_gb = int(data["gift_volume_gb"])
     duration = int(data["gift_duration_days"])
-    users = await User.get_all(session=session)
-    await message.answer(f"⏳ در حال ساخت و ارسال {len(users)} کد هدیه...")
+
+    # Bulk gift distribution is intentionally limited to real paying customers:
+    # a user qualifies only when they have at least one completed Transaction.
+    result = await session.execute(
+        select(User)
+        .join(Transaction, Transaction.tg_id == User.tg_id)
+        .where(Transaction.status == TransactionStatus.COMPLETED)
+        .distinct()
+    )
+    users = result.scalars().all()
+
+    await message.answer(f"⏳ در حال ساخت و ارسال {len(users)} کد هدیه برای مشتریان دارای حداقل یک خرید موفق...")
 
     success = 0
     failed = 0
@@ -274,7 +286,7 @@ async def gift_to_all_create(message: Message, session: AsyncSession, state: FSM
     await state.clear()
     await message.answer(
         "✅ <b>ارسال کدهای هدیه تمام شد.</b>\n\n"
-        f"👥 کل مشتریان: <b>{len(users)}</b>\n"
+        f"👥 کل مشتریان دارای خرید موفق: <b>{len(users)}</b>\n"
         f"✅ ارسال موفق: <b>{success}</b>\n"
         f"❌ ناموفق: <b>{failed}</b>\n\n"
         f"{_gift_summary(volume_gb, duration, validity)}",
