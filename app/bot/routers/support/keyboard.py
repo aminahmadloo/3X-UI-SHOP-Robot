@@ -1,59 +1,99 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.utils.i18n import gettext as _
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.routers.misc.keyboard import back_button, back_to_main_menu_button
-from app.bot.utils.navigation import NavDownload, NavSubscription, NavSupport
+from app.bot.utils.constants import APP_ANDROID_LINK, APP_IOS_LINK, APP_WINDOWS_LINK
+from app.bot.utils.navigation import NavSupport
 
 
-def contact_button(support_id: int) -> InlineKeyboardButton:
-    return InlineKeyboardButton(text=_("support:button:contact"), url=f"tg://user?id={support_id}")
-
-
-def support_keyboard(support_id: int) -> InlineKeyboardMarkup:
+def support_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-
     builder.row(
-        InlineKeyboardButton(
-            text=_("support:button:how_to_connect"),
-            callback_data=NavSupport.HOW_TO_CONNECT,
-        )
+        InlineKeyboardButton(text="📚 آموزش", callback_data=NavSupport.TRAINING)
     )
     builder.row(
         InlineKeyboardButton(
-            text=_("support:button:vpn_not_working"),
-            callback_data=NavSupport.VPN_NOT_WORKING,
+            text="💬 ارتباط با پشتیبانی", callback_data=NavSupport.CONTACT
         )
     )
-
-    builder.row(contact_button(support_id))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 
 
-def how_to_connect_keyboard(support_id: int) -> InlineKeyboardMarkup:
+def training_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-
     builder.row(
-        InlineKeyboardButton(
-            text=_("support:button:buy_subscription"),
-            callback_data=NavSubscription.MAIN,
-        )
+        InlineKeyboardButton(text="🤖 آموزش اندروید", callback_data=NavSupport.TRAINING_ANDROID),
+        InlineKeyboardButton(text="🍎 آموزش آیفون", callback_data=NavSupport.TRAINING_IOS),
     )
     builder.row(
-        InlineKeyboardButton(
-            text=_("support:button:download_app"),
-            callback_data=NavDownload.MAIN,
-        )
+        InlineKeyboardButton(text="💻 آموزش ویندوز", callback_data=NavSupport.TRAINING_WINDOWS)
     )
-
-    builder.row(contact_button(support_id))
-    builder.row(back_button(NavSupport.MAIN))
+    builder.row(back_button(NavSupport.MAIN), back_to_main_menu_button())
     return builder.as_markup()
 
 
-def contact_keyboard(support_id: int) -> InlineKeyboardMarkup:
+def training_platform_keyboard(platform: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(contact_button(support_id))
-    builder.row(back_button(NavSupport.MAIN))
+    links = {
+        "android": APP_ANDROID_LINK,
+        "ios": APP_IOS_LINK,
+        "windows": APP_WINDOWS_LINK,
+    }
+    link = links.get(platform)
+    if link:
+        builder.row(InlineKeyboardButton(text="📥 دریافت برنامه", url=link))
+    builder.row(back_button(NavSupport.TRAINING))
+    builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def contact_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="✏️ ارسال پیام", callback_data=NavSupport.SEND_MESSAGE))
+    builder.row(InlineKeyboardButton(text="📋 تیکت‌های من", callback_data=NavSupport.MY_TICKETS))
+    builder.row(back_button(NavSupport.MAIN), back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def ticket_keyboard(ticket_id: int, can_reply: bool = True) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="💬 مشاهده مکالمه",
+            callback_data=f"{NavSupport.TICKET_CONVERSATION}:{ticket_id}",
+        )
+    )
+    if can_reply:
+        builder.row(
+            InlineKeyboardButton(
+                text="✏️ پاسخ به تیکت",
+                callback_data=f"{NavSupport.TICKET_REPLY}:{ticket_id}",
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text="🔒 بستن تیکت",
+                callback_data=f"{NavSupport.TICKET_CLOSE}:{ticket_id}",
+            )
+        )
+    builder.row(InlineKeyboardButton(text="🔙 تیکت‌های من", callback_data=NavSupport.MY_TICKETS))
+    builder.row(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="main_menu"))
+    return builder.as_markup()
+
+
+def admin_ticket_keyboard(ticket_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="✏️ پاسخ به کاربر",
+            callback_data=f"{NavSupport.TICKET_REPLY}:{ticket_id}",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🔒 بستن تیکت",
+            callback_data=f"{NavSupport.TICKET_CLOSE}:{ticket_id}",
+        )
+    )
     return builder.as_markup()
