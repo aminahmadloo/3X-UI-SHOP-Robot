@@ -15,7 +15,8 @@ from app.bot.utils.formatting import format_subscription_period
 from app.bot.utils.navigation import NavAdminTools
 from app.db.models import Promocode, User
 
-from .keyboard import promocode_duration_keyboard, promocode_editor_keyboard
+from .gift_promocode_handler import gift_menu_keyboard
+from .keyboard import promocode_duration_keyboard
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -41,7 +42,7 @@ async def show_promocode_editor_main(message: Message, state: FSMContext) -> Non
         text=_("promocode_editor:message:main"),
         chat_id=message.chat.id,
         message_id=main_message_id,
-        reply_markup=promocode_editor_keyboard(),
+        reply_markup=gift_menu_keyboard(),
     )
 
 
@@ -136,7 +137,7 @@ async def handle_promocode_input(
 # region Edit Promocode
 @router.callback_query(F.data == NavAdminTools.EDIT_PROMOCODE, IsAdmin())
 async def callback_edit_promocode(callback: CallbackQuery, user: User, state: FSMContext) -> None:
-    logger.info(f"Admin {user.tg_id} started deleting promocode.")
+    logger.info(f"Admin {user.tg_id} started editing promocode.")
     await state.set_state(EditPromocodeStates.promocode_input)
     await callback.message.edit_text(
         text=_("promocode_editor:message:edit"),
@@ -145,7 +146,7 @@ async def callback_edit_promocode(callback: CallbackQuery, user: User, state: FS
 
 
 @router.message(EditPromocodeStates.promocode_input, IsAdmin())
-async def handle_promocode_input(
+async def handle_promocode_edit_input(
     message: Message,
     user: User,
     session: AsyncSession,
@@ -178,14 +179,14 @@ async def handle_promocode_input(
 
 
 @router.callback_query(EditPromocodeStates.selecting_duration, IsAdmin())
-async def callback_duration_selected(
+async def callback_edit_duration_selected(
     callback: CallbackQuery,
     user: User,
     session: AsyncSession,
     state: FSMContext,
     services: ServicesContainer,
 ) -> None:
-    logger.info(f"Admin {user.tg_id} selected {callback.data} days for promocode.")
+    logger.info(f"Admin {user.tg_id} selected {callback.data} days for promocode edit.")
     input_promocode = await state.get_value(INPUT_PROMOCODE_KEY)
     promocode = await Promocode.update(
         session=session,
@@ -193,13 +194,20 @@ async def callback_duration_selected(
         duration=int(callback.data),
     )
     await show_promocode_editor_main(message=callback.message, state=state)
-    await services.notification.notify_by_message(
-        message=callback.message,
-        text=_("promocode_editor:ntf:edited_success").format(
-            promocode=promocode.code,
-            duration=format_subscription_period(promocode.duration),
-        ),
-    )
+    if promocode:
+        await services.notification.notify_by_message(
+            message=callback.message,
+            text=_("promocode_editor:ntf:edited_success").format(
+                promocode=promocode.code,
+                duration=format_subscription_period(promocode.duration),
+            ),
+        )
+    else:
+        await services.notification.notify_by_message(
+            message=callback.message,
+            text=_("promocode_editor:ntf:edit_failed"),
+            duration=5,
+        )
 
 
 # endregion
