@@ -2,7 +2,6 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.routers.misc.keyboard import back_button, back_to_main_menu_button
-from app.bot.utils.constants import APP_ANDROID_LINK, APP_IOS_LINK, APP_WINDOWS_LINK
 from app.bot.utils.navigation import NavMain, NavSupport
 
 
@@ -80,21 +79,6 @@ def training_detail_keyboard(
     builder.row(back_button(NavSupport.TRAINING), back_to_main_menu_button())
     return builder.as_markup()
 
-
-# Compatibility for the legacy Android/iOS/Windows training callbacks that remain
-# in support.handler while users transition to the new app-first training menu.
-def training_platform_keyboard(platform: str) -> InlineKeyboardMarkup:
-    links = {
-        "android": APP_ANDROID_LINK,
-        "ios": APP_IOS_LINK,
-        "windows": APP_WINDOWS_LINK,
-    }
-    builder = InlineKeyboardBuilder()
-    link = links.get(platform)
-    if link:
-        builder.row(InlineKeyboardButton(text="📥 دریافت برنامه", url=link))
-    builder.row(back_button(NavSupport.TRAINING), back_to_main_menu_button())
-    return builder.as_markup()
 
 
 def contact_keyboard() -> InlineKeyboardMarkup:

@@ -26,10 +26,6 @@ class NavReferral(str, Enum):
 class NavSupport(str, Enum):
     MAIN = "support"
     TRAINING = "support:training"
-    # Legacy platform callbacks are kept so the existing support router remains loadable.
-    TRAINING_ANDROID = "support:training:android"
-    TRAINING_IOS = "support:training:ios"
-    TRAINING_WINDOWS = "support:training:windows"
     TRAINING_HAPP = "support:training:happ"
     TRAINING_V2RAY = "support:training:v2ray"
     TRAINING_V2BOX = "support:training:v2box"

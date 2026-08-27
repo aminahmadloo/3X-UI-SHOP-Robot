@@ -16,8 +16,6 @@ from .keyboard import (
     contact_keyboard,
     support_keyboard,
     ticket_keyboard,
-    training_keyboard,
-    training_platform_keyboard,
 )
 
 logger = logging.getLogger(__name__)
@@ -121,71 +119,6 @@ async def callback_support(
             "ارسال پیام و پیگیری درخواست‌های پشتیبانی"
         ),
         reply_markup=support_keyboard(),
-    )
-
-
-@router.callback_query(F.data == NavSupport.TRAINING)
-async def callback_training(callback: CallbackQuery) -> None:
-    await callback.answer()
-    await callback.message.edit_text(
-        text=(
-            "📚 <b>آموزش اتصال به ToonelVPN</b>\n\n"
-            "برای اتصال، برنامه <b>Happ</b> را روی دستگاه خود نصب کنید، "
-            "سپس کلید اتصال سرویس را در برنامه وارد کنید.\n\n"
-            "👇 سیستم‌عامل خود را انتخاب کنید تا آموزش مرحله‌به‌مرحله نمایش داده شود."
-        ),
-        reply_markup=training_keyboard(),
-    )
-
-
-@router.callback_query(F.data == NavSupport.TRAINING_ANDROID)
-async def callback_training_android(callback: CallbackQuery) -> None:
-    await callback.answer()
-    await callback.message.edit_text(
-        text=(
-            "🤖 <b>آموزش اتصال در Android</b>\n\n"
-            "<b>۱.</b> برنامه Happ را نصب و اجرا کن.\n"
-            "<b>۲.</b> از ToonelVPN کلید اتصال سرویس را دریافت کن.\n"
-            "<b>۳.</b> کلید را در Happ وارد کن یا روی لینک اتصال سرویس بزن.\n"
-            "<b>۴.</b> سرویس را انتخاب و فعال کن.\n"
-            "<b>۵.</b> وقتی وضعیت اتصال فعال شد، اینترنت دستگاه از سرویس ToonelVPN عبور می‌کند.\n\n"
-            "💡 اگر اتصال برقرار نشد، ابتدا تاریخ و ساعت گوشی را روی حالت خودکار قرار بده و دوباره کلید را وارد کن."
-        ),
-        reply_markup=training_platform_keyboard("android"),
-    )
-
-
-@router.callback_query(F.data == NavSupport.TRAINING_IOS)
-async def callback_training_ios(callback: CallbackQuery) -> None:
-    await callback.answer()
-    await callback.message.edit_text(
-        text=(
-            "🍎 <b>آموزش اتصال در iPhone / iPad</b>\n\n"
-            "<b>۱.</b> برنامه Happ را از App Store نصب کن.\n"
-            "<b>۲.</b> برنامه را باز کن.\n"
-            "<b>۳.</b> کلید اتصال سرویس ToonelVPN را دریافت کن.\n"
-            "<b>۴.</b> لینک اتصال را باز کن تا سرویس به Happ اضافه شود.\n"
-            "<b>۵.</b> سرویس را فعال کن و اجازه ایجاد VPN را تأیید کن.\n\n"
-            "💡 اگر اتصال برقرار نشد، یک‌بار Happ را ببند و دوباره باز کن و سرویس را مجدداً فعال کن."
-        ),
-        reply_markup=training_platform_keyboard("ios"),
-    )
-
-
-@router.callback_query(F.data == NavSupport.TRAINING_WINDOWS)
-async def callback_training_windows(callback: CallbackQuery) -> None:
-    await callback.answer()
-    await callback.message.edit_text(
-        text=(
-            "💻 <b>آموزش اتصال در Windows</b>\n\n"
-            "<b>۱.</b> برنامه Happ را نصب کن.\n"
-            "<b>۲.</b> برنامه را اجرا کن.\n"
-            "<b>۳.</b> کلید اتصال ToonelVPN را دریافت کن.\n"
-            "<b>۴.</b> لینک اتصال را باز کن تا سرویس به Happ اضافه شود.\n"
-            "<b>۵.</b> سرویس را انتخاب و فعال کن.\n\n"
-            "💡 برای اولین اتصال، اجازه‌های امنیتی Windows را در صورت نمایش تأیید کن."
-        ),
-        reply_markup=training_platform_keyboard("windows"),
     )
 
 
