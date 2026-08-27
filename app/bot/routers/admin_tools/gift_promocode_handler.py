@@ -45,6 +45,7 @@ async def gift_promocode_menu(callback: CallbackQuery, state: FSMContext) -> Non
     await callback.message.edit_text(
         "🎁 <b>مدیریت کدهای هدیه</b>\n\n"
         "از این بخش می‌توانید کد هدیه بسازید و مستقیماً برای یک مشتری یا همه مشتریان ارسال کنید.\n\n"
+        "🎁 هر کد هدیه پس از مصرف، یک سرویس VPN واقعی با <b>۳۰ گیگابایت</b> حجم، مدت انتخاب‌شده و <b>۱ کاربر</b> ایجاد می‌کند.\n\n"
         "⚠️ در ارسال گروهی برای هر مشتری یک کد یکتای جداگانه ساخته می‌شود؛ بنابراین یک کد بین چند مشتری مشترک نخواهد بود.",
         reply_markup=gift_menu_keyboard(),
     )
@@ -57,7 +58,7 @@ async def gift_to_user_start(callback: CallbackQuery, state: FSMContext) -> None
     await callback.message.edit_text(
         "🎁 <b>ارسال کد هدیه به یک مشتری</b>\n\n"
         "Telegram ID مشتری را ارسال کنید یا پیام او را برای ربات فوروارد کنید.",
-        reply_markup=back_button(NavAdminTools.PROMOCODE_EDITOR),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[back_button(NavAdminTools.PROMOCODE_EDITOR)]]),
     )
 
 
@@ -78,7 +79,9 @@ async def gift_to_user_id(message: Message, session: AsyncSession, state: FSMCon
     await message.answer(
         f"👤 مشتری: <b>{user.first_name}</b>\n"
         f"🆔 <code>{raw_id}</code>\n\n"
-        "مدت کد هدیه را انتخاب کنید:",
+        "مدت <b>سرویس هدیه</b> را انتخاب کنید:\n"
+        "🎁 حجم ثابت سرویس هدیه: <b>۳۰ گیگابایت</b>\n"
+        "👤 دستگاه مجاز: <b>۱ کاربر</b>",
         reply_markup=_duration_keyboard(),
     )
 
@@ -100,7 +103,7 @@ async def gift_to_user_create(
         await callback.message.edit_text("❌ مشتری دیگر وجود ندارد.", reply_markup=gift_menu_keyboard())
         return
 
-    promocode = await Promocode.create(session=session, duration=duration)
+    promocode = await Promocode.create(session=session, duration=duration, volume_gb=30, is_gift=True)
     if not promocode:
         await state.clear()
         await callback.message.edit_text("❌ ساخت کد هدیه ناموفق بود.", reply_markup=gift_menu_keyboard())
@@ -109,8 +112,8 @@ async def gift_to_user_create(
     text = (
         "🎁 <b>کد هدیه برای شما</b>\n\n"
         f"🔑 کد: <code>{promocode.code}</code>\n"
-        f"⏱ مدت هدیه: <b>{duration} روز</b>\n\n"
-        "کد را در بخش خرید سرویس وارد کنید."
+        f"🎁 سرویس هدیه: <b>30 گیگ | {duration} روزه | 1 کاربر</b>\n\n"
+        "کد را از مسیر <b>کیف پول → کد هدیه</b> وارد کنید تا کانفیگ هدیه برایتان ساخته شود."
     )
     sent = await services.notification.notify_by_id(chat_id=user_id, text=text)
 
@@ -121,7 +124,7 @@ async def gift_to_user_create(
             f"👤 <b>{user.first_name}</b>\n"
             f"🆔 <code>{user_id}</code>\n"
             f"🔑 کد: <code>{promocode.code}</code>\n"
-            f"⏱ مدت: <b>{duration} روز</b>",
+            f"🎁 سرویس: <b>30 گیگ | {duration} روزه | 1 کاربر</b>",
             reply_markup=gift_menu_keyboard(),
         )
     else:
@@ -138,7 +141,8 @@ async def gift_to_all_start(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await callback.message.edit_text(
         "🎁📢 <b>ارسال کد هدیه برای همه مشتریان</b>\n\n"
-        "مدت کد هدیه را انتخاب کنید. برای هر مشتری یک کد کاملاً مستقل ساخته می‌شود:",
+        "مدت <b>سرویس هدیه</b> را انتخاب کنید. برای هر مشتری یک کد کاملاً مستقل ساخته می‌شود:\n"
+        "🎁 حجم ثابت: <b>۳۰ گیگابایت</b> | 👤 <b>۱ کاربر</b>",
         reply_markup=_duration_keyboard(),
     )
 
@@ -158,7 +162,7 @@ async def gift_to_all_create(
     failed = 0
 
     for user in users:
-        promocode = await Promocode.create(session=session, duration=duration)
+        promocode = await Promocode.create(session=session, duration=duration, volume_gb=30, is_gift=True)
         if not promocode:
             failed += 1
             continue
@@ -166,8 +170,8 @@ async def gift_to_all_create(
         text = (
             "🎁 <b>کد هدیه ویژه شما</b>\n\n"
             f"🔑 کد: <code>{promocode.code}</code>\n"
-            f"⏱ مدت هدیه: <b>{duration} روز</b>\n\n"
-            "کد را در بخش خرید سرویس وارد کنید."
+            f"🎁 سرویس هدیه: <b>30 گیگ | {duration} روزه | 1 کاربر</b>\n\n"
+            "کد را از مسیر <b>کیف پول → کد هدیه</b> وارد کنید تا کانفیگ هدیه برایتان ساخته شود."
         )
         sent = await services.notification.notify_by_id(chat_id=user.tg_id, text=text)
         if sent:
@@ -182,7 +186,7 @@ async def gift_to_all_create(
         f"👥 کل مشتریان: <b>{len(users)}</b>\n"
         f"✅ ارسال موفق: <b>{success}</b>\n"
         f"❌ ناموفق: <b>{failed}</b>\n"
-        f"⏱ مدت: <b>{duration} روز</b>\n\n"
+        f"🎁 سرویس هر کد: <b>30 گیگ | {duration} روزه | 1 کاربر</b>\n\n"
         "برای هر ارسال موفق، کد جداگانه ساخته شده است.",
         reply_markup=gift_menu_keyboard(),
     )
