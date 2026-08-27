@@ -29,6 +29,7 @@ from .admin_tools.dynamic_service_period_handler import router as dynamic_servic
 from .admin_tools.dynamic_renewal_management_handler import router as dynamic_renewal_admin_router
 from .admin_tools.dynamic_traffic_addon_management_handler import router as dynamic_traffic_admin_router
 from .admin_tools.server_handler import router as server_router
+from .admin_tools.referral_settings_handler import router as referral_settings_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
 from .subscription.dynamic_service_purchase_handler import router as dynamic_service_purchase_router
 from .subscription.managed_payment_compat_handler import router as managed_payment_compat_router
@@ -83,6 +84,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         admin_tools.statistics_handler.router,
         admin_tools.user_handler.router,
         admin_tools.customer_level_settings_handler.router,
+        referral_settings_router,
         card_payment_router,
         card_settings_router,
         payment_gateway_settings_router,
