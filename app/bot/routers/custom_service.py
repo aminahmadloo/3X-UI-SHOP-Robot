@@ -56,7 +56,7 @@ def _gigabytes_message(days: int, gb_price: float) -> str:
 def _devices_message(days: int, gigabytes: int, device_price: float) -> str:
     return (
         f"👥 <b>تعداد کاربر مورد نیاز برای سرویس {days} روزه {gigabytes} گیگ خود را بین ۲ تا ۱۰ کاربر ارسال کنید</b>\n\n"
-        "📌 نکته: حداقل تعداد کاربر برای سرویس‌ها <b>۲ کاربر</b> و بیشترین <b>۱۰ کاربر</b> می‌باشد.\n"
+        "📌 نکته: حداقل تعداد کاربر برای سرویس‌ها <b>۲ کاربر</b> و بیشترین ۱۰ کاربر می‌باشد.\n"
         "لطفاً در این بازه یک عدد ارسال کنید.\n\n"
         f"💰 هزینه هر کاربر برای سرویس: <b>{device_price:,.0f} تومان</b>"
     )
@@ -69,6 +69,18 @@ def _payment_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="💳 کارت به کارت", callback_data="custom_service:payment:card")],
             [InlineKeyboardButton(text="💰 پرداخت از کیف پول", callback_data="custom_service:payment:wallet")],
         ]
+    )
+
+
+def _payment_invoice_text(days: int, gigabytes: int, devices: int, total: int) -> str:
+    return (
+        "🧾 <b>فاکتور سرویس انتخابی شما صادر گردید:</b>\n\n"
+        "🔐 <b>نام سرویس:</b> سرویس پرسرعت v2ray\n"
+        f"📦 <b>پلن انتخابی:</b> {days} روزه {gigabytes} گیگ - {devices} کاربره\n"
+        f"💳 <b>قیمت سرویس:</b> {total:,.0f} تومان\n\n"
+        f"💰 جهت خرید سرویس نیاز هست کیف پول خودتون رو به اندازه هزینه سرویس یعنی <b>{total:,.0f} تومان</b> شارژ کنید.\n"
+        "یا اگر شارژ دارید، بر روی دکمه <b>«پرداخت از کیف پول»</b> کلیک کنید.\n\n"
+        "👇 <b>روش پرداخت مورد نظر خود را انتخاب کنید:</b>"
     )
 
 
@@ -162,16 +174,41 @@ async def handle_custom_service_devices(
     )
     await state.set_state(CustomServiceState.waiting_payment)
 
-    text = (
-        "🧾 <b>فاکتور سرویس انتخابی شما صادر گردید:</b>\n\n"
-        "🔐 <b>نام سرویس:</b> سرویس پرسرعت v2ray\n"
-        f"📦 <b>پلن انتخابی:</b> {days} روزه {gigabytes} گیگ - {value} کاربره\n"
-        f"💳 <b>قیمت سرویس:</b> {total:,.0f} تومان\n\n"
-        f"💰 جهت خرید سرویس نیاز هست کیف پول خودتون رو به اندازه هزینه سرویس یعنی <b>{total:,.0f} تومان</b> شارژ کنید.\n"
-        "یا اگر شارژ دارید، بر روی دکمه <b>«پرداخت از کیف پول»</b> کلیک کنید.\n\n"
-        "👇 <b>روش پرداخت مورد نظر خود را انتخاب کنید:</b>"
+    await message.answer(
+        _payment_invoice_text(days, gigabytes, value, int(total)),
+        reply_markup=_payment_keyboard(),
     )
-    await message.answer(text, reply_markup=_payment_keyboard())
+
+
+@router.callback_query(F.data == "custom_service:back")
+async def custom_service_payment_back(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    data = await state.get_data()
+
+    try:
+        days = int(data["custom_service_days"])
+        gigabytes = int(data["custom_service_gigabytes"])
+        devices = int(data["custom_service_devices"])
+        total = int(round(float(data["custom_service_total"])))
+    except (KeyError, TypeError, ValueError):
+        await state.clear()
+        await callback.answer("❌ فاکتور سرویس منقضی شده است.", show_alert=True)
+        return
+
+    if not (7 <= days <= 90 and 5 <= gigabytes <= 400 and 2 <= devices <= 10 and total > 0):
+        await state.clear()
+        await callback.answer("❌ اطلاعات فاکتور نامعتبر یا منقضی شده است.", show_alert=True)
+        return
+
+    await state.set_state(CustomServiceState.waiting_payment)
+    await callback.answer()
+    await callback.message.edit_text(
+        _payment_invoice_text(days, gigabytes, devices, total),
+        reply_markup=_payment_keyboard(),
+    )
 
 
 @router.callback_query(F.data == "custom_service:payment:gateway")
