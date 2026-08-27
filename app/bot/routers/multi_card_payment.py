@@ -47,7 +47,7 @@ def _keyboard(card: CardSettings, amount: int, paid_callback: str, back_callback
         inline_keyboard=[
             [InlineKeyboardButton(text="📋 کپی شماره کارت", copy_text=CopyTextButton(text=card.card_number))],
             [InlineKeyboardButton(text="📋 کپی مبلغ", copy_text=CopyTextButton(text=str(amount)))],
-            [InlineKeyboardButton(text="🔄 تعویض کارت", callback_data=f"multicard:swap:{card.id}")],
+            [InlineKeyboardButton(text="🔄 تعویض کارت", callback_data=f"multicard:swap:{card.id}", style="success")],
             [InlineKeyboardButton(text="✅ پرداخت کردم", callback_data=paid_callback)],
             [InlineKeyboardButton(text="🔙 بازگشت", callback_data=back_callback)],
         ]
