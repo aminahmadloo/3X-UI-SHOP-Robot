@@ -1,9 +1,7 @@
-import logging
-
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
@@ -14,7 +12,6 @@ from app.bot.utils.navigation import NavAdminTools
 from app.bot.utils.validation import is_valid_user_id
 from app.db.models import Promocode, User
 
-logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 
 
@@ -24,9 +21,7 @@ class GiftPromocodeStates(StatesGroup):
     all_duration = State()
 
 
-def gift_menu_keyboard():
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
+def gift_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🎁 ساخت و ارسال کد هدیه برای مشتری", callback_data=NavAdminTools.CREATE_AND_SEND_PROMOCODE_USER)],
@@ -39,7 +34,7 @@ def gift_menu_keyboard():
     )
 
 
-def _duration_keyboard():
+def _duration_keyboard() -> InlineKeyboardMarkup:
     return promocode_duration_keyboard()
 
 
@@ -161,7 +156,6 @@ async def gift_to_all_create(
 
     success = 0
     failed = 0
-    created_codes: list[str] = []
 
     for user in users:
         promocode = await Promocode.create(session=session, duration=duration)
@@ -178,7 +172,6 @@ async def gift_to_all_create(
         sent = await services.notification.notify_by_id(chat_id=user.tg_id, text=text)
         if sent:
             success += 1
-            created_codes.append(promocode.code)
         else:
             failed += 1
             await Promocode.delete(session=session, code=promocode.code)
