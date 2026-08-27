@@ -2,7 +2,6 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.routers.misc.keyboard import back_button, back_to_main_menu_button
-from app.bot.utils.constants import APP_ANDROID_LINK, APP_IOS_LINK, APP_WINDOWS_LINK
 from app.bot.utils.navigation import NavMain, NavSupport
 
 
@@ -21,34 +20,63 @@ def support_keyboard() -> InlineKeyboardMarkup:
 def training_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(
-            text="🤖 آموزش اندروید", callback_data=NavSupport.TRAINING_ANDROID
-        ),
-        InlineKeyboardButton(
-            text="🍎 آموزش آیفون", callback_data=NavSupport.TRAINING_IOS
-        ),
+        InlineKeyboardButton(text="🟢 Happ", callback_data=NavSupport.TRAINING_HAPP),
+        InlineKeyboardButton(text="🔵 V2Ray", callback_data=NavSupport.TRAINING_V2RAY),
     )
     builder.row(
-        InlineKeyboardButton(
-            text="💻 آموزش ویندوز", callback_data=NavSupport.TRAINING_WINDOWS
-        )
+        InlineKeyboardButton(text="🟣 V2Box", callback_data=NavSupport.TRAINING_V2BOX)
     )
     builder.row(back_button(NavSupport.MAIN), back_to_main_menu_button())
     return builder.as_markup()
 
 
-def training_platform_keyboard(platform: str) -> InlineKeyboardMarkup:
+def training_app_keyboard(app: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    links = {
-        "android": APP_ANDROID_LINK,
-        "ios": APP_IOS_LINK,
-        "windows": APP_WINDOWS_LINK,
+    platforms = {
+        "happ": [
+            ("🤖 Android", "android"),
+            ("🍎 iPhone / iPad", "ios"),
+            ("💻 Windows", "windows"),
+            ("🖥 macOS", "macos"),
+            ("🐧 Linux", "linux"),
+        ],
+        "v2ray": [
+            ("🤖 Android — v2rayNG", "android"),
+            ("💻 Windows — v2rayN", "windows"),
+            ("🖥 macOS — v2rayN", "macos"),
+            ("🐧 Linux — v2rayN", "linux"),
+        ],
+        "v2box": [
+            ("🍎 iPhone / iPad", "ios"),
+            ("🖥 macOS", "macos"),
+        ],
     }
-    link = links.get(platform)
-    if link:
-        builder.row(InlineKeyboardButton(text="📥 دریافت برنامه", url=link))
-    builder.row(back_button(NavSupport.TRAINING))
-    builder.row(back_to_main_menu_button())
+    for text, platform in platforms.get(app, []):
+        builder.row(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=f"{NavSupport.TRAINING_APP_PLATFORM}:{app}:{platform}",
+            )
+        )
+    builder.row(back_button(NavSupport.TRAINING), back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def training_detail_keyboard(
+    app: str,
+    platform: str,
+    download_url: str | None = None,
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if download_url:
+        builder.row(InlineKeyboardButton(text="📥 دریافت برنامه", url=download_url))
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 انتخاب سیستم‌عامل",
+            callback_data=f"{NavSupport.TRAINING_APP_PLATFORM.rsplit(':', 1)[0]}:{app}",
+        )
+    )
+    builder.row(back_button(NavSupport.TRAINING), back_to_main_menu_button())
     return builder.as_markup()
 
 
