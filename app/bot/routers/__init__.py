@@ -34,6 +34,7 @@ from .main_menu.renew_service_handler import router as main_menu_renewal_router
 from .subscription.dynamic_service_purchase_handler import router as dynamic_service_purchase_router
 from .subscription.managed_payment_compat_handler import router as managed_payment_compat_router
 from .wallet.gateway_payment import router as wallet_gateway_router
+from .wallet.overview import router as wallet_overview_router
 from app.bot.routers.customer_level.handler import router as customer_level_router
 
 
@@ -47,6 +48,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         managed_card_payment.router,
         custom_service.router,
         wallet_gateway_router,
+        wallet_overview_router,
         wallet.handler.router,
         my_services.client_control_handler.router,
         my_services.handler.router,
