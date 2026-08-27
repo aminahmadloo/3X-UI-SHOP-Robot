@@ -68,9 +68,11 @@ def service_purchase_plan_keyboard(plans: list, callback_data: SubscriptionData)
             callback_data=f"subscription_plan:{plan.id}",
         )
     builder.adjust(1)
-    service_type = plans[0].service_type if plans else "one_month"
-    callback_data.state = NavSubscription.PLAN_ONE_MONTH if service_type == "one_month" else NavSubscription.PLAN_THREE_MONTH
-    builder.row(back_button(callback_data.pack(), text="🔙 تغییر نوع سرویس"))
+    # This is the dynamic purchase flow. Do not pack SubscriptionData here:
+    # its full payload can exceed Telegram's 64-byte callback_data limit.
+    # Returning to BUY re-renders the active service-period buttons and keeps
+    # this navigation callback compact and stable.
+    builder.row(back_button(NavSubscription.BUY, text="🔙 تغییر نوع سرویس"))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 
@@ -275,7 +277,7 @@ def payment_success_keyboard() -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(
             text=_("subscription:button:download_app"),
-            callback_data=NavMain.REDIRECT_TO_DOWNLOAD,
+            callback_data=NavDownload.MAIN,
         )
     )
     builder.row(close_notification_button())
