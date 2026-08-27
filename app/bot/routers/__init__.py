@@ -32,6 +32,7 @@ from .admin_tools.dynamic_renewal_management_handler import router as dynamic_re
 from .admin_tools.dynamic_traffic_addon_management_handler import router as dynamic_traffic_admin_router
 from .admin_tools.server_handler import router as server_router
 from .admin_tools.referral_settings_handler import router as referral_settings_router
+from .gift_service_handler import router as gift_service_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
 from .subscription.dynamic_service_purchase_handler import router as dynamic_service_purchase_router
 from .subscription.managed_payment_compat_handler import router as managed_payment_compat_router
@@ -52,6 +53,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         wallet_gateway_router,
         wallet_overview_router,
         wallet.handler.router,
+        gift_service_router,
         my_services.client_control_handler.router,
         my_services.handler.router,
         main_menu_renewal_router,
