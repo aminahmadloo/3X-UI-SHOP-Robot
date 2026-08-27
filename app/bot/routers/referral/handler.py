@@ -40,9 +40,6 @@ async def generate_referral_summary_text(
     )
     settings = await ReferralSettings.get_or_create(session)
 
-    # Count real completed purchases made by directly referred users.
-    # TransactionStatus.COMPLETED is used instead of a raw string so the
-    # SQLAlchemy Enum comparison matches the persisted transaction value.
     referred_ids = select(Referral.referred_tg_id).where(
         Referral.referrer_tg_id == user.tg_id
     )
@@ -62,9 +59,6 @@ async def generate_referral_summary_text(
             if data.payment_kind == "wallet_topup":
                 continue
         except Exception:
-            # A completed transaction is still a successful payment record.
-            # Legacy rows that cannot be deserialized should not disappear
-            # from the referral purchase counter.
             pass
         purchase_count += 1
 
@@ -102,6 +96,7 @@ async def callback_referral(
     logger.info(f"User {user.tg_id} opened referral page.")
 
     bot_username = (await callback.bot.get_me()).username
+    referral_link = f"https://t.me/{bot_username}?start=ref_{user.tg_id}"
 
     await state.update_data({PREVIOUS_CALLBACK_KEY: NavReferral.MAIN})
 
@@ -112,7 +107,7 @@ async def callback_referral(
             config=config,
             bot_username=bot_username,
         ),
-        reply_markup=referral_keyboard(),
+        reply_markup=referral_keyboard(referral_link=referral_link),
     )
 
 
