@@ -12,11 +12,12 @@ from app.bot.utils.constants import (
     PREVIOUS_CALLBACK_KEY,
     ReferrerRewardLevel,
     ReferrerRewardType,
+    TransactionStatus,
 )
 from app.bot.utils.formatting import format_subscription_period
 from app.bot.utils.navigation import NavMain, NavReferral
 from app.config import Config
-from app.db.models import Referral, ReferrerReward, User
+from app.db.models import Referral, ReferrerReward, ReferralSettings, User
 
 from .keyboard import referral_keyboard
 
@@ -37,7 +38,11 @@ async def generate_referral_summary_text(
     referrals_count = await Referral.get_referral_count(
         session=session, referrer_tg_id=user.tg_id
     )
+    settings = await ReferralSettings.get_or_create(session)
 
+    # Count real completed purchases made by directly referred users.
+    # TransactionStatus.COMPLETED is used instead of a raw string so the
+    # SQLAlchemy Enum comparison matches the persisted transaction value.
     referred_ids = select(Referral.referred_tg_id).where(
         Referral.referrer_tg_id == user.tg_id
     )
@@ -47,19 +52,21 @@ async def generate_referral_summary_text(
     result = await session.execute(
         select(Transaction).where(
             Transaction.tg_id.in_(referred_ids),
-            Transaction.status == "completed",
+            Transaction.status == TransactionStatus.COMPLETED,
         )
     )
     purchase_count = 0
     for tx in result.scalars().all():
         try:
             data = SubscriptionData.deserialize(tx.subscription)
+            if data.payment_kind == "wallet_topup":
+                continue
         except Exception:
-            continue
-        if data.payment_kind == "wallet_topup":
-            continue
-        if data.duration > 0:
-            purchase_count += 1
+            # A completed transaction is still a successful payment record.
+            # Legacy rows that cannot be deserialized should not disappear
+            # from the referral purchase counter.
+            pass
+        purchase_count += 1
 
     since = datetime.now(timezone.utc) - timedelta(days=30)
     income_30d = await session.scalar(
@@ -70,7 +77,7 @@ async def generate_referral_summary_text(
         )
     ) or 0
 
-    reward_rate = int(config.shop.REFERRER_LEVEL_ONE_RATE)
+    reward_rate = int(settings.reward_percent)
 
     return (
         "🎁 <b>معرفی به دوستان</b>\n\n"
