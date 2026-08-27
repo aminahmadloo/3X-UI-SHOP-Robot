@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.bot.models import ServicesContainer, SubscriptionData
+from app.bot.services.customer_level import get_discounted_plan_price
 from app.bot.routers.my_services.handler import _status, _sync_subscriptions_with_xui
 from app.bot.routers.subscription.renewal_handler import (
     _effective_expire_date,
@@ -332,7 +333,7 @@ async def callback_dynamic_renewal_plan_selected(
         user_id=user.tg_id,
         devices=subscription.devices,
         duration=plan.duration_days,
-        price=plan.price_toman,
+        price=(await get_discounted_plan_price(session, user.tg_id, plan.price_toman))[2],
         plan_id=plan.id,
         volume_gb=subscription.volume_gb,
         config_name=subscription.config_name,
@@ -373,7 +374,7 @@ async def callback_dynamic_renewal_plan_selected(
         + f"📅 <b>مدت افزایش زمان:</b> {plan.duration_days} روز\n"
         + f"⏱ <b>انقضای فعلی:</b> {_format_expire(current_expire)}\n"
         + f"🆕 <b>انقضای جدید:</b> {_format_expire(new_expire)}\n"
-        + f"💰 <b>مبلغ:</b> {plan.price_toman:,} تومان\n\n"
+        + f"💰 <b>مبلغ:</b> {data.price:,} تومان\n\n"
         "حجم، سرور و مشخصات سرویس فعلی تغییر نمی‌کند.",
         reply_markup=_summary_keyboard(subscription.id, plan.id),
     )
@@ -420,7 +421,7 @@ async def callback_renewal_payment_methods(
     packed.update(
         {
             "duration": plan.duration_days,
-            "price": plan.price_toman,
+            "price": (await get_discounted_plan_price(session, user.tg_id, plan.price_toman))[2],
             "volume_gb": subscription.volume_gb,
             "config_name": subscription.config_name,
             "devices": subscription.devices,
@@ -435,9 +436,14 @@ async def callback_renewal_payment_methods(
         + f"💾 <b>حجم:</b> {subscription.volume_gb} GB\n"
         + f"🧾 <b>پلن اولیه:</b> {original_plan.duration_days} روزه\n"
         + f"📅 <b>مدت:</b> {plan.duration_days} روز\n"
-        + f"💰 <b>مبلغ:</b> {plan.price_toman:,} تومان\n\n"
+        + f"💰 <b>مبلغ:</b> {packed['price']:,} تومان\n\n"
         "روش پرداخت را انتخاب کنید:",
-        reply_markup=_payment_keyboard(subscription.id, plan.id, plan.price_toman, gateway_factory.get_gateways()),
+        reply_markup=_payment_keyboard(
+            subscription.id,
+            plan.id,
+            int(packed["price"]),
+            gateway_factory.get_gateways(),
+        ),
     )
 
 

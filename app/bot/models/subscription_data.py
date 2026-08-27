@@ -14,6 +14,9 @@ class SubscriptionData(CallbackData, prefix="subscription"):
     devices: int = 0
     duration: int = 0
     price: float = 0
+    original_price: int = 0
+    discount_percent: int = 0
+    discount_level_title: str = ""
     plan_id: int = 0
     volume_gb: int = 0
     config_name: str = ""
@@ -44,6 +47,9 @@ class SubscriptionData(CallbackData, prefix="subscription"):
                 "devices": self.devices,
                 "duration": self.duration,
                 "price": self.price,
+                "original_price": self.original_price,
+                "discount_percent": self.discount_percent,
+                "discount_level_title": self.discount_level_title,
                 "plan_id": self.plan_id,
                 "volume_gb": self.volume_gb,
                 "config_name": self.config_name,
@@ -77,6 +83,9 @@ class SubscriptionData(CallbackData, prefix="subscription"):
             devices=payload.get("devices", 0),
             duration=payload.get("duration", 0),
             price=payload.get("price", 0),
+            original_price=payload.get("original_price", 0),
+            discount_percent=payload.get("discount_percent", 0),
+            discount_level_title=payload.get("discount_level_title", ""),
             plan_id=payload.get("plan_id", 0),
             volume_gb=payload.get("volume_gb", 0),
             config_name=payload.get("config_name", ""),

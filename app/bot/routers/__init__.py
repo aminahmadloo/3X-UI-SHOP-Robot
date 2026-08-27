@@ -31,10 +31,13 @@ from .admin_tools.dynamic_service_period_handler import router as dynamic_servic
 from .admin_tools.dynamic_renewal_management_handler import router as dynamic_renewal_admin_router
 from .admin_tools.dynamic_traffic_addon_management_handler import router as dynamic_traffic_admin_router
 from .admin_tools.server_handler import router as server_router
+from .admin_tools.referral_settings_handler import router as referral_settings_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
 from .subscription.dynamic_service_purchase_handler import router as dynamic_service_purchase_router
 from .subscription.managed_payment_compat_handler import router as managed_payment_compat_router
 from .wallet.gateway_payment import router as wallet_gateway_router
+from .wallet.overview import router as wallet_overview_router
+from app.bot.routers.customer_level.handler import router as customer_level_router
 
 
 def include(app: Application, dispatcher: Dispatcher) -> None:
@@ -47,6 +50,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         managed_card_payment.router,
         custom_service.router,
         wallet_gateway_router,
+        wallet_overview_router,
         wallet.handler.router,
         my_services.client_control_handler.router,
         my_services.handler.router,
@@ -54,6 +58,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         main_menu.handler.router,
         profile.handler.router,
         referral.handler.router,
+        customer_level_router,
         support.handler.router,
         download.handler.router,
         dynamic_service_purchase_router,
@@ -84,6 +89,8 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         admin_tools.subscription_settings_handler.router,
         admin_tools.statistics_handler.router,
         admin_tools.user_handler.router,
+        admin_tools.customer_level_settings_handler.router,
+        referral_settings_router,
         card_payment_router,
         card_settings_router,
         payment_gateway_settings_router,

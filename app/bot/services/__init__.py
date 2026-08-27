@@ -24,12 +24,11 @@ async def initialize(
     plan = PlanService()
     vpn = VPNService(config=config, session=session, server_pool_service=server_pool)
     notification = NotificationService(config=config, bot=bot)
-    referral = ReferralService(config=config, session_factory=session, vpn_service=vpn)
+    wallet = WalletService(session_factory=session)
+    referral = ReferralService(config=config, session_factory=session, vpn_service=vpn, wallet_service=wallet)
     subscription = SubscriptionService(config=config, session_factory=session, vpn_service=vpn)
     payment_stats = PaymentStatsService(session_factory=session)
     invite_stats = InviteStatsService(session_factory=session, payment_stats_service=payment_stats)
-    wallet = WalletService(session_factory=session)
-
     return ServicesContainer(
         server_pool=server_pool,
         plan=plan,

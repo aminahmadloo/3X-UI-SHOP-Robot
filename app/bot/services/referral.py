@@ -12,8 +12,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.utils.constants import ReferrerRewardLevel, ReferrerRewardType
 from app.bot.utils.formatting import to_decimal
+from app.bot.services.wallet import WalletService
 from app.config import Config
-from app.db.models import Referral, ReferrerReward, User
+from app.db.models import Referral, ReferrerReward, ReferralSettings, User
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +25,12 @@ class ReferralService:
         config: Config,
         session_factory: async_sessionmaker,
         vpn_service: VPNService,
+        wallet_service: WalletService,
     ) -> None:
         self.config = config
         self.session_factory = session_factory
         self.vpn_service = vpn_service
+        self.wallet_service = wallet_service
         logger.info("Referral Service initialized")
 
     async def is_referred_trial_available(self, user: User) -> bool:
@@ -105,6 +108,7 @@ class ReferralService:
                 logger.warning(f"No referral found for user {referred_tg_id} on payment event.")
                 return False
             referrer_tg_id = referral.referrer_tg_id
+            settings = await ReferralSettings.get_or_create(session)
 
             mode = self.config.shop.REFERRER_REWARD_TYPE
 
@@ -114,7 +118,7 @@ class ReferralService:
             elif mode == ReferrerRewardType.MONEY.value:
                 # TODO: add currency check before usage
                 payment_amount = to_decimal(payment_amount)
-                first_level_rate = Decimal(self.config.shop.REFERRER_LEVEL_ONE_RATE) / Decimal(100)
+                first_level_rate = Decimal(settings.reward_percent) / Decimal(100)
                 second_level_rate = Decimal(self.config.shop.REFERRER_LEVEL_TWO_RATE) / Decimal(100)
 
                 first_level_reward_amount = to_decimal(payment_amount * first_level_rate)
@@ -149,10 +153,6 @@ class ReferralService:
                 )
                 rewards_created.append(reward)
 
-            # for reward in rewards_created:  # todo: celery tasks might be added at async queue here in the future
-            #     if reward:
-            #         await create_some_celery_task(reward.id)
-
             return bool(rewards_created)
 
     async def process_referrer_rewards_after_payment(self, reward: ReferrerReward) -> bool:
@@ -181,10 +181,18 @@ class ReferralService:
                 logger.info(f"Gave {days} days to a referrer user {reward.user_tg_id}")
 
             elif reward.reward_type == ReferrerRewardType.MONEY:
-                # TODO: add balance processing
-                logger.critical(
-                    f"Tried to give money {reward.amount} reward to a referrer user {reward.user_tg_id}"
+                amount = int(round(float(reward.amount)))
+                if amount <= 0:
+                    return False
+                settings = await ReferralSettings.get_or_create(session)
+                await self.wallet_service.credit(
+                    user_tg_id=reward.user_tg_id,
+                    amount=amount,
+                    transaction_type="referral_reward",
+                    description=f"پاداش معرفی به دوستان ({settings.reward_percent}% خرید موفق)",
+                    reference_id=f"referral_reward:{reward.id}",
                 )
+                logger.info("Credited %s toman referral reward to user %s", amount, reward.user_tg_id)
 
             else:
                 logger.warning(

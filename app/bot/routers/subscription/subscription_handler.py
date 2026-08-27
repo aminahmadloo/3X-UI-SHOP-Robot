@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ClientData, ServicesContainer, SubscriptionData
 from app.bot.payment_gateways import GatewayFactory
+from app.bot.services.customer_level import get_discounted_plan_price
 from app.bot.routers.subscription.keyboard import config_name_keyboard, devices_keyboard, duration_keyboard, managed_payment_method_keyboard, pay_keyboard, payment_method_keyboard, purchase_duration_keyboard, service_purchase_plan_keyboard, subscription_keyboard
 from app.bot.utils.navigation import NavSubscription
 from app.config import Config
@@ -110,12 +111,27 @@ async def callback_subscription_plan_selected(
         tg_id=user.tg_id,
     )
 
+    customer_level, purchase_count, discounted_price = await get_discounted_plan_price(
+        session,
+        user.tg_id,
+        plan.price_toman,
+    )
+
+    discount_percent = int(getattr(customer_level, "discount_percent", 0) or 0)
+
     data = SubscriptionData(
         state=NavSubscription.CONFIG_NAME,
         user_id=user.tg_id,
         devices=(await ConnectedDeviceSettings.get_or_create(session)).max_connected_devices,
         duration=plan.duration_days,
-        price=plan.price_toman,
+        price=discounted_price,
+        original_price=plan.price_toman,
+        discount_percent=int(discount_percent or 0),
+        discount_level_title=str(
+            getattr(customer_level, "title", "")
+            or getattr(customer_level, "name", "")
+            or ""
+        ),
         plan_id=plan.id,
         volume_gb=plan.volume_gb,
         config_name=auto_name,
@@ -130,6 +146,9 @@ async def callback_subscription_plan_selected(
             "devices": data.devices,
             "duration": data.duration,
             "price": data.price,
+            "original_price": data.original_price,
+            "discount_percent": data.discount_percent,
+            "discount_level_title": data.discount_level_title,
             "plan_id": data.plan_id,
             "volume_gb": data.volume_gb,
             "config_name": data.config_name,
@@ -180,6 +199,9 @@ async def callback_config_name_auto(
         devices=packed.get("devices", 0),
         duration=packed.get("duration", 0),
         price=packed.get("price", 0),
+        original_price=packed.get("original_price", 0),
+        discount_percent=packed.get("discount_percent", 0),
+        discount_level_title=packed.get("discount_level_title", ""),
         plan_id=packed.get("plan_id", 0),
         volume_gb=packed.get("volume_gb", 0),
         config_name=packed.get("config_name", ""),
@@ -196,7 +218,9 @@ async def callback_config_name_auto(
         "💳 <b>انتخاب روش پرداخت</b>\n\n"
         f"📝 نام کانفیگ: <code>{callback_data.config_name}</code>\n"
         f"💾 پلن: <b>{callback_data.volume_gb}GB | {callback_data.duration} روز</b>\n"
-        f"💰 مبلغ: <b>{callback_data.price:,} تومان</b>\n\n"
+        f"💰 مبلغ پلن انتخابی: <b>{int(callback_data.original_price):,}".replace(",", ".") + " تومان</b>\n"
+        f"🎁 تخفیف {callback_data.discount_level_title or 'سطح پایه'}: <b>{callback_data.discount_percent}%</b>\n"
+        f"💳 مبلغ قابل پرداخت: <b>{int(callback_data.price):,}".replace(",", ".") + " تومان</b>\n\n"
         "روش پرداخت را انتخاب کنید:",
         reply_markup=managed_payment_method_keyboard(
             callback_data.plan_id,
@@ -274,6 +298,9 @@ async def message_config_name(
         devices=packed.get("devices", 0),
         duration=packed.get("duration", 0),
         price=packed.get("price", 0),
+        original_price=packed.get("original_price", 0),
+        discount_percent=packed.get("discount_percent", 0),
+        discount_level_title=packed.get("discount_level_title", ""),
         plan_id=packed.get("plan_id", 0),
         volume_gb=packed.get("volume_gb", 0),
         config_name="",
@@ -299,7 +326,9 @@ async def message_config_name(
         "💳 <b>انتخاب روش پرداخت</b>\n\n"
         f"📝 نام کانفیگ: <code>{callback_data.config_name}</code>\n"
         f"💾 پلن: <b>{callback_data.volume_gb}GB | {callback_data.duration} روز</b>\n"
-        f"💰 مبلغ: <b>{callback_data.price:,} تومان</b>\n\n"
+        f"💰 مبلغ پلن انتخابی: <b>{int(callback_data.original_price):,}".replace(",", ".") + " تومان</b>\n"
+        f"🎁 تخفیف {callback_data.discount_level_title or 'سطح پایه'}: <b>{callback_data.discount_percent}%</b>\n"
+        f"💳 مبلغ قابل پرداخت: <b>{int(callback_data.price):,}".replace(",", ".") + " تومان</b>\n\n"
         "روش پرداخت را انتخاب کنید:",
         reply_markup=managed_payment_method_keyboard(
             callback_data.plan_id,
@@ -345,6 +374,9 @@ async def callback_managed_payment(
         devices=packed.get("devices", 0),
         duration=packed.get("duration", 0),
         price=packed.get("price", 0),
+        original_price=packed.get("original_price", 0),
+        discount_percent=packed.get("discount_percent", 0),
+        discount_level_title=packed.get("discount_level_title", ""),
         plan_id=packed.get("plan_id", 0),
         volume_gb=packed.get("volume_gb", 0),
         config_name=packed.get("config_name", ""),
@@ -424,6 +456,9 @@ async def callback_managed_payment_back(
         devices=packed.get("devices", 0),
         duration=packed.get("duration", 0),
         price=packed.get("price", 0),
+        original_price=packed.get("original_price", 0),
+        discount_percent=packed.get("discount_percent", 0),
+        discount_level_title=packed.get("discount_level_title", ""),
         plan_id=packed.get("plan_id", 0),
         volume_gb=packed.get("volume_gb", 0),
         config_name=packed.get("config_name", ""),

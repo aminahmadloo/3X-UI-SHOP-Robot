@@ -1,0 +1,3 @@
+Safe point: cd27c248af56c8e4101df22bf156e57b965aa6e5
+Branch: feature/referral-level-system-20260827
+Purpose: Before adding referral copy-link and Telegram share/invite buttons.

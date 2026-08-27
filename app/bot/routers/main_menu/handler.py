@@ -117,12 +117,39 @@ async def command_main_menu(
             await state.clear()
 
     if command.args and is_new_user:
-        if command.args.isdigit():
+        referral_arg = command.args.strip()
+
+        # Referral links use: /start ref_<telegram_user_id>
+        if referral_arg.startswith("ref_"):
+            referrer_id_raw = referral_arg[4:].strip()
+
+            if referrer_id_raw.isdigit():
+                await process_creating_referral(
+                    session=session,
+                    user=user,
+                    referrer_id=int(referrer_id_raw),
+                )
+            else:
+                logger.warning(
+                    "Invalid referral payload for user %s: %s",
+                    user.tg_id,
+                    referral_arg,
+                )
+
+        elif referral_arg.isdigit():
+            # Backward compatibility with old /start <tg_id> links.
             await process_creating_referral(
-                session=session, user=user, referrer_id=int(command.args)
+                session=session,
+                user=user,
+                referrer_id=int(referral_arg),
             )
+
         else:
-            await process_invite_attribution(session=session, user=user, invite_hash=command.args)
+            await process_invite_attribution(
+                session=session,
+                user=user,
+                invite_hash=referral_arg,
+            )
 
     if is_new_user:
         is_admin = await IsAdmin()(user_id=user.tg_id)

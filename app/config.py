@@ -29,11 +29,11 @@ DEFAULT_SHOP_TRIAL_PERIOD = 3
 DEFAULT_SHOP_REFERRED_TRIAL_ENABLED = False
 DEFAULT_SHOP_REFERRED_TRIAL_PERIOD = 7
 DEFAULT_SHOP_REFERRER_REWARD_ENABLED = True
-DEFAULT_SHOP_REFERRER_REWARD_TYPE = ReferrerRewardType.DAYS.value
+DEFAULT_SHOP_REFERRER_REWARD_TYPE = ReferrerRewardType.MONEY.value
 DEFAULT_SHOP_REFERRER_LEVEL_ONE_PERIOD = 10
 DEFAULT_SHOP_REFERRER_LEVEL_TWO_PERIOD = 3
-DEFAULT_SHOP_REFERRER_LEVEL_ONE_RATE = 50
-DEFAULT_SHOP_REFERRER_LEVEL_TWO_RATE = 5
+DEFAULT_SHOP_REFERRER_LEVEL_ONE_RATE = 30
+DEFAULT_SHOP_REFERRER_LEVEL_TWO_RATE = 0
 DEFAULT_SHOP_BONUS_DEVICES_COUNT = 1
 DEFAULT_SHOP_PAYMENT_ZARINPAL_ENABLED = True
 DEFAULT_SHOP_CARD_NUMBER = ""
@@ -206,7 +206,7 @@ def load_config() -> Config:
     )
 
     referrer_reward_type = env.str(
-        "SHOP_REFERRED_REWARD_TYPE",
+        "SHOP_REFERRER_REWARD_TYPE",
         default=DEFAULT_SHOP_REFERRER_REWARD_TYPE,
         validate=OneOf(
             [reward_type.value for reward_type in ReferrerRewardType],
@@ -217,12 +217,6 @@ def load_config() -> Config:
         "SHOP_REFERRER_REWARD_ENABLED",
         default=DEFAULT_SHOP_REFERRER_REWARD_ENABLED,
     )
-    if referrer_reward_type != ReferrerRewardType.DAYS.value:
-        logger.error(
-            "Only 'days' option is now available for SHOP_REFERRER_REWARD_TYPE. "
-            "Referrer reward disabled."
-        )
-        referrer_reward_enabled = False
 
     return Config(
         bot=BotConfig(
@@ -276,7 +270,7 @@ def load_config() -> Config:
             REFERRER_LEVEL_TWO_RATE=env.int(
                 "SHOP_REFERRER_LEVEL_TWO_RATE",
                 default=DEFAULT_SHOP_REFERRER_LEVEL_TWO_RATE,
-                validate=Range(min=1, max=100, error="SHOP_REFERRER_LEVEL_TWO_RATE must be between 1 and 100"),
+                validate=Range(min=0, max=100, error="SHOP_REFERRER_LEVEL_TWO_RATE must be between 0 and 100"),
             ),
             BONUS_DEVICES_COUNT=env.int(
                 "SHOP_BONUS_DEVICES_COUNT",

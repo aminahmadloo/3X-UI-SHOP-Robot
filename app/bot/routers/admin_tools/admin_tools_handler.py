@@ -45,16 +45,15 @@ async def callback_admin_tools(callback: CallbackQuery, user: User) -> None:
     is_dev = await IsDev()(user_id=user.tg_id)
     markup = admin_tools_keyboard(is_dev)
 
-    # Keep the payment and environment controls visible in the main admin menu.
-    # They are added here instead of relying on a second MAIN callback handler,
-    # which could be shadowed by router ordering.
+    # The payment and .env buttons are already provided by admin_tools_keyboard().
+    # Keep only controls that are not part of that base keyboard here.
     markup.inline_keyboard.insert(
-        3,
-        [InlineKeyboardButton(text="💳 تنظیمات درگاه‌های پرداخت", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
+        -1,
+        [InlineKeyboardButton(text="🏆 مدیریت تخفیف سطوح مشتری", callback_data=NavAdminTools.CUSTOMER_LEVEL_SETTINGS)],
     )
     markup.inline_keyboard.insert(
-        4,
-        [InlineKeyboardButton(text="⚙️ تنظیمات .env", callback_data=NavAdminTools.ENV_SETTINGS)],
+        -1,
+        [InlineKeyboardButton(text="🎁 تنظیمات معرفی به دوستان", callback_data=NavAdminTools.REFERRAL_SETTINGS)],
     )
     markup.inline_keyboard.insert(
         -1,

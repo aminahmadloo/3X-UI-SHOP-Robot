@@ -10,6 +10,7 @@ class NavMain(str, Enum):
     CUSTOM_SERVICE = "custom_service"
     MY_SERVICES = "my_services"
     WALLET = "wallet"
+    CUSTOMER_LEVEL = "customer_level"
 
 
 class NavProfile(str, Enum):
@@ -116,3 +117,5 @@ class NavAdminTools(str, Enum):
     SERVICE_PURCHASE_EDIT = "service_purchase_edit"
     SERVICE_PURCHASE_DELETE = "service_purchase_delete"
     SUBSCRIPTION_SETTINGS = "subscription_settings"
+    CUSTOMER_LEVEL_SETTINGS = "customer_level_settings"
+    REFERRAL_SETTINGS = "referral_settings"
