@@ -24,8 +24,13 @@ def upgrade() -> None:
         "promocodes",
         sa.Column("is_gift", sa.Boolean(), nullable=False, server_default=sa.false()),
     )
+    op.add_column(
+        "subscriptions",
+        sa.Column("is_gift", sa.Boolean(), nullable=False, server_default=sa.false()),
+    )
 
 
 def downgrade() -> None:
+    op.drop_column("subscriptions", "is_gift")
     op.drop_column("promocodes", "is_gift")
     op.drop_column("promocodes", "volume_gb")
