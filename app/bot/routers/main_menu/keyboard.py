@@ -71,12 +71,20 @@ def main_menu_keyboard(
             callback_data=NavReferral.MAIN,
         ),
         InlineKeyboardButton(
-            text=_("main_menu:button:support"),
-            callback_data=NavSupport.MAIN,
+            text="🏆 سطح من",
+            callback_data=NavMain.CUSTOMER_LEVEL,
         ),
     )
 
-    # 6. مدیریت — فقط برای ادمین
+    # 6. پشتیبانی
+    builder.row(
+        InlineKeyboardButton(
+            text=_("main_menu:button:support"),
+            callback_data=NavSupport.MAIN,
+        )
+    )
+
+    # 7. مدیریت — فقط برای ادمین
     if is_admin:
         builder.row(
             InlineKeyboardButton(

@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.bot.services.customer_level import get_discounted_plan_price
 from app.bot.models import ServicesContainer, SubscriptionData
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.routers.my_services.handler import _status, _sync_subscriptions_with_xui
@@ -107,7 +108,27 @@ def _payment_link_keyboard(pay_url: str, subscription_id: int, plan_id: int) -> 
     )
 
 
-def _subscription_data(subscription: Subscription, plan: ServicePurchasePlan, user: User) -> SubscriptionData:
+async def _subscription_data(
+    session: AsyncSession,
+    subscription: Subscription,
+    plan: ServicePurchasePlan,
+    user: User,
+) -> SubscriptionData:
+    customer_level, purchase_count, discounted_price = await get_discounted_plan_price(
+        session,
+        user.tg_id,
+        plan.price_toman,
+    )
+
+    discount_percent = int(
+        getattr(customer_level, "discount_percent", 0) or 0
+    )
+    discount_level_title = str(
+        getattr(customer_level, "title", "")
+        or getattr(customer_level, "name", "")
+        or ""
+    )
+
     data = SubscriptionData(
         state="pay",
         is_extend=True,
@@ -115,14 +136,16 @@ def _subscription_data(subscription: Subscription, plan: ServicePurchasePlan, us
         user_id=user.tg_id,
         devices=subscription.devices,
         duration=plan.duration_days,
-        price=plan.price_toman,
+        price=discounted_price,
+        original_price=plan.price_toman,
+        discount_percent=discount_percent,
+        discount_level_title=discount_level_title,
         plan_id=plan.id,
         volume_gb=plan.volume_gb,
         config_name=subscription.config_name,
     )
     data.subscription_id = subscription.id
     return data
-
 
 async def _get_subscription(
     session: AsyncSession,
@@ -318,7 +341,12 @@ async def service_selected(
         user.tg_id,
     )
 
-    data = _subscription_data(subscription, original_plan, user)
+    data = await _subscription_data(
+        session,
+        subscription,
+        original_plan,
+        user,
+    )
     await state.update_data(subscription_data=data.serialize())
 
     expire = subscription.expire_date
@@ -374,7 +402,7 @@ async def service_selected(
         f"📅 <b>زمان تمدید:</b> {original_plan.duration_days} روز\n"
         f"🗓 <b>مدت نهایی پس از تمدید:</b> {final_days} روز\n"
         f"📆 <b>تاریخ انقضا پس از تمدید:</b> {new_expire_text}\n\n"
-        f"💰 <b>مبلغ تمدید:</b> {original_plan.price_toman:,} تومان\n\n"
+        f"💰 <b>مبلغ تمدید:</b> {data.price:,} تومان\n\n"
         "این عملیات همان سرویس و همان کلاینت فعلی را تمدید می‌کند.\n"
         "کلید اتصال، سرور و مشخصات اتصال موجود حفظ می‌شوند.",
         reply_markup=InlineKeyboardMarkup(
@@ -444,7 +472,21 @@ async def payment_methods(
 
     data.duration = plan.duration_days
     data.volume_gb = plan.volume_gb
-    data.price = plan.price_toman
+    customer_level, purchase_count, discounted_price = await get_discounted_plan_price(
+        session,
+        user.tg_id,
+        plan.price_toman,
+    )
+    data.price = discounted_price
+    data.original_price = plan.price_toman
+    data.discount_percent = int(
+        getattr(customer_level, "discount_percent", 0) or 0
+    )
+    data.discount_level_title = str(
+        getattr(customer_level, "title", "")
+        or getattr(customer_level, "name", "")
+        or ""
+    )
     data.devices = subscription.devices
     data.config_name = subscription.config_name
     data.subscription_id = subscription.id
@@ -456,12 +498,12 @@ async def payment_methods(
         f"🟢 <b>سرویس:</b> <code>{subscription.config_name}</code>\n\n"
         f"📦 حجم افزوده: <b>{plan.volume_gb} GB</b>\n"
         f"📅 زمان افزوده: <b>{plan.duration_days} روز</b>\n"
-        f"💰 مبلغ: <b>{plan.price_toman:,} تومان</b>\n\n"
+        f"💰 مبلغ: <b>{data.price:,} تومان</b>\n\n"
         "روش پرداخت را انتخاب کنید:",
         reply_markup=_payment_methods_keyboard(
             subscription.id,
             plan.id,
-            plan.price_toman,
+            int(data.price),
             gateway_factory,
         ),
     )
@@ -512,7 +554,21 @@ async def gateway_payment(
 
     data.duration = plan.duration_days
     data.volume_gb = plan.volume_gb
-    data.price = plan.price_toman
+    customer_level, purchase_count, discounted_price = await get_discounted_plan_price(
+        session,
+        user.tg_id,
+        plan.price_toman,
+    )
+    data.price = discounted_price
+    data.original_price = plan.price_toman
+    data.discount_percent = int(
+        getattr(customer_level, "discount_percent", 0) or 0
+    )
+    data.discount_level_title = str(
+        getattr(customer_level, "title", "")
+        or getattr(customer_level, "name", "")
+        or ""
+    )
     data.devices = subscription.devices
     data.config_name = subscription.config_name
     data.subscription_id = subscription.id
@@ -531,7 +587,7 @@ async def gateway_payment(
         "🏦 <b>پرداخت تمدید سرویس</b>\n\n"
         f"📦 حجم افزوده: <b>{plan.volume_gb} GB</b>\n"
         f"📅 زمان افزوده: <b>{plan.duration_days} روز</b>\n"
-        f"💰 مبلغ: <b>{plan.price_toman:,} تومان</b>\n\n"
+        f"💰 مبلغ: <b>{data.price:,} تومان</b>\n\n"
         "برای تکمیل پرداخت روی دکمه زیر بزنید:",
         reply_markup=_payment_link_keyboard(pay_url, subscription.id, plan.id),
     )
@@ -573,7 +629,21 @@ async def card_payment(
 
     data.duration = plan.duration_days
     data.volume_gb = plan.volume_gb
-    data.price = plan.price_toman
+    customer_level, purchase_count, discounted_price = await get_discounted_plan_price(
+        session,
+        user.tg_id,
+        plan.price_toman,
+    )
+    data.price = discounted_price
+    data.original_price = plan.price_toman
+    data.discount_percent = int(
+        getattr(customer_level, "discount_percent", 0) or 0
+    )
+    data.discount_level_title = str(
+        getattr(customer_level, "title", "")
+        or getattr(customer_level, "name", "")
+        or ""
+    )
     data.devices = subscription.devices
     data.config_name = subscription.config_name
     data.subscription_id = subscription.id
@@ -584,7 +654,7 @@ async def card_payment(
         "💳 <b>کارت به کارت تمدید سرویس</b>\n\n"
         f"📦 حجم افزوده: <b>{plan.volume_gb} GB</b>\n"
         f"📅 زمان افزوده: <b>{plan.duration_days} روز</b>\n"
-        f"💰 مبلغ: <b>{plan.price_toman:,} تومان</b>\n\n"
+        f"💰 مبلغ: <b>{data.price:,} تومان</b>\n\n"
         "برای ادامه پرداخت، گزینه کارت به کارت را انتخاب کنید:",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[

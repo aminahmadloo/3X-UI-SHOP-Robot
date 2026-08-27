@@ -68,9 +68,7 @@ def service_purchase_plan_keyboard(plans: list, callback_data: SubscriptionData)
             callback_data=f"subscription_plan:{plan.id}",
         )
     builder.adjust(1)
-    service_type = plans[0].service_type if plans else "one_month"
-    callback_data.state = NavSubscription.PLAN_ONE_MONTH if service_type == "one_month" else NavSubscription.PLAN_THREE_MONTH
-    builder.row(back_button(callback_data.pack(), text="🔙 تغییر نوع سرویس"))
+    builder.row(back_button(NavSubscription.BUY, text="🔙 تغییر نوع سرویس"))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
 
@@ -155,7 +153,7 @@ def managed_payment_method_keyboard_renewal(
     builder = InlineKeyboardBuilder()
 
     for gateway in gateways:
-        callback_data = f"mp:{gateway.callback}:{price_toman}"
+        callback_data = f"mp:{gateway.callback}:{plan_id}"
         builder.row(
             InlineKeyboardButton(
                 text=f"{gateway.name} | {price_toman:,} تومان",
@@ -166,14 +164,14 @@ def managed_payment_method_keyboard_renewal(
     builder.row(
         InlineKeyboardButton(
             text=f"💰 کیف پول | {price_toman:,} تومان",
-            callback_data=f"mp_wallet:{price_toman}",
+            callback_data=f"mp_wallet:{plan_id}",
         )
     )
 
     builder.row(
         InlineKeyboardButton(
             text=f"💳 کارت به کارت | {price_toman:,} تومان",
-            callback_data=f"mp_card:{price_toman}",
+            callback_data=f"mp_card:{plan_id}",
         )
     )
 

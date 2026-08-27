@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.utils.constants import ReferrerRewardLevel, ReferrerRewardType
 from app.bot.utils.formatting import to_decimal
+from app.bot.services.wallet import WalletService
 from app.config import Config
 from app.db.models import Referral, ReferrerReward, User
 
@@ -24,10 +25,12 @@ class ReferralService:
         config: Config,
         session_factory: async_sessionmaker,
         vpn_service: VPNService,
+        wallet_service: WalletService,
     ) -> None:
         self.config = config
         self.session_factory = session_factory
         self.vpn_service = vpn_service
+        self.wallet_service = wallet_service
         logger.info("Referral Service initialized")
 
     async def is_referred_trial_available(self, user: User) -> bool:
@@ -181,10 +184,17 @@ class ReferralService:
                 logger.info(f"Gave {days} days to a referrer user {reward.user_tg_id}")
 
             elif reward.reward_type == ReferrerRewardType.MONEY:
-                # TODO: add balance processing
-                logger.critical(
-                    f"Tried to give money {reward.amount} reward to a referrer user {reward.user_tg_id}"
+                amount = int(round(float(reward.amount)))
+                if amount <= 0:
+                    return False
+                await self.wallet_service.credit(
+                    user_tg_id=reward.user_tg_id,
+                    amount=amount,
+                    transaction_type="referral_reward",
+                    description="پاداش معرفی به دوستان (۳۰٪ خرید موفق)",
+                    reference_id=f"referral_reward:{reward.id}",
                 )
+                logger.info("Credited %s toman referral reward to user %s", amount, reward.user_tg_id)
 
             else:
                 logger.warning(

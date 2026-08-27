@@ -10,6 +10,7 @@ class NavMain(str, Enum):
     CUSTOM_SERVICE = "custom_service"
     MY_SERVICES = "my_services"
     WALLET = "wallet"
+    CUSTOMER_LEVEL = "customer_level"
 
 
 class NavProfile(str, Enum):

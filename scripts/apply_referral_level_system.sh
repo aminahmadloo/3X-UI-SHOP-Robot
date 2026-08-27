@@ -88,14 +88,35 @@ replace_once(
 # ---------------------------------------------------------------------------
 routes = read("app/bot/routers/__init__.py")
 if "customer_level_router" not in routes:
-    marker = "from app.bot.routers.referral.handler import router as referral_router\n"
-    if marker not in routes:
-        raise SystemExit("SAFE ABORT: referral router import marker not found")
-    routes = routes.replace(marker, marker + "from app.bot.routers.customer_level.handler import router as customer_level_router\n", 1)
-    marker2 = "        referral_router,\n"
-    if marker2 not in routes:
-        raise SystemExit("SAFE ABORT: referral router include marker not found")
-    routes = routes.replace(marker2, marker2 + "        customer_level_router,\n", 1)
+    absolute_marker = "from app.bot.routers.referral.handler import router as referral_router\n"
+    relative_marker = "from .wallet.gateway_payment import router as wallet_gateway_router\n"
+    if absolute_marker in routes:
+        marker = absolute_marker
+    elif relative_marker in routes:
+        marker = relative_marker
+    else:
+        raise SystemExit("SAFE ABORT: could not find a stable router import marker")
+
+    routes = routes.replace(
+        marker,
+        marker + "from app.bot.routers.customer_level.handler import router as customer_level_router\n",
+        1,
+    )
+
+    absolute_include = "        referral_router,\n"
+    relative_include = "        referral.handler.router,\n"
+    if absolute_include in routes:
+        include_marker = absolute_include
+    elif relative_include in routes:
+        include_marker = relative_include
+    else:
+        raise SystemExit("SAFE ABORT: could not find a stable referral router include marker")
+
+    routes = routes.replace(
+        include_marker,
+        include_marker + "        customer_level_router,\n",
+        1,
+    )
     write("app/bot/routers/__init__.py", routes)
 
 # ---------------------------------------------------------------------------
