@@ -38,25 +38,23 @@ def main_menu_keyboard(
         )
     )
 
-    # 3. سرویس های من | کیف پول
-    # callbackهای هر دو دکمه بدون تغییر
+    # 3. سرویس های من | تمدید سرویس
     builder.row(
         InlineKeyboardButton(
             text="📦 سرویس های من",
             callback_data=NavMain.MY_SERVICES,
         ),
         InlineKeyboardButton(
-            text="💰 کیف پول",
-            callback_data=NavMain.WALLET,
+            text="🔄 تمدید سرویس",
+            callback_data="main_menu:renew_service",
         ),
     )
 
-    # 4. تمدید سرویس | حساب کاربری
-    # callbackهای هر دو دکمه بدون تغییر
+    # 4. کیف پول | حساب کاربری
     builder.row(
         InlineKeyboardButton(
-            text="🔄 تمدید سرویس",
-            callback_data="main_menu:renew_service",
+            text="💰 کیف پول",
+            callback_data=NavMain.WALLET,
         ),
         InlineKeyboardButton(
             text="👤 حساب کاربری",
@@ -64,25 +62,34 @@ def main_menu_keyboard(
         ),
     )
 
-    # 5. معرفی به دوستان | پشتیبانی
+    # 5. سطح من | معرفی به دوستان
     builder.row(
-        InlineKeyboardButton(
-            text="🤝 معرفی به دوستان",
-            callback_data=NavReferral.MAIN,
-        ),
         InlineKeyboardButton(
             text="🏆 سطح من",
             callback_data=NavMain.CUSTOMER_LEVEL,
         ),
+        InlineKeyboardButton(
+            text="🤝 معرفی به دوستان",
+            callback_data=NavReferral.MAIN,
+        ),
     )
 
-    # 6. پشتیبانی
-    builder.row(
-        InlineKeyboardButton(
-            text=_("main_menu:button:support"),
-            callback_data=NavSupport.MAIN,
-        )
+    # 6. پشتیبانی | اکانت تست
+    support_button = InlineKeyboardButton(
+        text=_("main_menu:button:support"),
+        callback_data=NavSupport.MAIN,
     )
+
+    if is_trial_available:
+        builder.row(
+            support_button,
+            InlineKeyboardButton(
+                text="🎁 اکانت تست",
+                callback_data=NavSubscription.GET_TRIAL,
+            ),
+        )
+    else:
+        builder.row(support_button)
 
     # 7. مدیریت — فقط برای ادمین
     if is_admin:
