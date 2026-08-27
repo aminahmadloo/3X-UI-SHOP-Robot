@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from aiogram import F, Router
 from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,7 +21,7 @@ from app.bot.routers.my_services.handler import (
 from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY
 from app.bot.utils.jalali import format_jalali
 from app.bot.utils.navigation import NavMain, NavSubscription
-from app.db.models import Promocode, Server, Subscription, User
+from app.db.models import Promocode, Subscription, User
 
 router = Router(name=__name__)
 
@@ -78,14 +78,9 @@ async def redeem_gift_code(
     if not promocode:
         await message.answer("❌ کد هدیه نامعتبر است.", reply_markup=gift_prompt_keyboard())
         return
-
     if not promocode.is_gift:
-        await message.answer(
-            "❌ این کد برای ساخت سرویس هدیه نیست.\n\nلطفاً کد هدیه معتبر را وارد کن.",
-            reply_markup=gift_prompt_keyboard(),
-        )
+        await message.answer("❌ این کد برای ساخت سرویس هدیه نیست.\n\nلطفاً کد هدیه معتبر را وارد کن.", reply_markup=gift_prompt_keyboard())
         return
-
     if promocode.is_activated:
         await message.answer("❌ این کد هدیه قبلاً استفاده شده است.", reply_markup=gift_prompt_keyboard())
         return
@@ -103,7 +98,6 @@ async def redeem_gift_code(
         duration_days=duration_days,
         tg_id=user.tg_id,
     )
-
     client_id = await services.vpn.create_client(
         user=user,
         devices=1,
@@ -121,6 +115,7 @@ async def redeem_gift_code(
             await message.answer("❌ سرویس ساخته شد اما ثبت آن در حساب شما ناموفق بود. لطفاً با پشتیبانی تماس بگیرید.")
             return
 
+        now = datetime.utcnow()
         subscription = Subscription(
             user_id=fresh_user.id,
             server_id=fresh_user.server_id,
@@ -132,28 +127,25 @@ async def redeem_gift_code(
             devices=1,
             is_gift=True,
             status="active",
-            start_date=datetime.utcnow(),
-            expire_date=datetime.utcnow() + timedelta(days=duration_days),
+            start_date=now,
+            expire_date=now + timedelta(days=duration_days),
         )
         save_session.add(subscription)
         await save_session.flush()
-        subscription_id = subscription.id
 
-        # Consume the code only after the real XUI client and DB subscription
-        # have both been created successfully.
-        redeemed = await save_session.execute(
-            select(Promocode)
+        # Atomically consume the code in the same DB transaction as the new subscription.
+        result = await save_session.execute(
+            update(Promocode)
             .where(Promocode.id == promocode.id, Promocode.is_activated.is_(False))
+            .values(is_activated=True, activated_by=fresh_user.tg_id)
         )
-        current_promocode = redeemed.scalar_one_or_none()
-        if current_promocode is None:
+        if result.rowcount != 1:
             await save_session.rollback()
             await message.answer("❌ این کد هدیه هم‌زمان توسط درخواست دیگری مصرف شده است.")
             return
 
-        current_promocode.is_activated = True
-        current_promocode.activated_by = fresh_user.tg_id
         await save_session.commit()
+        subscription_id = subscription.id
 
     key = await services.vpn.get_key(user, subscription_id=subscription_id)
     links = await services.vpn.get_subscription_links(user, subscription_id=subscription_id)
@@ -168,15 +160,12 @@ async def redeem_gift_code(
         "",
         "🔗 <b>کانفیگ هدیه</b>",
     ]
-
     if key:
         lines.extend(["", "🔗 لینک اشتراک:", f"<code>{key}</code>"])
-
     if links:
         lines.extend(["", "📡 لینک اتصال:"])
         for index, link in enumerate(links, start=1):
             lines.extend([f"🔹 اتصال {index}:", f"<code>{link}</code>"])
-
     lines.extend([
         "",
         "✅ این سرویس در «سرویس‌های من» ثبت شد.",
@@ -184,10 +173,7 @@ async def redeem_gift_code(
     ])
 
     await state.clear()
-    await message.answer(
-        "\n".join(lines),
-        reply_markup=_gift_details_keyboard(subscription_id),
-    )
+    await message.answer("\n".join(lines), reply_markup=_gift_details_keyboard(subscription_id))
 
 
 @router.callback_query(F.data.regexp(r"^my_services:view:\d+$"))
@@ -208,7 +194,6 @@ async def gift_service_details_guard(
         )
     )
     subscription = result.scalar_one_or_none()
-
     if not subscription or not subscription.is_gift:
         raise SkipHandler
 
@@ -233,14 +218,12 @@ async def gift_service_details_guard(
         f"👤 <b>کاربر:</b> {subscription.devices}\n"
         f"🖥 <b>سرور:</b> {server_name}\n"
     )
-
     if subscription.start_date:
         text += f"🗓 <b>شروع:</b> {format_jalali(subscription.start_date)}\n"
     if expire:
         text += f"⏳ <b>انقضا:</b> {format_jalali(expire)}\n"
         if days is not None:
             text += f"📆 <b>باقی‌مانده:</b> {days} روز\n"
-
     text += "\n🚫 <b>این سرویس هدیه قابلیت تمدید ندارد.</b>"
 
     await callback.answer()
