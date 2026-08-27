@@ -26,9 +26,10 @@ class NavReferral(str, Enum):
 class NavSupport(str, Enum):
     MAIN = "support"
     TRAINING = "support:training"
-    TRAINING_ANDROID = "support:training:android"
-    TRAINING_IOS = "support:training:ios"
-    TRAINING_WINDOWS = "support:training:windows"
+    TRAINING_HAPP = "support:training:happ"
+    TRAINING_V2RAY = "support:training:v2ray"
+    TRAINING_V2BOX = "support:training:v2box"
+    TRAINING_APP_PLATFORM = "support:training:app"
     CONTACT = "support:contact"
     SEND_MESSAGE = "support:contact:send"
     MY_TICKETS = "support:contact:tickets"
