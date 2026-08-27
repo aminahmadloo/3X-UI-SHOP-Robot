@@ -47,8 +47,11 @@ def training_app_keyboard(app: str) -> InlineKeyboardMarkup:
             ("🐧 Linux — v2rayN", "linux"),
         ],
         "v2box": [
+            ("🤖 Android", "android"),
             ("🍎 iPhone / iPad", "ios"),
+            ("💻 Windows", "windows"),
             ("🖥 macOS", "macos"),
+            ("🐧 Linux", "linux"),
         ],
     }
     for text, platform in platforms.get(app, []):

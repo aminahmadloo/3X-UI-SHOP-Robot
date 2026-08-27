@@ -135,6 +135,39 @@ PAGES: dict[tuple[str, str], TrainingPage] = {
         "⚠️ لینک رسمی قابل‌اعتماد V2Box برای iPhone/iPad همین App Store است.",
         "https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690",
     ),
+    ("v2box", "android"): TrainingPage(
+        "🤖 <b>V2Box در Android</b>",
+        "<b>۱) نصب</b>\nV2Box را از Google Play نصب و اجرا کن.\n\n"
+        "<b>۲) دریافت کلید</b>\nاز بخش «سرویس‌های من» در ربات، کلید یا لینک اتصال ToonelVPN را دریافت کن.\n\n"
+        "<b>۳) افزودن سرویس</b>\nدر V2Box گزینه افزودن کانفیگ/Import را باز کن و لینک VLESS را از Clipboard وارد کن؛ در صورت امکان می‌توانی QR را نیز اسکن کنی.\n\n"
+        "<b>۴) Subscription</b>\nاگر لینک Subscription داری، آن را در بخش مربوط به Subscription وارد و Update/Refresh کن.\n\n"
+        "<b>۵) اتصال</b>\nیک سرور را انتخاب کن، Connect را بزن و اجازه ایجاد VPN در Android را تأیید کن.\n\n"
+        "<b>۶) عیب‌یابی</b>\nاگر اتصال برقرار نشد، Subscription را Refresh کن، سرور دیگری را امتحان کن و تاریخ و ساعت Android را روی Automatic قرار بده.\n\n"
+        "💡 لینک رسمی Android در Google Play:",
+        "https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box",
+    ),
+    ("v2box", "windows"): TrainingPage(
+        "💻 <b>V2Box در Windows</b>",
+        "<b>۱) دریافت برنامه</b>\\nبرای Windows فقط نسخه‌ای را استفاده کن که منبع آن برای V2Box مشخص و قابل اعتماد باشد.\\n\\n"
+        "<b>۲) نصب</b>\\nبرنامه را نصب و اجرا کن. اگر Windows درباره ناشر یا فایل هشدار داد، قبل از اجرا منبع فایل را بررسی کن.\\n\\n"
+        "<b>۳) افزودن Subscription</b>\\nلینک Subscription ToonelVPN را Copy کن و در بخش Subscription/Import برنامه وارد کن. سپس Update را اجرا کن.\\n\\n"
+        "<b>۴) افزودن لینک تکی</b>\\nاگر لینک VLESS تکی داری، آن را از Clipboard یا QR وارد کن.\\n\\n"
+        "<b>۵) اتصال</b>\\nپروفایل ToonelVPN را انتخاب و اتصال را فعال کن. در صورت نیاز دسترسی شبکه یا VPN را تأیید کن.\\n\\n"
+        "<b>۶) عیب‌یابی</b>\\nSubscription را Refresh کن، یک پروفایل دیگر را امتحان کن و مطمئن شو VPN یا Proxy دیگری هم‌زمان فعال نیست.\\n\\n"
+        "📥 برای دریافت V2Box در Windows از لینک رسمی ارائه‌شده توسط V2Box استفاده کن.",
+        "https://t.me/obormotkotbot?start=bdbdb54n",
+    ),
+    ("v2box", "linux"): TrainingPage(
+        "🐧 <b>V2Box در Linux</b>",
+        "<b>۱) دریافت برنامه</b>\\nنسخه Linux را فقط از مخزن معتبر و قابل اعتماد دریافت کن.\\n\\n"
+        "<b>۲) نصب</b>\\nبسته متناسب با توزیع Linux و معماری سیستم را نصب و برنامه را اجرا کن.\\n\\n"
+        "<b>۳) افزودن Subscription</b>\\nلینک Subscription ToonelVPN را در بخش Subscription/Import وارد کن و لیست سرورها را Update کن.\\n\\n"
+        "<b>۴) افزودن کانفیگ</b>\\nلینک VLESS یا QR کانفیگ را در صورت پشتیبانی نسخه نصب‌شده وارد کن.\\n\\n"
+        "<b>۵) اتصال</b>\\nپروفایل موردنظر را انتخاب و اتصال را فعال کن. در صورت استفاده از TUN یا VPN system-level ممکن است دسترسی Administrator/root لازم باشد.\\n\\n"
+        "<b>۶) عیب‌یابی</b>\\nپروفایل دیگری را تست کن، Subscription را Refresh کن و Proxy/VPN دیگری را برای تست خاموش کن.\\n\\n"
+        "📥 برای دریافت V2Box در Linux از لینک رسمی ارائه‌شده توسط V2Box استفاده کن.",
+        "https://t.me/obormotkotbot?start=bdbdb54n",
+    ),
     ("v2box", "macos"): TrainingPage(
         "🖥 <b>V2Box در macOS</b>",
         "V2Box برای Mac نیز از طریق App Store ارائه شده است.\n\n"
