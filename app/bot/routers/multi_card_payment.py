@@ -45,11 +45,35 @@ def _payment_text(user: User, card: CardSettings, amount: int) -> str:
 def _keyboard(card: CardSettings, amount: int, paid_callback: str, back_callback: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📋 کپی شماره کارت", copy_text=CopyTextButton(text=card.card_number))],
-            [InlineKeyboardButton(text="📋 کپی مبلغ", copy_text=CopyTextButton(text=str(amount)))],
-            [InlineKeyboardButton(text="🔄 تعویض کارت", callback_data=f"multicard:swap:{card.id}", style="success")],
-            [InlineKeyboardButton(text="✅ پرداخت کردم", callback_data=paid_callback)],
-            [InlineKeyboardButton(text="🔙 بازگشت", callback_data=back_callback)],
+            [
+                InlineKeyboardButton(
+                    text="📋 کپی شماره کارت",
+                    copy_text=CopyTextButton(text=card.card_number),
+                ),
+                InlineKeyboardButton(
+                    text="📋 کپی مبلغ",
+                    copy_text=CopyTextButton(text=str(amount)),
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔄 تعویض کارت",
+                    callback_data=f"multicard:swap:{card.id}",
+                    style="success",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="✅ پرداخت کردم-- رسید می فرستم",
+                    callback_data=paid_callback,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 بازگشت",
+                    callback_data=back_callback,
+                )
+            ],
         ]
     )
 
