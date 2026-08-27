@@ -40,18 +40,14 @@ def wallet_overview_keyboard(language: str = "fa") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text=topup, callback_data=WALLET_TOPUP_MENU)],
-            [InlineKeyboardButton(text=gift, callback_data=NavSubscription.PROMOCODE)],
+            [InlineKeyboardButton(text=gift, callback_data=NavSubscription.GIFT_CODE)],
             [InlineKeyboardButton(text=history, callback_data=WALLET_TRANSACTIONS)],
             [InlineKeyboardButton(text=back, callback_data=NavMain.MAIN_MENU)],
         ]
     )
 
 
-async def wallet_overview_text(
-    session: AsyncSession,
-    services: ServicesContainer,
-    user: User,
-) -> str:
+async def wallet_overview_text(session: AsyncSession, services: ServicesContainer, user: User) -> str:
     balance = await services.wallet.get_balance(user.tg_id)
     now = datetime.utcnow()
 
@@ -64,14 +60,10 @@ async def wallet_overview_text(
     ) or 0
 
     last_wallet_activity = await session.scalar(
-        select(func.max(WalletTransaction.created_at)).where(
-            WalletTransaction.user_tg_id == user.tg_id
-        )
+        select(func.max(WalletTransaction.created_at)).where(WalletTransaction.user_tg_id == user.tg_id)
     )
     last_purchase_activity = await session.scalar(
-        select(func.max(Transaction.updated_at)).where(
-            Transaction.tg_id == user.tg_id
-        )
+        select(func.max(Transaction.updated_at)).where(Transaction.tg_id == user.tg_id)
     )
     last_activity = max(
         [dt for dt in (last_wallet_activity, last_purchase_activity) if dt is not None],
@@ -107,13 +99,7 @@ async def wallet_overview_text(
 
 
 @router.callback_query(F.data == NavMain.WALLET)
-async def callback_wallet_overview(
-    callback: CallbackQuery,
-    user: User,
-    services: ServicesContainer,
-    session: AsyncSession,
-    state: FSMContext,
-) -> None:
+async def callback_wallet_overview(callback: CallbackQuery, user: User, services: ServicesContainer, session: AsyncSession, state: FSMContext) -> None:
     await callback.answer()
     await state.clear()
     await state.update_data({MAIN_MESSAGE_ID_KEY: callback.message.message_id})
@@ -124,12 +110,7 @@ async def callback_wallet_overview(
 
 
 @router.callback_query(F.data == WALLET_TOPUP_MENU)
-async def callback_wallet_topup_menu(
-    callback: CallbackQuery,
-    user: User,
-    services: ServicesContainer,
-    session: AsyncSession,
-) -> None:
+async def callback_wallet_topup_menu(callback: CallbackQuery, user: User, services: ServicesContainer, session: AsyncSession) -> None:
     await callback.answer()
     balance = await services.wallet.get_balance(user.tg_id)
     amounts = await WalletTopupAmount.get_all(session)
@@ -140,12 +121,7 @@ async def callback_wallet_topup_menu(
 
 
 @router.callback_query(F.data == WALLET_TRANSACTIONS)
-async def callback_wallet_transactions(
-    callback: CallbackQuery,
-    user: User,
-    services: ServicesContainer,
-    state: FSMContext,
-) -> None:
+async def callback_wallet_transactions(callback: CallbackQuery, user: User, services: ServicesContainer, state: FSMContext) -> None:
     await callback.answer()
     transactions = await services.wallet.get_recent_transactions(user.tg_id, limit=20)
 
