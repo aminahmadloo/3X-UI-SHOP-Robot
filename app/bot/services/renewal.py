@@ -26,15 +26,7 @@ async def extend_existing_subscription(
     duration_days: int,
     plan_id: int | None = None,
 ) -> bool:
-    """Extend an existing subscription without changing its original plan identity.
-
-    The current operation may be either:
-    - time-only: duration_days > 0 and plan.volume_gb == 0
-    - traffic-only: duration_days == 0 and plan.volume_gb > 0
-
-    ``Subscription.plan_id`` is the immutable original purchase plan. ``plan_id``
-    here identifies only the add-on/renewal operation currently being fulfilled.
-    """
+    """Extend an existing subscription without changing its original plan identity."""
 
     if duration_days < 0:
         return False
@@ -55,13 +47,16 @@ async def extend_existing_subscription(
         if not subscription or not subscription.server or not subscription.client_id:
             return False
 
+        # Gift subscriptions are real subscriptions for usage/history, but are
+        # permanently non-renewable. Enforce this at the service layer so a
+        # manually crafted callback cannot bypass the UI restriction.
+        if subscription.is_gift:
+            return False
+
         plan = await ServicePurchasePlan.get(session, plan_id) if plan_id is not None else None
         if not plan:
             return False
 
-        # A renewal/add-on must actually change something.  Traffic-only add-ons
-        # intentionally have duration_days == 0, so rejecting zero duration here
-        # would make every card-to-card/wallet traffic add-on fail at provisioning.
         if duration_days == 0 and plan.volume_gb <= 0:
             return False
         if duration_days > 0 and plan.duration_days <= 0:
@@ -121,9 +116,6 @@ async def extend_existing_subscription(
             ).replace(tzinfo=None)
 
         subscription.status = "active"
-
-        # IMPORTANT: plan_id is the original purchase plan and must remain immutable.
-        # The current renewal/add-on plan is intentionally NOT written back here.
 
         try:
             await connection.api.client.update(client_uuid=client.id, client=client)
