@@ -37,6 +37,7 @@ from .admin_tools.referral_settings_handler import router as referral_settings_r
 from .gift_service_handler import router as gift_service_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
 from .multi_card_payment import router as multi_card_payment_router
+from .multi_card_service_receipt import router as multi_card_service_receipt_router
 from .multi_card_wallet_receipt import router as multi_card_wallet_receipt_router
 from .subscription.dynamic_service_purchase_handler import router as dynamic_service_purchase_router
 from .subscription.managed_payment_compat_handler import router as managed_payment_compat_router
@@ -53,6 +54,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         misc.notification_handler.router,
         commands.router,
         multi_card_wallet_receipt_router,
+        multi_card_service_receipt_router,
         multi_card_payment_router,
         custom_service_card_payment.router,
         managed_card_payment.router,
