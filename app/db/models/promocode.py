@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Self
 
 from sqlalchemy import *
@@ -27,16 +27,26 @@ class Promocode(Base):
     is_activated: Mapped[bool] = mapped_column(default=False, nullable=False)
     activated_by: Mapped[int | None] = mapped_column(ForeignKey("users.tg_id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=func.now(), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(nullable=True)
     activated_user: Mapped["User | None"] = relationship(  # type: ignore
         "User", back_populates="activated_promocodes"
     )
+
+    @property
+    def is_expired(self) -> bool:
+        if self.expires_at is None:
+            return False
+        expires_at = self.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) >= expires_at
 
     def __repr__(self) -> str:
         return (
             f"<Promocode(id={self.id}, code='{self.code}', duration={self.duration}, "
             f"volume_gb={self.volume_gb}, is_gift={self.is_gift}, "
             f"is_activated={self.is_activated}, activated_by={self.activated_by}, "
-            f"created_at={self.created_at})>"
+            f"created_at={self.created_at}, expires_at={self.expires_at})>"
         )
 
     @classmethod
