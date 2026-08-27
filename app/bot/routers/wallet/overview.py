@@ -7,14 +7,15 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ServicesContainer
+from app.bot.routers.main_menu.wallet_keyboard import wallet_keyboard
 from app.bot.routers.subscription.keyboard import promocode_keyboard
+from app.bot.routers.wallet.handler import wallet_text
 from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY
 from app.bot.utils.jalali import format_jalali
 from app.bot.utils.navigation import NavMain, NavSubscription
-from app.db.models import Subscription, Transaction, User, WalletTransaction
+from app.db.models import Subscription, Transaction, User, WalletTopupAmount, WalletTransaction
 
 router = Router(name=__name__)
-
 
 WALLET_TOPUP_MENU = "wallet:topup_menu"
 WALLET_TRANSACTIONS = "wallet:transactions"
@@ -47,7 +48,7 @@ def wallet_overview_keyboard(language: str = "fa") -> InlineKeyboardMarkup:
     )
 
 
-async def _wallet_overview_text(
+async def wallet_overview_text(
     session: AsyncSession,
     services: ServicesContainer,
     user: User,
@@ -73,7 +74,6 @@ async def _wallet_overview_text(
             Transaction.tg_id == user.tg_id
         )
     )
-
     last_activity = max(
         [dt for dt in (last_wallet_activity, last_purchase_activity) if dt is not None],
         default=None,
@@ -84,7 +84,7 @@ async def _wallet_overview_text(
             "💳 <b>Wallet</b>\n\n"
             f"💰 Balance: <b>{balance:,}</b> Toman\n"
             f"🆔 ID: <code>{user.tg_id}</code>\n"
-            f"📦 Active services: {active_services}\n"
+            f"📦 Active services: <b>{active_services}</b>\n"
             f"🗓 Membership date: {format_jalali(user.created_at)}\n"
             f"📆 Last activity: {format_jalali(last_activity) if last_activity else '-'}"
         )
@@ -93,7 +93,7 @@ async def _wallet_overview_text(
             "💳 <b>Кошелёк</b>\n\n"
             f"💰 Баланс: <b>{balance:,}</b> томан\n"
             f"🆔 ID: <code>{user.tg_id}</code>\n"
-            f"📦 Активных сервисов: {active_services}\n"
+            f"📦 Активных сервисов: <b>{active_services}</b>\n"
             f"🗓 Дата регистрации: {format_jalali(user.created_at)}\n"
             f"📆 Последняя активность: {format_jalali(last_activity) if last_activity else '-'}"
         )
@@ -101,7 +101,7 @@ async def _wallet_overview_text(
         "💳 <b>کیف پول</b>\n\n"
         f"💰 موجودی: <b>{balance:,}</b> تومان\n"
         f"🆔 آیدی: <code>{user.tg_id}</code>\n"
-        f"📦 سرویس‌های فعال: {active_services}\n"
+        f"📦 سرویس‌های فعال: <b>{active_services}</b>\n"
         f"🗓 تاریخ عضویت: {format_jalali(user.created_at)}\n"
         f"📆 آخرین فعالیت: {format_jalali(last_activity) if last_activity else '-'}"
     )
@@ -119,8 +119,24 @@ async def callback_wallet_overview(
     await state.clear()
     await state.update_data({MAIN_MESSAGE_ID_KEY: callback.message.message_id})
     await callback.message.edit_text(
-        text=await _wallet_overview_text(session, services, user),
+        text=await wallet_overview_text(session, services, user),
         reply_markup=wallet_overview_keyboard(user.language_code),
+    )
+
+
+@router.callback_query(F.data == WALLET_TOPUP_MENU)
+async def callback_wallet_topup_menu(
+    callback: CallbackQuery,
+    user: User,
+    services: ServicesContainer,
+    session: AsyncSession,
+) -> None:
+    await callback.answer()
+    balance = await services.wallet.get_balance(user.tg_id)
+    amounts = await WalletTopupAmount.get_all(session)
+    await callback.message.edit_text(
+        text=wallet_text(user.language_code, balance, bool(amounts)),
+        reply_markup=wallet_keyboard(amounts, user.language_code),
     )
 
 
@@ -138,14 +154,17 @@ async def callback_wallet_transactions(
         title = "📜 <b>Wallet transaction history</b>\n\n"
         empty = "No wallet transactions yet."
         back = "🔙 Back to wallet"
+        main = "🔙 Back to main menu"
     elif user.language_code == "ru":
         title = "📜 <b>История операций кошелька</b>\n\n"
         empty = "Операций по кошельку пока нет."
         back = "🔙 Назад к кошельку"
+        main = "🔙 В главное меню"
     else:
         title = "📜 <b>تاریخچه تراکنش‌های کیف پول</b>\n\n"
         empty = "هنوز تراکنشی برای کیف پول ثبت نشده است."
         back = "🔙 بازگشت به کیف پول"
+        main = "🔙 بازگشت به منوی اصلی"
 
     if not transactions:
         text = title + empty
@@ -153,10 +172,11 @@ async def callback_wallet_transactions(
         lines = [title]
         for tx in transactions:
             sign = "+" if tx.amount > 0 else ""
-            date = format_jalali(tx.created_at)
             description = f" — {tx.description}" if tx.description else ""
             lines.append(
-                f"{date} | <b>{sign}{tx.amount:,}</b> تومان | {tx.transaction_type}{description}"
+                f"📅 {format_jalali(tx.created_at)}\n"
+                f"💰 مبلغ: <b>{sign}{tx.amount:,} تومان</b>\n"
+                f"🔹 نوع: <code>{tx.transaction_type}</code>{description}\n"
             )
         text = "\n".join(lines)
 
@@ -166,7 +186,7 @@ async def callback_wallet_transactions(
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text=back, callback_data=NavMain.WALLET)],
-                [InlineKeyboardButton(text="🔙 بازگشت به منوی اصلی", callback_data=NavMain.MAIN_MENU)],
+                [InlineKeyboardButton(text=main, callback_data=NavMain.MAIN_MENU)],
             ]
         ),
     )
