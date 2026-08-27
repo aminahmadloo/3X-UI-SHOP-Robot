@@ -8,6 +8,7 @@ from . import (
     maintenance_handler,
     notification_handler,
     promocode_handler,
+    referral_settings_handler,
     restart_handler,
     server_handler,
     subscription_settings_handler,
