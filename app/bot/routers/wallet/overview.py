@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ServicesContainer
 from app.bot.routers.main_menu.wallet_keyboard import wallet_keyboard
-from app.bot.routers.subscription.keyboard import promocode_keyboard
 from app.bot.routers.wallet.handler import wallet_text
 from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY
 from app.bot.utils.jalali import format_jalali
