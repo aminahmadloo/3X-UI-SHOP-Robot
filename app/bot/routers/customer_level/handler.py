@@ -2,7 +2,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.services.customer_level import LEVELS, get_customer_level
+from app.bot.services.customer_level import get_customer_level, get_customer_levels
 from app.bot.utils.navigation import NavMain
 from app.db.models import User
 
@@ -13,10 +13,22 @@ def _keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavMain.MAIN_MENU)]])
 
 
+def _level_guide_line(level, current_key: str) -> str:
+    if level.max_purchases is None:
+        purchases = f"{level.min_purchases}+"
+    else:
+        purchases = f"{level.min_purchases} تا {level.max_purchases}"
+    current = " ← شما اینجایید" if level.key == current_key else ""
+    discount = "بدون تخفیف" if level.discount_percent == 0 else f"{level.discount_percent}% تخفیف"
+    icons = {"bronze": "⚪️", "silver": "🔩", "gold": "⚙️", "platinum": "👑"}
+    return f"{icons[level.key]} {level.title}: {purchases} خرید — {discount}{current}"
+
+
 @router.callback_query(F.data == NavMain.CUSTOMER_LEVEL)
 async def customer_level(callback: CallbackQuery, user: User, session: AsyncSession) -> None:
     level, count = await get_customer_level(session, user.tg_id)
-    next_level = next((item for item in LEVELS if item.min_purchases > count), None)
+    levels = await get_customer_levels(session)
+    next_level = next((item for item in levels if item.min_purchases > count), None)
 
     lines = [
         f"🏆 <b>سطح شما: {level.title}</b>",
@@ -35,13 +47,8 @@ async def customer_level(callback: CallbackQuery, user: User, session: AsyncSess
     else:
         lines.extend(["📈 <b>بالاترین سطح را دارید.</b>", ""])
 
-    lines.extend([
-        "📊 <b>راهنمای سطوح:</b>",
-        "⚪ سطح پایه: ۰ تا ۴ خرید — بدون تخفیف" + (" ← شما اینجایید" if level.key == "bronze" else ""),
-        "🔩 سطح برنزی: ۵ تا ۱۰ خرید — ۱۰٪ تخفیف" + (" ← شما اینجایید" if level.key == "silver" else ""),
-        "⚙️ سطح نقره‌ای: ۱۱ تا ۲۰ خرید — ۱۵٪ تخفیف" + (" ← شما اینجایید" if level.key == "gold" else ""),
-        "👑 سطح طلایی: ۲۱+ خرید — ۲۰٪ تخفیف" + (" ← شما اینجایید" if level.key == "platinum" else ""),
-    ])
+    lines.append("📊 <b>راهنمای سطوح:</b>")
+    lines.extend(_level_guide_line(item, level.key) for item in levels)
 
     await callback.answer()
     await callback.message.edit_text("\n".join(lines), reply_markup=_keyboard())
