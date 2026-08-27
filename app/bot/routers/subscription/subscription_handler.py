@@ -218,7 +218,9 @@ async def callback_config_name_auto(
         "💳 <b>انتخاب روش پرداخت</b>\n\n"
         f"📝 نام کانفیگ: <code>{callback_data.config_name}</code>\n"
         f"💾 پلن: <b>{callback_data.volume_gb}GB | {callback_data.duration} روز</b>\n"
-        f"💰 مبلغ: <b>{callback_data.price:,} تومان</b>\n\n"
+        f"💰 مبلغ واقعی: <b>{callback_data.original_price:,} تومان</b>\n"
+        f"🎁 تخفیف سطح مشتری: <b>{callback_data.discount_percent}%</b>\n"
+        f"💳 مبلغ قابل پرداخت: <b>{callback_data.price:,} تومان</b>\n\n"
         "روش پرداخت را انتخاب کنید:",
         reply_markup=managed_payment_method_keyboard(
             callback_data.plan_id,
@@ -324,7 +326,9 @@ async def message_config_name(
         "💳 <b>انتخاب روش پرداخت</b>\n\n"
         f"📝 نام کانفیگ: <code>{callback_data.config_name}</code>\n"
         f"💾 پلن: <b>{callback_data.volume_gb}GB | {callback_data.duration} روز</b>\n"
-        f"💰 مبلغ: <b>{callback_data.price:,} تومان</b>\n\n"
+        f"💰 مبلغ واقعی: <b>{callback_data.original_price:,} تومان</b>\n"
+        f"🎁 تخفیف سطح مشتری: <b>{callback_data.discount_percent}%</b>\n"
+        f"💳 مبلغ قابل پرداخت: <b>{callback_data.price:,} تومان</b>\n\n"
         "روش پرداخت را انتخاب کنید:",
         reply_markup=managed_payment_method_keyboard(
             callback_data.plan_id,
