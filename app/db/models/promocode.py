@@ -26,10 +26,11 @@ class Promocode(Base):
     is_gift: Mapped[bool] = mapped_column(default=False, nullable=False)
     is_activated: Mapped[bool] = mapped_column(default=False, nullable=False)
     activated_by: Mapped[int | None] = mapped_column(ForeignKey("users.tg_id"), nullable=True)
+    recipient_tg_id: Mapped[int | None] = mapped_column(nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(default=func.now(), nullable=False)
     expires_at: Mapped[datetime | None] = mapped_column(nullable=True)
     activated_user: Mapped["User | None"] = relationship(  # type: ignore
-        "User", back_populates="activated_promocodes"
+        "User", back_populates="activated_promocodes", foreign_keys=[activated_by]
     )
 
     @property
@@ -46,7 +47,8 @@ class Promocode(Base):
             f"<Promocode(id={self.id}, code='{self.code}', duration={self.duration}, "
             f"volume_gb={self.volume_gb}, is_gift={self.is_gift}, "
             f"is_activated={self.is_activated}, activated_by={self.activated_by}, "
-            f"created_at={self.created_at}, expires_at={self.expires_at})>"
+            f"recipient_tg_id={self.recipient_tg_id}, created_at={self.created_at}, "
+            f"expires_at={self.expires_at})>"
         )
 
     @classmethod
