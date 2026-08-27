@@ -25,8 +25,17 @@ class NavReferral(str, Enum):
 
 class NavSupport(str, Enum):
     MAIN = "support"
-    HOW_TO_CONNECT = "how_to_connect"
-    VPN_NOT_WORKING = "vpn_not_working"
+    TRAINING = "support:training"
+    TRAINING_ANDROID = "support:training:android"
+    TRAINING_IOS = "support:training:ios"
+    TRAINING_WINDOWS = "support:training:windows"
+    CONTACT = "support:contact"
+    SEND_MESSAGE = "support:contact:send"
+    MY_TICKETS = "support:contact:tickets"
+    TICKET_VIEW = "support:ticket:view"
+    TICKET_CONVERSATION = "support:ticket:conversation"
+    TICKET_REPLY = "support:ticket:reply"
+    TICKET_CLOSE = "support:ticket:close"
 
 
 class NavDownload(str, Enum):
