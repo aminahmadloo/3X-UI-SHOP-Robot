@@ -402,7 +402,9 @@ async def service_selected(
         f"📅 <b>زمان تمدید:</b> {original_plan.duration_days} روز\n"
         f"🗓 <b>مدت نهایی پس از تمدید:</b> {final_days} روز\n"
         f"📆 <b>تاریخ انقضا پس از تمدید:</b> {new_expire_text}\n\n"
-        f"💰 <b>مبلغ تمدید:</b> {data.price:,} تومان\n\n"
+        f"💰 <b>مبلغ تمدید پلن:</b> {int(data.original_price):,}".replace(",", ".") + " تومان\n"
+        f"🎁 <b>تخفیف {data.discount_level_title or 'سطح پایه'}:</b> {data.discount_percent}%\n"
+        f"💳 <b>مبلغ قابل پرداخت:</b> {int(data.price):,}".replace(",", ".") + " تومان\n\n"
         "این عملیات همان سرویس و همان کلاینت فعلی را تمدید می‌کند.\n"
         "کلید اتصال، سرور و مشخصات اتصال موجود حفظ می‌شوند.",
         reply_markup=InlineKeyboardMarkup(
