@@ -36,6 +36,7 @@ def gift_menu_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="➕ ساخت کد هدیه بدون ارسال", callback_data=NavAdminTools.CREATE_PROMOCODE)],
             [InlineKeyboardButton(text="🗑 حذف کد هدیه", callback_data=NavAdminTools.DELETE_PROMOCODE)],
             [InlineKeyboardButton(text="✏️ ویرایش کد هدیه", callback_data=NavAdminTools.EDIT_PROMOCODE)],
+            [InlineKeyboardButton(text="📊 گزارشات", callback_data=NavAdminTools.GIFT_REPORTS)],
             [back_to_main_menu_button()],
         ]
     )
@@ -140,10 +141,7 @@ async def gift_to_user_volume(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(gift_volume_gb=volume)
     await state.set_state(GiftPromocodeStates.user_duration)
-    await message.answer(
-        "⏱ <b>مدت سرویس هدیه</b> را انتخاب کنید:",
-        reply_markup=_duration_keyboard(),
-    )
+    await message.answer("⏱ <b>مدت سرویس هدیه</b> را انتخاب کنید:", reply_markup=_duration_keyboard())
 
 
 @router.callback_query(GiftPromocodeStates.user_duration, IsAdmin())
@@ -162,12 +160,7 @@ async def gift_to_user_duration(callback: CallbackQuery, state: FSMContext) -> N
 
 
 @router.message(GiftPromocodeStates.user_validity, IsAdmin())
-async def gift_to_user_create(
-    message: Message,
-    session: AsyncSession,
-    state: FSMContext,
-    services: ServicesContainer,
-) -> None:
+async def gift_to_user_create(message: Message, session: AsyncSession, state: FSMContext, services: ServicesContainer) -> None:
     validity = _parse_validity(message.text)
     if validity is None:
         await message.answer("❌ مدت اعتبار نامعتبر است. عدد صفر یا یک عدد صحیح مثبت وارد کنید؛ مثلاً <code>10</code>.")
@@ -183,13 +176,7 @@ async def gift_to_user_create(
         await message.answer("❌ مشتری دیگر وجود ندارد.", reply_markup=gift_menu_keyboard())
         return
 
-    promocode = await Promocode.create(
-        session=session,
-        duration=duration,
-        volume_gb=volume_gb,
-        is_gift=True,
-        expires_at=_expires_at(validity),
-    )
+    promocode = await Promocode.create(session=session, duration=duration, volume_gb=volume_gb, is_gift=True, recipient_tg_id=user_id, expires_at=_expires_at(validity))
     if not promocode:
         await state.clear()
         await message.answer("❌ ساخت کد هدیه ناموفق بود.", reply_markup=gift_menu_keyboard())
@@ -218,22 +205,14 @@ async def gift_to_user_create(
         )
     else:
         await Promocode.delete(session=session, code=promocode.code)
-        await message.answer(
-            "❌ ارسال پیام به مشتری ناموفق بود؛ کد هدیه نیز حذف شد.",
-            reply_markup=gift_menu_keyboard(),
-        )
+        await message.answer("❌ ارسال پیام به مشتری ناموفق بود؛ کد هدیه نیز حذف شد.", reply_markup=gift_menu_keyboard())
 
 
 @router.callback_query(F.data == NavAdminTools.CREATE_AND_SEND_PROMOCODE_ALL, IsAdmin())
 async def gift_to_all_start(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(GiftPromocodeStates.all_volume)
     await callback.answer()
-    await callback.message.edit_text(
-        "🎁📢 <b>ارسال کد هدیه برای همه مشتریان</b>\n\n"
-        "📦 حجم سرویس هدیه را به گیگابایت ارسال کنید.\n"
-        "مثال: <code>30</code>",
-        reply_markup=_config_back_keyboard(),
-    )
+    await callback.message.edit_text("🎁📢 <b>ارسال کد هدیه برای همه مشتریان</b>\n\n📦 حجم سرویس هدیه را به گیگابایت ارسال کنید.\nمثال: <code>30</code>", reply_markup=_config_back_keyboard())
 
 
 @router.message(GiftPromocodeStates.all_volume, IsAdmin())
@@ -253,22 +232,11 @@ async def gift_to_all_duration(callback: CallbackQuery, state: FSMContext) -> No
     await state.update_data(gift_duration_days=duration)
     await state.set_state(GiftPromocodeStates.all_validity)
     await callback.answer()
-    await callback.message.edit_text(
-        "⌛ <b>مدت اعتبار کدها</b> را به روز ارسال کنید.\n\n"
-        "این مدت از زمان ساخت هر کد محاسبه می‌شود.\n"
-        "مثلاً <code>10</code> یعنی هر کد تا ۱۰ روز قابل استفاده است.\n"
-        "برای بدون انقضا، <code>0</code> وارد کنید.",
-        reply_markup=_config_back_keyboard(),
-    )
+    await callback.message.edit_text("⌛ <b>مدت اعتبار کدها</b> را به روز ارسال کنید.\n\nاین مدت از زمان ساخت هر کد محاسبه می‌شود.\nمثلاً <code>10</code> یعنی هر کد تا ۱۰ روز قابل استفاده است.\nبرای بدون انقضا، <code>0</code> وارد کنید.", reply_markup=_config_back_keyboard())
 
 
 @router.message(GiftPromocodeStates.all_validity, IsAdmin())
-async def gift_to_all_create(
-    message: Message,
-    session: AsyncSession,
-    state: FSMContext,
-    services: ServicesContainer,
-) -> None:
+async def gift_to_all_create(message: Message, session: AsyncSession, state: FSMContext, services: ServicesContainer) -> None:
     validity = _parse_validity(message.text)
     if validity is None:
         await message.answer("❌ مدت اعتبار نامعتبر است. عدد صفر یا یک عدد صحیح مثبت وارد کنید؛ مثلاً <code>10</code>.")
@@ -283,13 +251,7 @@ async def gift_to_all_create(
     success = 0
     failed = 0
     for user in users:
-        promocode = await Promocode.create(
-            session=session,
-            duration=duration,
-            volume_gb=volume_gb,
-            is_gift=True,
-            expires_at=_expires_at(validity),
-        )
+        promocode = await Promocode.create(session=session, duration=duration, volume_gb=volume_gb, is_gift=True, recipient_tg_id=user.tg_id, expires_at=_expires_at(validity))
         if not promocode:
             failed += 1
             continue
