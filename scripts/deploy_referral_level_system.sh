@@ -5,6 +5,62 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 export ROOT
 cd "$ROOT"
 
+# The router package uses relative imports in app/bot/routers/__init__.py.
+# Normalize the deployment script's registration marker before applying the feature.
+python3 - <<'PY'
+from pathlib import Path
+
+p = Path("scripts/apply_referral_level_system.sh")
+s = p.read_text(encoding="utf-8")
+old = '''if "customer_level_router" not in routes:
+    marker = "from app.bot.routers.referral.handler import router as referral_router\\n"
+    if marker not in routes:
+        raise SystemExit("SAFE ABORT: referral router import marker not found")
+    routes = routes.replace(marker, marker + "from app.bot.routers.customer_level.handler import router as customer_level_router\\n", 1)
+    marker2 = "        referral_router,\\n"
+    if marker2 not in routes:
+        raise SystemExit("SAFE ABORT: referral router include marker not found")
+    routes = routes.replace(marker2, marker2 + "        customer_level_router,\\n", 1)
+    write("app/bot/routers/__init__.py", routes)
+'''
+new = '''if "customer_level_router" not in routes:
+    absolute_marker = "from app.bot.routers.referral.handler import router as referral_router\\n"
+    relative_marker = "from .wallet.gateway_payment import router as wallet_gateway_router\\n"
+    if absolute_marker in routes:
+        marker = absolute_marker
+    elif relative_marker in routes:
+        marker = relative_marker
+    else:
+        raise SystemExit("SAFE ABORT: could not find a stable router import marker")
+
+    routes = routes.replace(
+        marker,
+        marker + "from app.bot.routers.customer_level.handler import router as customer_level_router\\n",
+        1,
+    )
+
+    absolute_include = "        referral_router,\\n"
+    relative_include = "        referral.handler.router,\\n"
+    if absolute_include in routes:
+        include_marker = absolute_include
+    elif relative_include in routes:
+        include_marker = relative_include
+    else:
+        raise SystemExit("SAFE ABORT: could not find a stable referral router include marker")
+
+    routes = routes.replace(
+        include_marker,
+        include_marker + "        customer_level_router,\\n",
+        1,
+    )
+    write("app/bot/routers/__init__.py", routes)
+'''
+if old not in s:
+    raise SystemExit("SAFE ABORT: deployment wrapper could not find old router-registration block")
+p.write_text(s.replace(old, new, 1), encoding="utf-8")
+print("Deployment wrapper: router-registration compatibility patch applied")
+PY
+
 sh "$ROOT/scripts/apply_referral_level_system.sh"
 sh "$ROOT/scripts/fix_referral_level_support_button.sh"
 
@@ -15,8 +71,7 @@ import re
 
 root = Path(os.environ["ROOT"])
 
-# 1) Wire the existing WalletService into ReferralService without touching
-#    any other service registration.
+# Wire WalletService into ReferralService without replacing unrelated services.
 path = root / "app/bot/services/__init__.py"
 s = path.read_text(encoding="utf-8")
 s = re.sub(
@@ -36,10 +91,9 @@ for line in s.splitlines():
 s = '\n'.join(lines) + '\n'
 if not seen_wallet or 'wallet_service=wallet' not in s:
     raise SystemExit('SAFE ABORT: WalletService/ReferralService wiring failed')
-path.write_text(s, encoding='utf-8')
+path.write_text(s, encoding="utf-8")
 
-# 2) Enable the requested one-level money referral model. Correct the existing
-#    environment-variable typo and keep all unrelated settings untouched.
+# Enable requested one-level money referral model. Keep unrelated settings intact.
 path = root / "app/config.py"
 s = path.read_text(encoding="utf-8")
 s = s.replace('env.str("SHOP_REFERRED_REWARD_TYPE",', 'env.str("SHOP_REFERRER_REWARD_TYPE",', 1)
@@ -55,8 +109,7 @@ s = s.replace(
 )
 path.write_text(s, encoding="utf-8")
 
-# 3) Make the referral page match the requested one-level model and count
-#    purchases rather than wallet top-ups.
+# Update referral page to one-level 30% lifelong wallet reward.
 path = root / "app/bot/routers/referral/handler.py"
 s = path.read_text(encoding="utf-8")
 start = s.index('async def generate_referral_summary_text(')
@@ -65,8 +118,7 @@ summary = '''async def generate_referral_summary_text(\n    session: AsyncSessio
 s = s[:start] + summary + s[end:]
 path.write_text(s, encoding="utf-8")
 
-# 4) Update only referral-related keys in the real .env, if it exists.
-#    Every other line, including admin and payment-gateway values, remains.
+# Change only referral keys in the real .env, preserving every unrelated line.
 env = root / ".env"
 if env.exists():
     text = env.read_text(encoding="utf-8")
