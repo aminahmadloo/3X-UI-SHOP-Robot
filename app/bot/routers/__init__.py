@@ -21,6 +21,7 @@ from . import (
 )
 from .admin_tools.card_payment_handler import router as card_payment_router
 from .admin_tools.card_settings_handler import router as card_settings_router
+from .admin_tools.env_settings_enhancer import router as env_settings_enhancer_router
 from .admin_tools.env_settings_handler import router as env_settings_router
 from .admin_tools.gift_promocode_handler import router as gift_promocode_router
 from .admin_tools.payment_gateway_settings_handler import router as payment_gateway_settings_router
@@ -69,6 +70,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         dynamic_traffic_admin_router,
         server_router,
         gift_promocode_router,
+        env_settings_enhancer_router,
         env_settings_router,
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,
