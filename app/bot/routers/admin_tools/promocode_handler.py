@@ -52,13 +52,12 @@ async def callback_promocode_editor(callback: CallbackQuery, user: User, state: 
     await show_promocode_editor_main(message=callback.message, state=state)
 
 
-# region: Create Promocode
 @router.callback_query(F.data == NavAdminTools.CREATE_PROMOCODE, IsAdmin())
 async def callback_create_promocode(callback: CallbackQuery, user: User, state: FSMContext) -> None:
-    logger.info(f"Admin {user.tg_id} started creating promocode.")
+    logger.info(f"Admin {user.tg_id} started creating gift promocode.")
     await state.set_state(CreatePromocodeStates.selecting_duration)
     await callback.message.edit_text(
-        text=_("promocode_editor:message:create"),
+        text="🎁 <b>ساخت کد هدیه</b>\n\nمدت <b>سرویس هدیه</b> را انتخاب کنید.\n\n🎁 حجم ثابت: <b>۳۰ گیگابایت</b>\n👤 کاربر: <b>۱</b>",
         reply_markup=promocode_duration_keyboard(),
     )
 
@@ -71,16 +70,19 @@ async def callback_duration_selected(
     state: FSMContext,
     services: ServicesContainer,
 ) -> None:
-    logger.info(f"Admin {user.tg_id} selected {callback.data} days for promocode.")
-    promocode = await Promocode.create(session=session, duration=int(callback.data))
+    duration = int(callback.data)
+    logger.info(f"Admin {user.tg_id} selected {duration} days for gift promocode.")
+    promocode = await Promocode.create(session=session, duration=duration, volume_gb=30, is_gift=True)
     await show_promocode_editor_main(message=callback.message, state=state)
 
     if promocode:
         await services.notification.notify_by_message(
             message=callback.message,
-            text=_("promocode_editor:ntf:created_success").format(
-                promocode=promocode.code,
-                duration=format_subscription_period(promocode.duration),
+            text=(
+                f"🎁 <b>کد هدیه ساخته شد</b>\n\n"
+                f"🔑 کد: <code>{promocode.code}</code>\n"
+                f"🎁 سرویس: <b>30 گیگ | {duration} روزه | 1 کاربر</b>\n\n"
+                "مشتری این کد را از مسیر <b>کیف پول → کد هدیه</b> وارد می‌کند."
             ),
         )
     else:
@@ -91,10 +93,6 @@ async def callback_duration_selected(
         )
 
 
-# endregion
-
-
-# region: Delete Promocode
 @router.callback_query(F.data == NavAdminTools.DELETE_PROMOCODE, IsAdmin())
 async def callback_delete_promocode(callback: CallbackQuery, user: User, state: FSMContext) -> None:
     logger.info(f"Admin {user.tg_id} started deleting promocode.")
@@ -131,10 +129,6 @@ async def handle_promocode_input(
         )
 
 
-# endregion
-
-
-# region Edit Promocode
 @router.callback_query(F.data == NavAdminTools.EDIT_PROMOCODE, IsAdmin())
 async def callback_edit_promocode(callback: CallbackQuery, user: User, state: FSMContext) -> None:
     logger.info(f"Admin {user.tg_id} started editing promocode.")
@@ -162,9 +156,12 @@ async def handle_promocode_edit_input(
         await state.update_data({INPUT_PROMOCODE_KEY: input_promocode})
         main_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
         await message.bot.edit_message_text(
-            text=_("promocode_editor:message:edit_duration").format(
-                promocode=promocode.code,
-                duration=promocode.duration,
+            text=(
+                "🎁 <b>ویرایش کد هدیه</b>\n\n"
+                f"کد: <code>{promocode.code}</code>\n"
+                f"حجم ثابت: <b>30 گیگ</b>\n"
+                f"مدت فعلی: <b>{promocode.duration} روز</b>\n\n"
+                "مدت جدید را انتخاب کنید:"
             ),
             chat_id=message.chat.id,
             message_id=main_message_id,
@@ -186,7 +183,6 @@ async def callback_edit_duration_selected(
     state: FSMContext,
     services: ServicesContainer,
 ) -> None:
-    logger.info(f"Admin {user.tg_id} selected {callback.data} days for promocode edit.")
     input_promocode = await state.get_value(INPUT_PROMOCODE_KEY)
     promocode = await Promocode.update(
         session=session,
@@ -208,6 +204,3 @@ async def callback_edit_duration_selected(
             text=_("promocode_editor:ntf:edit_failed"),
             duration=5,
         )
-
-
-# endregion
