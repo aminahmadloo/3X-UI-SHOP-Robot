@@ -115,3 +115,4 @@ class NavAdminTools(str, Enum):
     SERVICE_PURCHASE_EDIT = "service_purchase_edit"
     SERVICE_PURCHASE_DELETE = "service_purchase_delete"
     SUBSCRIPTION_SETTINGS = "subscription_settings"
+    CUSTOMER_LEVEL_SETTINGS = "customer_level_settings"
