@@ -25,7 +25,6 @@ def upgrade() -> None:
         "card_settings",
         sa.Column("display_order", sa.Integer(), nullable=False, server_default="1"),
     )
-    op.alter_column("card_settings", "id", existing_type=sa.Integer(), autoincrement=True)
 
     op.execute(
         sa.text(
