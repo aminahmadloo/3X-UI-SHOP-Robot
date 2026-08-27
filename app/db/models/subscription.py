@@ -7,9 +7,7 @@ from . import Base
 
 
 class Subscription(Base):
-    """
-    User VPN subscription lifecycle record.
-    """
+    """User VPN subscription lifecycle record."""
 
     __tablename__ = "subscriptions"
 
@@ -50,6 +48,11 @@ class Subscription(Base):
     devices: Mapped[int] = mapped_column(
         nullable=False,
         default=1,
+    )
+
+    is_gift: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=False,
     )
 
     status: Mapped[str] = mapped_column(
