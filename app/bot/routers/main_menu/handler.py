@@ -86,7 +86,18 @@ async def send_main_menu(
 
     main_menu = await bot.send_message(
         chat_id=user.tg_id,
-        text=_("main_menu:message:main").format(name=user.first_name),
+        text=(
+            f"🌀 <b>{user.first_name} عزیز، به ToonelVPN خوش آمدی</b> 🌐\n\n"
+            "⚡️ اتصال سریع، پایدار و مطمئن به اینترنت آزاد، با سرویس‌هایی متناسب با نیازت.\n\n"
+            "🚀 سرویس‌های متنوع برای استفاده روزمره\n"
+            "🌍 سرورهای مختلف برای انتخاب بهتر\n"
+            "🛡️ اتصال پایدار و مطمئن\n"
+            "💻 سازگار با دستگاه‌های مختلف\n"
+            "🔄 خرید، تمدید و مدیریت آسان سرویس\n"
+            "──────────────────\n\n"
+            "🎁 <b>برای شروع، می‌تونی اکانت تست رو امتحان کنی.</b>\n\n"
+            "✨ <b>یکی از گزینه‌های زیر رو انتخاب کن:</b> 👇"
+        ),
         reply_markup=reply_markup,
     )
     await state.update_data({MAIN_MESSAGE_ID_KEY: main_menu.message_id})
@@ -166,17 +177,12 @@ async def command_main_menu(
             "با توجه به این که هیچ نظارتی توسط تلگرام بر روی این تبلیغات وجود ندارد اکثرا کلاه برداری میباشد و ممکن است به جز عدم تحویل محصول به شما اطلاعات کارت شما به سرقت برود خواهشمندیم به هیچ وجه روی این تبلیغات کلیک نکنید عواقب آن بر عهده خود شما میباشد.\n\n"
             "<b>تاکنون تعدادی از مشتریان کلیک و خریداری کردند و از آنها کلاه برداری شده.</b>"
         )
-        main_menu = await message.answer(
-            "دسترسی سریع، پایدار و ایمن به اینترنت آزاد، تنها با چند کلیک!\n\n"
-            "🔐 با استفاده از سرویس‌های پرسرعت V2Ray، بدون محدودیت و با کیفیت بالا به فضای وب متصل شوید — سازگار با تمامی گوشی‌ها (Android و iOS) و قابل استفاده برای خود و اطرافیانتان.\n\n"
-            "💡 <b>چه چیزهایی در تونل وی پی ان منتظر شماست؟</b>\n"
-            "• انتخاب از میان انواع پلن‌های متنوع و اقتصادی\n"
-            "• خرید آسان و خودکار بدون نیاز به پشتیبانی دستی\n"
-            "• دریافت فوری کانفیگ و آموزش اتصال\n"
-            "• پشتیبانی حرفه‌ای و پاسخ‌گو\n\n"
-            "برای مشاهده سرویس‌ها و شروع تجربه اینترنت آزاد، روی دکمه خرید سرویس کلیک کنید 👇\n\n"
-            "📢 عضویت در کانال ما: @ToonelVpn",
-            reply_markup=reply_markup,
+        main_menu = await send_main_menu(
+            bot=message.bot,
+            user=user,
+            services=services,
+            config=config,
+            state=state,
         )
     else:
         main_menu = await send_main_menu(
@@ -237,7 +243,7 @@ async def change_language(
 
     with I18n.get_current().use_locale(language):
         await callback.message.edit_text(
-            text=_("main_menu:message:main").format(name=user.first_name),
+            text=(f"🌀 <b>{user.first_name} عزیز، به ToonelVPN خوش آمدی</b> 🌐\n\n""⚡️ اتصال سریع، پایدار و مطمئن به اینترنت آزاد، با سرویس‌هایی متناسب با نیازت.\n\n""🚀 سرویس‌های متنوع برای استفاده روزمره\n""🌍 سرورهای مختلف برای انتخاب بهتر\n""🛡️ اتصال پایدار و مطمئن\n""💻 سازگار با دستگاه‌های مختلف\n""🔄 خرید، تمدید و مدیریت آسان سرویس\n""──────────────────\n\n""🎁 <b>برای شروع، می‌تونی اکانت تست رو امتحان کنی.</b>\n\n""✨ <b>یکی از گزینه‌های زیر رو انتخاب کن:</b> 👇"),
             reply_markup=main_menu_keyboard(
                 is_admin,
                 is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
@@ -363,14 +369,13 @@ async def callback_main_menu(
     await state.clear()
     await state.update_data({MAIN_MESSAGE_ID_KEY: callback.message.message_id})
     is_admin = await IsAdmin()(user_id=user.tg_id)
-    await callback.message.edit_text(
-        text=_("main_menu:message:main").format(name=user.first_name),
-        reply_markup=main_menu_keyboard(
-            is_admin,
-            is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
-            is_trial_available=await services.subscription.is_trial_available(user),
-            is_referred_trial_available=await services.referral.is_referred_trial_available(user),
-        ),
+    await callback.message.delete()
+    await send_main_menu(
+        bot=callback.bot,
+        user=user,
+        services=services,
+        config=config,
+        state=state,
     )
 
 
@@ -395,7 +400,18 @@ async def redirect_to_main_menu(
         ),
     )
 
-    text = _("main_menu:message:main").format(name=user.first_name)
+    text = (
+        f"🌀 <b>{user.first_name} عزیز، به ToonelVPN خوش آمدی</b> 🌐\n\n"
+        "⚡️ اتصال سریع، پایدار و مطمئن به اینترنت آزاد، با سرویس‌هایی متناسب با نیازت.\n\n"
+        "🚀 سرویس‌های متنوع برای استفاده روزمره\n"
+        "🌍 سرورهای مختلف برای انتخاب بهتر\n"
+        "🛡️ اتصال پایدار و مطمئن\n"
+        "💻 سازگار با دستگاه‌های مختلف\n"
+        "🔄 خرید، تمدید و مدیریت آسان سرویس\n"
+        "──────────────────\n\n"
+        "🎁 <b>برای شروع، می‌تونی اکانت تست رو امتحان کنی.</b>\n\n"
+        "✨ <b>یکی از گزینه‌های زیر رو انتخاب کن:</b> 👇"
+    )
 
     # If an FSM context is available, try to edit the existing main-menu message.
     if state is not None:
