@@ -205,7 +205,7 @@ msgstr "🔗 لینک‌های دعوت"
 
 #: app/bot/routers/admin_tools/keyboard.py:46
 msgid "admin_tools:button:promocode_editor"
-msgstr "🎟 مدیریت کدهای تخفیف"
+msgstr "🎁 مدیریت کدهای هدیه"
 
 #: app/bot/routers/admin_tools/keyboard.py:52
 msgid "admin_tools:button:notification"
@@ -492,7 +492,7 @@ msgstr "<i>✅ اعلان با موفقیت حذف شد.</i>"
 
 #: app/bot/routers/admin_tools/promocode_handler.py:41
 msgid "promocode_editor:message:main"
-msgstr "🎟️ <b>مدیریت کدهای تخفیف:</b>"
+msgstr "🎁 <b>مدیریت کدهای هدیه:</b>"
 
 #: app/bot/routers/admin_tools/promocode_handler.py:60
 msgid "promocode_editor:message:create"
@@ -510,7 +510,7 @@ msgstr ""
 
 #: app/bot/routers/admin_tools/promocode_handler.py:88
 msgid "promocode_editor:ntf:create_failed"
-msgstr "❌ <i>ایجاد کد تخفیف ناموفق بود.</i>"
+msgstr "❌ <i>ایجاد کد هدیه ناموفق بود.</i>"
 
 #: app/bot/routers/admin_tools/promocode_handler.py:102
 msgid "promocode_editor:message:delete"
@@ -525,7 +525,7 @@ msgstr "✅ <i>Promocode {promocode} deleted successfully.</i>"
 
 #: app/bot/routers/admin_tools/promocode_handler.py:128
 msgid "promocode_editor:ntf:delete_failed"
-msgstr "❌ <i>کد تخفیف پیدا نشد.</i>"
+msgstr "❌ <i>کد هدیه پیدا نشد.</i>"
 
 #: app/bot/routers/admin_tools/promocode_handler.py:142
 msgid "promocode_editor:message:edit"
@@ -546,7 +546,7 @@ msgstr ""
 
 #: app/bot/routers/admin_tools/promocode_handler.py:175
 msgid "promocode_editor:ntf:edit_failed"
-msgstr "❌ <i>کد تخفیف پیدا نشد یا قبلاً فعال شده است.</i>"
+msgstr "❌ <i>کد هدیه پیدا نشد یا قبلاً فعال شده است.</i>"
 
 #: app/bot/routers/admin_tools/promocode_handler.py:198
 msgid "promocode_editor:ntf:edited_success"
