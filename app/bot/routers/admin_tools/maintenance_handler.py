@@ -7,6 +7,7 @@ from aiogram.utils.i18n import gettext as _
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
 from app.bot.utils.navigation import NavAdminTools
+from app.db.database import Database
 from app.db.models import User
 
 from .keyboard import maintenance_mode_keyboard
@@ -36,11 +37,12 @@ async def callback_maintenance_mode_enable(
     callback: CallbackQuery,
     user: User,
     services: ServicesContainer,
+    db: Database,
 ) -> None:
     logger.info(f"Admin {user.tg_id} enabled maintenance mode.")
     from app.bot.middlewares import MaintenanceMiddleware
 
-    MaintenanceMiddleware.set_mode(True)
+    await MaintenanceMiddleware.persist_mode(db.session, True)
     await callback.message.edit_text(
         text=_("maintenance:message:main").format(status=_("maintenance:status:enabled")),
         reply_markup=maintenance_mode_keyboard(),
@@ -56,11 +58,12 @@ async def callback_maintenance_mode_disable(
     callback: CallbackQuery,
     user: User,
     services: ServicesContainer,
+    db: Database,
 ) -> None:
     logger.info(f"Admin {user.tg_id} disabled maintenance mode.")
     from app.bot.middlewares import MaintenanceMiddleware
 
-    MaintenanceMiddleware.set_mode(False)
+    await MaintenanceMiddleware.persist_mode(db.session, False)
     await callback.message.edit_text(
         text=_("maintenance:message:main").format(status=_("maintenance:status:disabled")),
         reply_markup=maintenance_mode_keyboard(),

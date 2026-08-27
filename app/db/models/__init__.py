@@ -4,6 +4,7 @@ from .card_settings import CardSettings
 from .custom_service_pricing import CustomServicePricing
 from .invite import Invite
 from .payment_gateway_settings import PaymentGatewaySettings
+from .maintenance_settings import MaintenanceSettings
 from .promocode import Promocode
 from .referral import Referral
 from .referrer_reward import ReferrerReward
