@@ -20,3 +20,4 @@ from .connected_device_settings import ConnectedDeviceSettings
 from .subscription import Subscription
 from .subscription_settings import SubscriptionSettings
 from .customer_level_settings import CustomerLevelSettings
+from .support_ticket import SupportMessage, SupportTicket
