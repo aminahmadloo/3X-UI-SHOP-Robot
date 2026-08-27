@@ -56,7 +56,7 @@ def training_app_keyboard(app: str) -> InlineKeyboardMarkup:
         builder.row(
             InlineKeyboardButton(
                 text=text,
-                callback_data=f"{NavSupport.TRAINING_APP_PLATFORM}:{app}:{platform}",
+                callback_data=f"{NavSupport.TRAINING_APP_PLATFORM.value}:{app}:{platform}",
             )
         )
     builder.row(back_button(NavSupport.TRAINING), back_to_main_menu_button())
@@ -74,7 +74,7 @@ def training_detail_keyboard(
     builder.row(
         InlineKeyboardButton(
             text="🔙 انتخاب سیستم‌عامل",
-            callback_data=f"{NavSupport.TRAINING_APP_PLATFORM.rsplit(':', 1)[0]}:{app}",
+            callback_data=f"{NavSupport.TRAINING_APP_PLATFORM.value}:{app}",
         )
     )
     builder.row(back_button(NavSupport.TRAINING), back_to_main_menu_button())
@@ -114,20 +114,20 @@ def ticket_keyboard(ticket_id: int, can_reply: bool = True) -> InlineKeyboardMar
     builder.row(
         InlineKeyboardButton(
             text="💬 مشاهده مکالمه",
-            callback_data=f"{NavSupport.TICKET_CONVERSATION}:{ticket_id}",
+            callback_data=f"{NavSupport.TICKET_CONVERSATION.value}:{ticket_id}",
         )
     )
     if can_reply:
         builder.row(
             InlineKeyboardButton(
                 text="✏️ پاسخ به تیکت",
-                callback_data=f"{NavSupport.TICKET_REPLY}:{ticket_id}",
+                callback_data=f"{NavSupport.TICKET_REPLY.value}:{ticket_id}",
             )
         )
         builder.row(
             InlineKeyboardButton(
                 text="🔒 بستن تیکت",
-                callback_data=f"{NavSupport.TICKET_CLOSE}:{ticket_id}",
+                callback_data=f"{NavSupport.TICKET_CLOSE.value}:{ticket_id}",
             )
         )
     builder.row(
@@ -146,13 +146,13 @@ def admin_ticket_keyboard(ticket_id: int) -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(
             text="✏️ پاسخ به کاربر",
-            callback_data=f"{NavSupport.TICKET_REPLY}:{ticket_id}",
+            callback_data=f"{NavSupport.TICKET_REPLY.value}:{ticket_id}",
         )
     )
     builder.row(
         InlineKeyboardButton(
             text="🔒 بستن تیکت",
-            callback_data=f"{NavSupport.TICKET_CLOSE}:{ticket_id}",
+            callback_data=f"{NavSupport.TICKET_CLOSE.value}:{ticket_id}",
         )
     )
     return builder.as_markup()
