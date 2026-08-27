@@ -82,6 +82,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         admin_tools.subscription_settings_handler.router,
         admin_tools.statistics_handler.router,
         admin_tools.user_handler.router,
+        admin_tools.customer_level_settings_handler.router,
         card_payment_router,
         card_settings_router,
         payment_gateway_settings_router,
