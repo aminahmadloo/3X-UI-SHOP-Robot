@@ -2,15 +2,11 @@ import logging
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery
-from aiogram.utils.i18n import gettext as _
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.bot.models import ServicesContainer
-from app.bot.routers.subscription.keyboard import trial_success_keyboard
 from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY, PREVIOUS_CALLBACK_KEY
-from app.bot.utils.formatting import format_subscription_period
 from app.bot.utils.navigation import NavMain, NavSubscription
-from app.config import Config
 from app.db.models import User
 
 logger = logging.getLogger(__name__)
@@ -23,40 +19,50 @@ async def callback_get_trial(
     user: User,
     state: FSMContext,
     services: ServicesContainer,
-    config: Config,
 ) -> None:
-    logger.info(f"User {user.tg_id} triggered getting non-referral trial period.")
+    logger.info("User %s requested a test account.", user.tg_id)
     await state.update_data({PREVIOUS_CALLBACK_KEY: NavMain.MAIN_MENU})
+    await callback.answer()
 
-    server = await services.server_pool.get_available_server()
-
-    if not server:
-        await services.notification.show_popup(
-            callback=callback, text=_("subscription:popup:no_available_servers")
-        )
-        return
-
-    is_trial_available = await services.subscription.is_trial_available(user=user)
-
-    if not is_trial_available:
-        await services.notification.show_popup(
-            callback=callback, text=_("subscription:popup:trial_unavailable_for_user")
-        )
-        return
-    else:
-        trial_period = config.shop.TRIAL_PERIOD
-        success = await services.subscription.gift_trial(user=user)
-
+    result = await services.test_account.create_test_account(user)
     main_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
-    if success:
+
+    if result is None:
+        async with services.test_account.session_factory() as session:
+            settings = await services.test_account.get_settings(session)
+
+        if not settings.enabled:
+            text = "❌ در حال حاضر اکانت تست غیرفعال است."
+        elif user.is_trial_used:
+            text = "❌ شما قبلاً از اکانت تست استفاده کرده‌اید و امکان دریافت مجدد آن وجود ندارد."
+        else:
+            text = "❌ امکان ساخت اکانت تست در حال حاضر وجود ندارد. لطفاً کمی بعد دوباره تلاش کنید."
+
+        await services.notification.show_popup(callback=callback, text=text)
+        return
+
+    subscription_key, record = result
+    duration_days = max(1, (record.expires_at - record.created_at).days)
+    text = (
+        "🎁 <b>اکانت تست شما با موفقیت ساخته شد.</b>\n\n"
+        f"📦 حجم: <b>{record.quota_bytes // (1024 * 1024)} MB</b>\n"
+        f"⏱ مدت: <b>{duration_days} روز</b>\n\n"
+        "🔗 <b>لینک اشتراک تست:</b>\n"
+        f"<code>{subscription_key}</code>"
+    )
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔗 لینک اشتراک تست", url=subscription_key)],
+            [InlineKeyboardButton(text="🔙 بازگشت به منوی اصلی", callback_data=NavMain.MAIN_MENU)],
+        ]
+    )
+
+    if main_message_id:
         await callback.bot.edit_message_text(
-            text=_("subscription:ntf:trial_activate_success").format(
-                duration=format_subscription_period(trial_period),
-            ),
+            text=text,
             chat_id=callback.message.chat.id,
             message_id=main_message_id,
-            reply_markup=trial_success_keyboard(),
+            reply_markup=markup,
         )
     else:
-        text = _("subscription:popup:trial_activate_failed")
-        await services.notification.show_popup(callback=callback, text=text)
+        await callback.message.edit_text(text=text, reply_markup=markup)
