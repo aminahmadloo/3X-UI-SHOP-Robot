@@ -5,22 +5,20 @@ import uuid
 from datetime import datetime, timedelta
 
 from py3xui import Client
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.services.server_pool import ServerPoolService
 from app.bot.utils.network import extract_base_url
 from app.config import Config
-from app.db.models import Server, TestAccount, TestAccountSettings, User
+from app.db.models import Server, SubscriptionSettings, TestAccount, TestAccountSettings, User
 
 logger = logging.getLogger(__name__)
 
 
 class TestAccountService:
     BYTES_PER_MB = 1024 * 1024
-    DEFAULT_VOLUME_MB = 200
-    DEFAULT_DURATION_DAYS = 2
 
     def __init__(
         self,
@@ -42,9 +40,18 @@ class TestAccountService:
             if not settings.enabled:
                 return None
 
-            existing = await TestAccount.get_by_telegram_id(session, user.tg_id)
-            if existing:
+            # Keep compatibility with the existing one-time trial flag. A user
+            # who consumed the legacy trial must not receive a second test.
+            fresh_user = await User.get(session=session, tg_id=user.tg_id)
+            if fresh_user and fresh_user.is_trial_used:
                 return None
+
+            existing = await TestAccount.get_by_telegram_id(session, user.tg_id)
+            if existing and existing.status in {"active", "deleted", "pending"}:
+                return None
+            if existing and existing.status == "failed":
+                await session.delete(existing)
+                await session.commit()
 
             server = await self.server_pool_service.get_available_server()
             if server is None:
@@ -63,14 +70,11 @@ class TestAccountService:
 
             inbound = inbounds[0]
             client_id = str(uuid.uuid4())
-            subscription_token = client_id
             client_email = f"test-{user.tg_id}-{uuid.uuid4().hex[:6]}"
             quota_bytes = int(settings.volume_mb) * self.BYTES_PER_MB
             expires_at = datetime.utcnow() + timedelta(days=int(settings.duration_days))
             expiry_ms = int(expires_at.timestamp() * 1000)
 
-            # Reserve the one-time entitlement before touching 3X-UI. The unique
-            # Telegram ID makes concurrent button presses safe at the DB level.
             record = TestAccount(
                 telegram_user_id=user.tg_id,
                 username=user.username,
@@ -79,7 +83,7 @@ class TestAccountService:
                 inbound_id=int(inbound.id),
                 client_id=client_id,
                 client_email=client_email,
-                subscription_token=subscription_token,
+                subscription_token=client_id,
                 quota_bytes=quota_bytes,
                 expires_at=expires_at,
                 status="pending",
@@ -105,7 +109,7 @@ class TestAccountService:
                 enable=True,
                 expiry_time=expiry_ms,
                 total_gb=quota_bytes,
-                sub_id=subscription_token,
+                sub_id=client_id,
                 tg_id=user.tg_id,
                 flow=flow,
                 limit_ip=0,
@@ -123,13 +127,10 @@ class TestAccountService:
                 return None
 
             record.status = "active"
+            await session.execute(
+                update(User).where(User.tg_id == user.tg_id).values(is_trial_used=True)
+            )
             await session.commit()
-
-            settings_row = await TestAccountSettings.get_or_create(session)
-            base_host = settings_row.domain if hasattr(settings_row, "domain") else ""
-            # SubscriptionSettings remains the single source of truth for the
-            # public subscription hostname/path used by normal services.
-            from app.db.models import SubscriptionSettings
 
             subscription_settings = await SubscriptionSettings.get_or_create(session)
             base_host = subscription_settings.domain or connection.server.host
@@ -165,8 +166,6 @@ class TestAccountService:
             await connection.api.client.delete(record.inbound_id, record.client_id)
             return True
         except Exception as exception:
-            # The client may already have been removed manually. Confirm that
-            # before treating deletion as a failure.
             try:
                 inbounds = await connection.api.inbound.get_list()
                 still_exists = any(
