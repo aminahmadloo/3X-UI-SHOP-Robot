@@ -41,19 +41,11 @@ async def callback_get_trial(
         await services.notification.show_popup(callback=callback, text=text)
         return
 
-    subscription_key, record = result
-    duration_days = max(1, (record.expires_at - record.created_at).days)
-    text = (
-        "🎁 <b>اکانت تست شما با موفقیت ساخته شد.</b>\n\n"
-        f"📦 حجم: <b>{record.quota_bytes // (1024 * 1024)} MB</b>\n"
-        f"⏱ مدت: <b>{duration_days} روز</b>\n\n"
-        "🔗 <b>لینک اشتراک تست:</b>\n"
-        f"<code>{subscription_key}</code>"
-    )
+    subscription_key, _record = result
+    text = f"🎁 <b>لینک اشتراک اکانت تست:</b>\n\n<code>{subscription_key}</code>"
     markup = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔗 لینک اشتراک تست", url=subscription_key)],
-            [InlineKeyboardButton(text="🔙 بازگشت به منوی اصلی", callback_data=NavMain.MAIN_MENU)],
         ]
     )
 
