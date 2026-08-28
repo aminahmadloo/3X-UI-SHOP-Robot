@@ -7,7 +7,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from app.bot.models import ServicesContainer
 from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY, PREVIOUS_CALLBACK_KEY
 from app.bot.utils.navigation import NavMain, NavSubscription
-from app.db.models import User
+from app.db.models import TestAccount, User
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -23,6 +23,34 @@ async def callback_get_trial(
     logger.info("User %s requested a test account.", user.tg_id)
     await state.update_data({PREVIOUS_CALLBACK_KEY: NavMain.MAIN_MENU})
     await callback.answer()
+
+    # Always check the latest database state before attempting to create
+    # a test account. The User object injected into the handler may be stale.
+    async with services.test_account.session_factory() as session:
+        fresh_user = await User.get(session=session, tg_id=user.tg_id)
+        existing_test = await TestAccount.get_by_telegram_id(session, user.tg_id)
+
+    already_used = bool(
+        fresh_user and fresh_user.is_trial_used
+    ) or bool(
+        existing_test
+        and existing_test.status in {"active", "deleted", "pending"}
+    )
+
+    if already_used:
+        await services.notification.notify_by_id(
+            chat_id=user.tg_id,
+            text=(
+                "⚠️ شما یکبار اکانت تست رایگان دریافت کردید.\n"
+                "هر کاربر فقط یکبار می‌تواند اکانت تست دریافت کند."
+            ),
+            duration=5,
+        )
+        logger.info(
+            "User %s attempted to request a second test account; request denied.",
+            user.tg_id,
+        )
+        return
 
     result = await services.test_account.create_test_account(user)
     main_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
