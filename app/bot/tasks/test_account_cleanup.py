@@ -1,9 +1,7 @@
 import logging
-
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime
 
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.bot.services.test_account import TestAccountService
 
