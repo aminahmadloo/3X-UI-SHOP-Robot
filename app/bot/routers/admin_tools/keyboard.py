@@ -21,7 +21,7 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text="⚙️ تنظیمات .env", callback_data=NavAdminTools.ENV_SETTINGS))
     builder.row(InlineKeyboardButton(text="🛒 تنظیمات خرید سرویس|حجم سرویس|زمان سرویس", callback_data=NavAdminTools.SERVICE_PURCHASE_MANAGEMENT))
     builder.row(InlineKeyboardButton(text="⚙️ مدیریت تنظیمات سابسکریپشن", callback_data=NavAdminTools.SUBSCRIPTION_SETTINGS))
-    builder.row(InlineKeyboardButton(text=_("admin_tools:button:test_button"), callback_data=NavAdminTools.TEST), InlineKeyboardButton(text=_("admin_tools:button:create_backup"), callback_data=NavAdminTools.CREATE_BACKUP))
+    builder.row(InlineKeyboardButton(text=_("admin_tools:button:test_button"), callback_data=NavAdminTools.TEST_ACCOUNT_SETTINGS), InlineKeyboardButton(text=_("admin_tools:button:create_backup"), callback_data=NavAdminTools.CREATE_BACKUP))
     builder.row(InlineKeyboardButton(text=_("admin_tools:button:maintenance_mode"), callback_data=NavAdminTools.MAINTENANCE_MODE), InlineKeyboardButton(text=_("admin_tools:button:restart_bot"), callback_data=NavAdminTools.RESTART_BOT))
     builder.row(InlineKeyboardButton(text="💳 پرداخت‌های کارت به کارت", callback_data="cardpay:menu"))
     builder.row(back_to_main_menu_button())

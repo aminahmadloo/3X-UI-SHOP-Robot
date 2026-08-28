@@ -639,16 +639,3 @@ async def save_custom_service_pricing(
     )
 
 
-@router.callback_query(F.data == NavAdminTools.TEST, IsAdmin())
-async def callback_admin_tools_test(
-    callback: CallbackQuery,
-    user: User,
-    session: AsyncSession,
-    services: ServicesContainer,
-) -> None:
-    logger.info(f"Admin {user.tg_id} clicked TEST BUTTON.")
-    await callback.message.answer(
-        "<b>bold</b>\n<i>italic</i>\n<u>underline</u>\n<s>strikethrough</s>\n"
-        "<tg-spoiler>spoiler</tg-spoiler>\n\n<code>inline fixed-width code</code>\n"
-        "<pre>pre-formatted fixed-width code block</pre>"
-    )

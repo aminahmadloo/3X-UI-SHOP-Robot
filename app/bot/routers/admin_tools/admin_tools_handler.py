@@ -47,7 +47,7 @@ async def callback_admin_tools(callback: CallbackQuery, user: User) -> None:
 
     for row in markup.inline_keyboard:
         for button in row:
-            if button.callback_data == NavAdminTools.TEST:
+            if button.callback_data == NavAdminTools.TEST_ACCOUNT_SETTINGS:
                 button.text = "🎁 مدیریت اکانت تست"
 
     # The payment and .env buttons are already provided by admin_tools_keyboard().

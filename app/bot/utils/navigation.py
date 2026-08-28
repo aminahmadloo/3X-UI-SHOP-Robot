@@ -72,7 +72,7 @@ class NavSubscription(str, Enum):
 
 class NavAdminTools(str, Enum):
     MAIN = "admin_tools"
-    TEST = "test"
+    TEST_ACCOUNT_SETTINGS = "test_account_settings"
     SERVER_MANAGEMENT = "server_management"
     INBOUND_MANAGEMENT = "inbound_management"
     SHOW_SERVER = "show_server"

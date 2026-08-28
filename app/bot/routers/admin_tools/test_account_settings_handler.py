@@ -104,7 +104,7 @@ async def _render(
     )
 
 
-@router.callback_query(F.data == NavAdminTools.TEST, IsAdmin())
+@router.callback_query(F.data == NavAdminTools.TEST_ACCOUNT_SETTINGS, IsAdmin())
 async def open_test_account_settings(
     callback: CallbackQuery,
     session: AsyncSession,
