@@ -40,8 +40,6 @@ class TestAccountService:
             if not settings.enabled:
                 return None
 
-            # Keep compatibility with the existing one-time trial flag. A user
-            # who consumed the legacy trial must not receive a second test.
             fresh_user = await User.get(session=session, tg_id=user.tg_id)
             if fresh_user and fresh_user.is_trial_used:
                 return None
@@ -118,7 +116,10 @@ class TestAccountService:
                 client.password = client_id
 
             try:
-                await connection.api.client.add(int(inbound.id), [client])
+                await connection.api.client.add(
+                    inbound_id=int(inbound.id),
+                    clients=[client],
+                )
             except Exception as exception:
                 logger.exception("Failed to create test client %s in 3X-UI", client_email)
                 record.status = "failed"
