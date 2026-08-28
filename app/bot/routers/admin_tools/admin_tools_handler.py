@@ -45,6 +45,11 @@ async def callback_admin_tools(callback: CallbackQuery, user: User) -> None:
     is_dev = await IsDev()(user_id=user.tg_id)
     markup = admin_tools_keyboard(is_dev)
 
+    for row in markup.inline_keyboard:
+        for button in row:
+            if button.callback_data == NavAdminTools.TEST:
+                button.text = "🎁 مدیریت اکانت تست"
+
     # The payment and .env buttons are already provided by admin_tools_keyboard().
     # Keep only controls that are not part of that base keyboard here.
     markup.inline_keyboard.insert(
