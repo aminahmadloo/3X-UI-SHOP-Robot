@@ -11,6 +11,7 @@ from .plan import PlanService
 from .referral import ReferralService
 from .server_pool import ServerPoolService
 from .subscription import SubscriptionService
+from .test_account import TestAccountService
 from .vpn import VPNService
 from .wallet import WalletService
 
@@ -27,6 +28,11 @@ async def initialize(
     wallet = WalletService(session_factory=session)
     referral = ReferralService(config=config, session_factory=session, vpn_service=vpn, wallet_service=wallet)
     subscription = SubscriptionService(config=config, session_factory=session, vpn_service=vpn)
+    test_account = TestAccountService(
+        config=config,
+        session_factory=session,
+        server_pool_service=server_pool,
+    )
     payment_stats = PaymentStatsService(session_factory=session)
     invite_stats = InviteStatsService(session_factory=session, payment_stats_service=payment_stats)
     return ServicesContainer(
@@ -36,6 +42,7 @@ async def initialize(
         notification=notification,
         referral=referral,
         subscription=subscription,
+        test_account=test_account,
         payment_stats=payment_stats,
         invite_stats=invite_stats,
         wallet=wallet,
