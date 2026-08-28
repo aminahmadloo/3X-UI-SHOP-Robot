@@ -34,6 +34,7 @@ from .admin_tools.dynamic_renewal_management_handler import router as dynamic_re
 from .admin_tools.dynamic_traffic_addon_management_handler import router as dynamic_traffic_admin_router
 from .admin_tools.server_handler import router as server_router
 from .admin_tools.referral_settings_handler import router as referral_settings_router
+from .admin_tools.test_account_settings_handler import router as test_account_settings_router
 from .gift_service_handler import router as gift_service_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
 from .multi_card_payment import router as multi_card_payment_router
@@ -90,6 +91,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         gift_reports_router,
         env_settings_enhancer_router,
         env_settings_router,
+        test_account_settings_router,
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,
         admin_tools.inbound_management_handler.router,
