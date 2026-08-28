@@ -172,14 +172,14 @@ async def edit_test_volume(
     )
     await callback.answer()
 
-    await callback.message.edit_text(
+    prompt = await callback.message.answer(
         "📦 <b>حجم اکانت تست</b>\n\n"
         "حجم جدید را بر حسب MB وارد کنید.\n"
         "مثلاً: <code>200</code>"
     )
     await state.update_data(
-        prompt_message_id=callback.message.message_id,
-        prompt_chat_id=callback.message.chat.id,
+        prompt_message_id=prompt.message_id,
+        prompt_chat_id=prompt.chat.id,
     )
 
 
@@ -247,14 +247,14 @@ async def edit_test_duration(
     )
     await callback.answer()
 
-    await callback.message.edit_text(
+    prompt = await callback.message.answer(
         "⏱ <b>مدت اکانت تست</b>\n\n"
         "مدت جدید را بر حسب روز وارد کنید.\n"
         "مثلاً: <code>2</code>"
     )
     await state.update_data(
-        prompt_message_id=callback.message.message_id,
-        prompt_chat_id=callback.message.chat.id,
+        prompt_message_id=prompt.message_id,
+        prompt_chat_id=prompt.chat.id,
     )
 
 
@@ -322,7 +322,7 @@ async def edit_cleanup_interval(
     )
     await callback.answer()
 
-    await callback.message.edit_text(
+    prompt = await callback.message.answer(
         "🕐 <b>فاصله پاکسازی خودکار</b>\n\n"
         "فاصله اجرای پاکسازی را بر حسب ساعت وارد کنید.\n"
         "حداقل: <code>1</code> ساعت\n"
@@ -330,8 +330,8 @@ async def edit_cleanup_interval(
         "مثلاً برای اجرای هر ۱۲ ساعت: <code>12</code>"
     )
     await state.update_data(
-        prompt_message_id=callback.message.message_id,
-        prompt_chat_id=callback.message.chat.id,
+        prompt_message_id=prompt.message_id,
+        prompt_chat_id=prompt.chat.id,
     )
 
 
