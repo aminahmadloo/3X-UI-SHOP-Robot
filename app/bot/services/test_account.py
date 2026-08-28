@@ -141,6 +141,7 @@ class TestAccountService:
                 path=subscription_settings.path,
             )
             subscription_key = f"{subscription_base}{client_id}"
+            await session.refresh(record)
 
             logger.info(
                 "Created one-time test account %s for Telegram user %s on %s/inbound %s",
