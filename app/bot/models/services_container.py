@@ -13,6 +13,7 @@ if TYPE_CHECKING:
         PaymentStatsService,
         InviteStatsService,
         WalletService,
+        TestAccountService,
     )
 
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ class ServicesContainer:
     notification: NotificationService
     referral: ReferralService
     subscription: SubscriptionService
+    test_account: TestAccountService
     payment_stats: PaymentStatsService
     invite_stats: InviteStatsService
     wallet: WalletService
