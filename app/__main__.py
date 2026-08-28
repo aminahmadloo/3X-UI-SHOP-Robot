@@ -68,6 +68,7 @@ async def on_startup(
         vpn_service=services.vpn,
         notification_service=services.notification,
     )
+    tasks.test_account_cleanup.start_scheduler(services.test_account)
 
 
 async def main() -> None:
