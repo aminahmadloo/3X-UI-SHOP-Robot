@@ -1,6 +1,6 @@
 import asyncio
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
@@ -21,17 +21,29 @@ from app.db.models import TestAccount, TestAccountSettings
 router = Router(name=__name__)
 
 
-async def _delete_message_after(message: Message, delay: float = 5.0) -> None:
+async def _delete_message_after(
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    delay: float = 5.0,
+) -> None:
     await asyncio.sleep(delay)
     try:
-        await message.delete()
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception:
         # The message may already have been deleted or become unavailable.
         pass
 
 
-def _schedule_delete(message: Message, delay: float = 5.0) -> None:
-    asyncio.create_task(_delete_message_after(message, delay))
+def _schedule_delete(
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    delay: float = 5.0,
+) -> None:
+    asyncio.create_task(
+        _delete_message_after(bot, chat_id, message_id, delay)
+    )
 
 
 def _keyboard(settings: TestAccountSettings) -> InlineKeyboardMarkup:
@@ -165,7 +177,10 @@ async def edit_test_volume(
         "حجم جدید را بر حسب MB وارد کنید.\n"
         "مثلاً: <code>200</code>"
     )
-    await state.update_data(prompt_message_id=callback.message.message_id)
+    await state.update_data(
+        prompt_message_id=callback.message.message_id,
+        prompt_chat_id=callback.message.chat.id,
+    )
 
 
 @router.message(
@@ -190,6 +205,7 @@ async def save_test_volume(
 
     state_data = await state.get_data()
     prompt_message_id = state_data.get("prompt_message_id")
+    prompt_chat_id = state_data.get("prompt_chat_id")
 
     settings = await TestAccountSettings.get_or_create(session)
     settings.volume_mb = value
@@ -202,13 +218,20 @@ async def save_test_volume(
         reply_markup=_keyboard(settings),
     )
 
-    if prompt_message_id:
+    if prompt_message_id and prompt_chat_id:
         _schedule_delete(
-            message.bot.session,
+            message.bot,
+            prompt_chat_id,
+            prompt_message_id,
             5.0,
         )
 
-    _schedule_delete(confirmation, 5.0)
+    _schedule_delete(
+        message.bot,
+        confirmation.chat.id,
+        confirmation.message_id,
+        5.0,
+    )
 
 
 @router.callback_query(
@@ -229,7 +252,10 @@ async def edit_test_duration(
         "مدت جدید را بر حسب روز وارد کنید.\n"
         "مثلاً: <code>2</code>"
     )
-    await state.update_data(prompt_message_id=callback.message.message_id)
+    await state.update_data(
+        prompt_message_id=callback.message.message_id,
+        prompt_chat_id=callback.message.chat.id,
+    )
 
 
 @router.message(
@@ -254,6 +280,7 @@ async def save_test_duration(
 
     state_data = await state.get_data()
     prompt_message_id = state_data.get("prompt_message_id")
+    prompt_chat_id = state_data.get("prompt_chat_id")
 
     settings = await TestAccountSettings.get_or_create(session)
     settings.duration_days = value
@@ -266,13 +293,20 @@ async def save_test_duration(
         reply_markup=_keyboard(settings),
     )
 
-    if prompt_message_id:
+    if prompt_message_id and prompt_chat_id:
         _schedule_delete(
-            message.bot.session,
+            message.bot,
+            prompt_chat_id,
+            prompt_message_id,
             5.0,
         )
 
-    _schedule_delete(confirmation, 5.0)
+    _schedule_delete(
+        message.bot,
+        confirmation.chat.id,
+        confirmation.message_id,
+        5.0,
+    )
 
 
 @router.callback_query(
@@ -295,7 +329,10 @@ async def edit_cleanup_interval(
         "حداکثر: <code>168</code> ساعت\n\n"
         "مثلاً برای اجرای هر ۱۲ ساعت: <code>12</code>"
     )
-    await state.update_data(prompt_message_id=callback.message.message_id)
+    await state.update_data(
+        prompt_message_id=callback.message.message_id,
+        prompt_chat_id=callback.message.chat.id,
+    )
 
 
 @router.message(
@@ -322,6 +359,7 @@ async def save_cleanup_interval(
 
     state_data = await state.get_data()
     prompt_message_id = state_data.get("prompt_message_id")
+    prompt_chat_id = state_data.get("prompt_chat_id")
 
     settings = await TestAccountSettings.get_or_create(session)
     settings.cleanup_interval_hours = value
@@ -338,13 +376,20 @@ async def save_cleanup_interval(
         reply_markup=_keyboard(settings),
     )
 
-    if prompt_message_id:
+    if prompt_message_id and prompt_chat_id:
         _schedule_delete(
-            message.bot.session,
+            message.bot,
+            prompt_chat_id,
+            prompt_message_id,
             5.0,
         )
 
-    _schedule_delete(confirmation, 5.0)
+    _schedule_delete(
+        message.bot,
+        confirmation.chat.id,
+        confirmation.message_id,
+        5.0,
+    )
 
 
 @router.callback_query(
@@ -366,4 +411,9 @@ async def run_test_cleanup(
         f"🧹 پاکسازی انجام شد. تعداد اکانت‌های حذف‌شده "
         f"از 3X-UI: <b>{removed}</b>"
     )
-    _schedule_delete(result_message, 5.0)
+    _schedule_delete(
+        callback.bot,
+        result_message.chat.id,
+        result_message.message_id,
+        5.0,
+    )
