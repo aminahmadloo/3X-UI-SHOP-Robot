@@ -15,6 +15,9 @@ class TestAccountSettings(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     volume_mb: Mapped[int] = mapped_column(Integer, nullable=False, default=200)
     duration_days: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    cleanup_interval_hours: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=12
+    )
 
     @classmethod
     async def get(cls, session: AsyncSession) -> Self | None:
@@ -26,7 +29,13 @@ class TestAccountSettings(Base):
         item = await cls.get(session)
         if item:
             return item
-        item = cls(id=1, enabled=True, volume_mb=200, duration_days=2)
+        item = cls(
+            id=1,
+            enabled=True,
+            volume_mb=200,
+            duration_days=2,
+            cleanup_interval_hours=12,
+        )
         session.add(item)
         await session.commit()
         await session.refresh(item)
