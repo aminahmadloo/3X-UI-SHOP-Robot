@@ -1,3 +1,4 @@
+import asyncio
 import re
 
 from aiogram import F, Router
@@ -10,6 +11,65 @@ from app.bot.models import ServicesContainer
 from app.db.models import CustomServicePricing
 
 router = Router(name=__name__)
+
+
+async def _delete_after(message: Message | None, delay: float = 5.0) -> None:
+    """Delete a custom-service prompt after a short delay."""
+    if message is None:
+        return
+
+    await asyncio.sleep(delay)
+
+    try:
+        await message.delete()
+    except Exception:
+        # Message may already have been deleted by Telegram/user flow.
+        pass
+
+
+def _schedule_delete(message: Message | None, delay: float = 5.0) -> None:
+    if message is not None:
+        asyncio.create_task(_delete_after(message, delay))
+
+
+async def _delete_message_by_id(
+    bot,
+    chat_id: int,
+    message_id: int | None,
+    delay: float = 5.0,
+) -> None:
+    """Delete a stored bot prompt after the requested delay."""
+    if message_id is None:
+        return
+
+    await asyncio.sleep(delay)
+
+    try:
+        await bot.delete_message(
+            chat_id=chat_id,
+            message_id=message_id,
+        )
+    except Exception:
+        # Message may already have been deleted by Telegram/user flow.
+        pass
+
+
+def _schedule_prompt_delete(
+    bot,
+    chat_id: int,
+    message_id: int | None,
+    delay: float = 5.0,
+) -> None:
+    if message_id is not None:
+        asyncio.create_task(
+            _delete_message_by_id(
+                bot,
+                chat_id,
+                message_id,
+                delay,
+            )
+        )
+
 
 
 class CustomServiceState(StatesGroup):
@@ -91,10 +151,25 @@ async def callback_custom_service_buy(
     state: FSMContext,
 ) -> None:
     pricing = await CustomServicePricing.get_or_create(session)
+
+    if not pricing.show_custom_service_button:
+        await callback.answer(
+            "❌ خرید سرویس با مشخصات دلخواه در حال حاضر غیرفعال است.",
+            show_alert=True,
+        )
+        return
+
     await state.clear()
     await state.set_state(CustomServiceState.waiting_days)
     await callback.answer()
-    await callback.message.edit_text(_days_message(pricing.base_price_per_day))
+
+    prompt = await callback.message.edit_text(
+        _days_message(pricing.base_price_per_day)
+    )
+
+    await state.update_data(
+        custom_service_days_prompt_message_id=prompt.message_id,
+    )
 
 
 @router.message(CustomServiceState.waiting_days)
@@ -112,9 +187,28 @@ async def handle_custom_service_days(
         return
 
     pricing = await CustomServicePricing.get_or_create(session)
+
+    data = await state.get_data()
+
+    # The days prompt is deleted 5 seconds AFTER the valid days value
+    # has been received, not 5 seconds after the prompt was displayed.
+    _schedule_prompt_delete(
+        message.bot,
+        message.chat.id,
+        data.get("custom_service_days_prompt_message_id"),
+        5.0,
+    )
+
     await state.update_data(custom_service_days=value)
     await state.set_state(CustomServiceState.waiting_gigabytes)
-    await message.answer(_gigabytes_message(value, pricing.base_price_per_gb))
+
+    prompt = await message.answer(
+        _gigabytes_message(value, pricing.base_price_per_gb)
+    )
+
+    await state.update_data(
+        custom_service_gigabytes_prompt_message_id=prompt.message_id,
+    )
 
 
 @router.message(CustomServiceState.waiting_gigabytes)
@@ -136,9 +230,26 @@ async def handle_custom_service_gigabytes(
     data = await state.get_data()
     days = int(data["custom_service_days"])
     pricing = await CustomServicePricing.get_or_create(session)
+
+    # The GB prompt is deleted 5 seconds AFTER the valid GB value
+    # has been received.
+    _schedule_prompt_delete(
+        message.bot,
+        message.chat.id,
+        data.get("custom_service_gigabytes_prompt_message_id"),
+        5.0,
+    )
+
     await state.update_data(custom_service_gigabytes=value)
     await state.set_state(CustomServiceState.waiting_devices)
-    await message.answer(_devices_message(days, value, pricing.base_price_per_device))
+
+    prompt = await message.answer(
+        _devices_message(days, value, pricing.base_price_per_device)
+    )
+
+    await state.update_data(
+        custom_service_devices_prompt_message_id=prompt.message_id,
+    )
 
 
 @router.message(CustomServiceState.waiting_devices)
@@ -163,6 +274,15 @@ async def handle_custom_service_devices(
     gigabytes = int(data["custom_service_gigabytes"])
     pricing = await CustomServicePricing.get_or_create(session)
 
+    # The devices prompt is deleted 5 seconds AFTER the valid
+    # number of users/devices has been received.
+    _schedule_prompt_delete(
+        message.bot,
+        message.chat.id,
+        data.get("custom_service_devices_prompt_message_id"),
+        5.0,
+    )
+
     days_cost = days * pricing.base_price_per_day
     gigabytes_cost = gigabytes * pricing.base_price_per_gb
     devices_cost = value * pricing.base_price_per_device
@@ -174,10 +294,13 @@ async def handle_custom_service_devices(
     )
     await state.set_state(CustomServiceState.waiting_payment)
 
-    await message.answer(
+    prompt = await message.answer(
         _payment_invoice_text(days, gigabytes, value, int(total)),
         reply_markup=_payment_keyboard(),
     )
+
+    # Final custom-service invoice/prompt is cleaned up automatically.
+    _schedule_delete(prompt, 5.0)
 
 
 @router.callback_query(F.data == "custom_service:back")

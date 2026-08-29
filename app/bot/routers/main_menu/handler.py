@@ -74,6 +74,7 @@ async def send_main_menu(
     services: ServicesContainer,
     config: Config,
     state: FSMContext,
+    session: AsyncSession,
 ) -> Message:
     """Send the same main menu used by /start for an existing user."""
     is_admin = await IsAdmin()(user_id=user.tg_id)
@@ -183,6 +184,7 @@ async def command_main_menu(
             services=services,
             config=config,
             state=state,
+            session=session,
         )
     else:
         main_menu = await send_main_menu(
@@ -191,6 +193,7 @@ async def command_main_menu(
             services=services,
             config=config,
             state=state,
+            session=session,
         )
 
     await state.update_data({MAIN_MESSAGE_ID_KEY: main_menu.message_id})
@@ -247,6 +250,9 @@ async def change_language(
             reply_markup=main_menu_keyboard(
                 is_admin,
                 is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
+                show_custom_service_button=(
+                    await CustomServicePricing.get_or_create(session)
+                ).show_custom_service_button,
                 is_trial_available=await services.subscription.is_trial_available(user),
                 is_referred_trial_available=await services.referral.is_referred_trial_available(user),
             ),

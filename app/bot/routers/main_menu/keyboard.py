@@ -17,6 +17,7 @@ def main_menu_keyboard(
     is_referral_available: bool = False,
     is_trial_available: bool = False,
     is_referred_trial_available: bool = False,
+    show_custom_service_button: bool = True,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
@@ -30,13 +31,14 @@ def main_menu_keyboard(
     )
 
     # 2. خرید سرویس با مشخصات دلخواه
-    builder.row(
-        InlineKeyboardButton(
-            text="⚙️ خرید سرویس با مشخصات دلخواه",
-            callback_data=NavMain.CUSTOM_SERVICE,
-            style="success",
+    if show_custom_service_button:
+        builder.row(
+            InlineKeyboardButton(
+                text="⚙️ خرید سرویس با مشخصات دلخواه",
+                callback_data=NavMain.CUSTOM_SERVICE,
+                style="success",
+            )
         )
-    )
 
     # 3. تمدید سرویس | سرویس های من
     builder.row(

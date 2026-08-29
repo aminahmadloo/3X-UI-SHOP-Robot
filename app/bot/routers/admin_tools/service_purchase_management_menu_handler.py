@@ -525,10 +525,49 @@ async def callback_custom_service_pricing(
     state: FSMContext,
 ) -> None:
     await state.clear()
+    pricing = await CustomServicePricing.get_or_create(session)
+
     await callback.answer()
     await callback.message.edit_text(
         text=await _pricing_text(session),
-        reply_markup=custom_service_pricing_keyboard(),
+        reply_markup=custom_service_pricing_keyboard(
+            pricing.show_custom_service_button
+        ),
+    )
+
+
+@router.callback_query(
+    F.data == "custom_service_pricing:toggle_button",
+    IsAdmin(),
+)
+async def toggle_custom_service_button(
+    callback: CallbackQuery,
+    session: AsyncSession,
+) -> None:
+    pricing = await CustomServicePricing.get_or_create(session)
+
+    pricing.show_custom_service_button = not pricing.show_custom_service_button
+    await session.commit()
+    await session.refresh(pricing)
+
+    status = (
+        "نمایش داده می‌شود"
+        if pricing.show_custom_service_button
+        else "پنهان است"
+    )
+
+    await callback.answer(
+        "✅ وضعیت دکمه خرید سرویس اختصاصی تغییر کرد"
+    )
+
+    await callback.message.edit_text(
+        text=(
+            await _pricing_text(session)
+            + f"\n\n👁️ <b>وضعیت دکمه خرید سرویس اختصاصی:</b> {status}"
+        ),
+        reply_markup=custom_service_pricing_keyboard(
+            pricing.show_custom_service_button
+        ),
     )
 
 
@@ -634,8 +673,14 @@ async def save_custom_service_pricing(
 
     await callback.answer("✅ مقادیر با موفقیت ذخیره شد")
     await callback.message.edit_text(
-        text=await _pricing_text(session),
-        reply_markup=custom_service_pricing_keyboard(),
+        text=(
+            await _pricing_text(session)
+            + f"\n\n👁️ <b>وضعیت دکمه خرید سرویس اختصاصی:</b> "
+              f"{'نمایش داده می‌شود' if pricing.show_custom_service_button else 'پنهان است'}"
+        ),
+        reply_markup=custom_service_pricing_keyboard(
+            pricing.show_custom_service_button
+        ),
     )
 
 

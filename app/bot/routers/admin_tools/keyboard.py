@@ -113,9 +113,24 @@ def service_purchase_plan_details_keyboard(plan_id: int, service_type: str) -> I
     return builder.as_markup()
 
 
-def custom_service_pricing_keyboard() -> InlineKeyboardMarkup:
+def custom_service_pricing_keyboard(show_button: bool = True) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="✏️ ویرایش مبالغ", callback_data="custom_service_pricing:edit"))
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🚫 پنهان کردن دکمه خرید سرویس اختصاصی"
+            if show_button
+            else "👁️ نمایش دکمه خرید سرویس اختصاصی",
+            callback_data="custom_service_pricing:toggle_button",
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="✏️ ویرایش مبالغ",
+            callback_data="custom_service_pricing:edit",
+        )
+    )
     builder.row(InlineKeyboardButton(text="🔄 بازخوانی مقادیر", callback_data=NavAdminTools.CUSTOM_SERVICE_PRICING))
     builder.row(back_button(NavAdminTools.MAIN))
     builder.row(back_to_main_menu_button())

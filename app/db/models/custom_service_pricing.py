@@ -17,6 +17,11 @@ class CustomServicePricing(Base):
     base_price_per_gb: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     base_price_per_device: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     base_price_per_location: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    show_custom_service_button: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=True,
+        server_default="1",
+    )
 
     @classmethod
     async def get(cls, session: AsyncSession) -> Self | None:
