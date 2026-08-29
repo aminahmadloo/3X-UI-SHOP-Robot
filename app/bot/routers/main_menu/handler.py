@@ -78,11 +78,14 @@ async def send_main_menu(
 ) -> Message:
     """Send the same main menu used by /start for an existing user."""
     is_admin = await IsAdmin()(user_id=user.tg_id)
+    pricing = await CustomServicePricing.get_or_create(session)
+
     reply_markup = main_menu_keyboard(
         is_admin,
         is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
         is_trial_available=await services.subscription.is_trial_available(user),
         is_referred_trial_available=await services.referral.is_referred_trial_available(user),
+        show_custom_service_button=pricing.show_custom_service_button,
     )
 
     main_menu = await bot.send_message(
@@ -117,7 +120,12 @@ async def command_main_menu(
     is_new_user: bool,
 ) -> None:
     logger.info(f"User {user.tg_id} opened main menu page.")
+
+    # /start must ALWAYS reset the FSM.
+    # This prevents stale states such as waiting_days from
+    # intercepting /start and treating it as a numeric input.
     previous_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
+    await state.clear()
 
     if previous_message_id:
         try:
@@ -125,8 +133,6 @@ async def command_main_menu(
             logger.debug(f"Main message for user {user.tg_id} deleted.")
         except Exception as exception:
             logger.error(f"Failed to delete main message for user {user.tg_id}: {exception}")
-        finally:
-            await state.clear()
 
     if command.args and is_new_user:
         referral_arg = command.args.strip()
@@ -165,11 +171,14 @@ async def command_main_menu(
 
     if is_new_user:
         is_admin = await IsAdmin()(user_id=user.tg_id)
+        pricing = await CustomServicePricing.get_or_create(session)
+
         reply_markup = main_menu_keyboard(
             is_admin,
             is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
             is_trial_available=await services.subscription.is_trial_available(user),
             is_referred_trial_available=await services.referral.is_referred_trial_available(user),
+            show_custom_service_button=pricing.show_custom_service_button,
         )
         await message.answer(
             "v2ray 🔐: <b>توجه هرگز کلیک نکنید👇❗️❗️❗️❗️</b>\n\n"
@@ -370,6 +379,7 @@ async def callback_main_menu(
     services: ServicesContainer,
     state: FSMContext,
     config: Config,
+    session: AsyncSession,
 ) -> None:
     logger.info(f"User {user.tg_id} returned to main menu page.")
     await state.clear()
@@ -382,6 +392,7 @@ async def callback_main_menu(
         services=services,
         config=config,
         state=state,
+        session=session,
     )
 
 

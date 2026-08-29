@@ -181,9 +181,10 @@ async def handle_custom_service_days(
     value = _number(message.text or "")
     if value is None or not 7 <= value <= 90:
         pricing = await CustomServicePricing.get_or_create(session)
-        await message.answer(
+        invalid_prompt = await message.answer(
             "❌ مقدار واردشده نامعتبر است.\n\n" + _days_message(pricing.base_price_per_day)
         )
+        _schedule_delete(invalid_prompt, 5.0)
         return
 
     pricing = await CustomServicePricing.get_or_create(session)
