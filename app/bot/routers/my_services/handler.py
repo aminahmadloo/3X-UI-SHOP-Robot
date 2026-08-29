@@ -14,7 +14,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 import qrcode
@@ -228,6 +228,7 @@ async def _discover_user_subscriptions_from_xui(
     servers = list(result.scalars().all())
 
     discovered: dict[tuple[int, str], object] = {}
+    live_identities_by_server: dict[int, set[str]] = {}
     changed = False
 
     for server in servers:
@@ -256,6 +257,10 @@ async def _discover_user_subscriptions_from_xui(
             user.tg_id,
         )
 
+        # A successful XUI read is authoritative for this server.
+        # Track every live client identity for safe orphan cleanup.
+        live_identities = live_identities_by_server.setdefault(server.id, set())
+
         for inbound in inbounds:
             for client in inbound.settings.clients or []:
                 client_tg_id = str(getattr(client, "tg_id", "") or "").strip()
@@ -277,6 +282,11 @@ async def _discover_user_subscriptions_from_xui(
                     continue
 
                 client_id = str(getattr(client, "id", "") or "").strip()
+                live_identities.update(
+                    value
+                    for value in (client_id, client_sub_id, client_email)
+                    if value
+                )
                 identity = client_id or client_sub_id or client_email
 
                 if not identity:
@@ -455,6 +465,35 @@ async def _discover_user_subscriptions_from_xui(
                     server.name,
                 )
 
+    # Remove stale DB subscriptions only for servers whose XUI read
+    # succeeded. An API/connection failure never causes deletion.
+    for server_id, live_identities in live_identities_by_server.items():
+        result = await session.execute(
+            select(Subscription).where(
+                Subscription.user_id == user.id,
+                Subscription.server_id == server_id,
+            )
+        )
+        server_subscriptions = list(result.scalars().all())
+        for subscription in server_subscriptions:
+            stored_client_id = str(subscription.client_id or "").strip()
+            stored_name = str(subscription.config_name or "").strip()
+            if stored_client_id in live_identities or stored_name in live_identities:
+                continue
+
+            logger.warning(
+                "MY_SERVICES LIVE DISCOVERY | Removing orphan DB subscription=%s "
+                "client_id=%s name=%s from server_id=%s: client is absent from live XUI.",
+                subscription.id,
+                stored_client_id or "unknown",
+                stored_name or "unknown",
+                server_id,
+            )
+            await session.execute(
+                delete(Subscription).where(Subscription.id == subscription.id)
+            )
+            changed = True
+
     if changed:
         await session.commit()
 
@@ -552,15 +591,15 @@ async def _sync_subscriptions_with_xui(
                 continue
 
             client = live_clients.get(stored_client_id)
+            if client is None and subscription.config_name:
+                client = live_clients.get(str(subscription.config_name).strip())
             if client is None:
-                # Do not delete the DB record when an administrator removes a
-                # client from 3X-UI. Preserve the purchase/history record and
-                # mark it inactive so the discrepancy remains recoverable.
-                if subscription.status != "inactive":
-                    subscription.status = "inactive"
-                    changed = True
+                await session.execute(
+                    delete(Subscription).where(Subscription.id == subscription.id)
+                )
+                changed = True
                 logger.warning(
-                    "Subscription %s (%s) client %s is missing from XUI server %s; synchronized status=inactive without deleting DB record.",
+                    "Subscription %s (%s) client %s is missing from XUI server %s; removed orphan DB record.",
                     subscription.id,
                     subscription.config_name,
                     stored_client_id,
@@ -715,7 +754,7 @@ async def callback_my_services(
         "",
     ]
 
-    for subscription in subscriptions[:8]:
+    for subscription in subscriptions:
         icon, status_text = _status(subscription)
         days = _days_left(subscription)
         if status_text == "منقضی شده":
@@ -738,7 +777,7 @@ async def callback_my_services(
     lines.extend(["      ━━━━━━━━━━━━━━", "👇 برای مشاهده جزئیات، سرویس مورد نظر را انتخاب کنید."])
 
     builder = InlineKeyboardBuilder()
-    for subscription in subscriptions[:8]:
+    for subscription in subscriptions:
         icon, _ = _status(subscription)
         builder.button(
             text=f"{icon} {subscription.config_name}",
