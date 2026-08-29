@@ -36,7 +36,7 @@ def _home_button() -> InlineKeyboardButton:
 
 def _services_keyboard(subscriptions: list[Subscription]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for subscription in subscriptions[:8]:
+    for subscription in subscriptions:
         icon, status_text = _status(subscription)
         builder.row(
             InlineKeyboardButton(
