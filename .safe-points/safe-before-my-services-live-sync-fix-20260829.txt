@@ -1,0 +1,14 @@
+Safe restore reference before applying the My Services live 3X-UI synchronization fix.
+
+Base commit: f6459c91aae58993b1d6ed1cafdeec92fe68ecc4
+Repository: aminahmadloo/ToonelVpn
+Branch: main
+Date: 2026-08-29
+
+Scope of upcoming fix:
+- make 3X-UI authoritative for successful server reads
+- remove orphan Subscription rows only when the corresponding XUI server was successfully read
+- keep DB records untouched when XUI connection/API fails
+- synchronize UUID/subId/email identities
+- make dashboard service buttons match the synchronized service list instead of truncating to 8
+- validate handler syntax before deployment
