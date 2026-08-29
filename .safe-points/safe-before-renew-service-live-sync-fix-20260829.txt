@@ -1,0 +1,15 @@
+Safe restore reference before fixing the main-menu Renew Service client list.
+
+Base commit: 3025915
+Repository: aminahmadloo/ToonelVpn
+Date: 2026-08-29
+
+Observed issue:
+- My Services now synchronizes with live 3X-UI and shows all synchronized services.
+- Main Menu -> Renew Service still builds its keyboard with subscriptions[:8].
+
+Planned fix:
+- preserve the existing live XUI synchronization already performed by renew_service_handler.entry()
+- remove the artificial 8-service keyboard limit
+- keep the existing renewal/payment logic unchanged
+- validate syntax and verify no subscriptions[:8] remains in the renew handler before deployment.
