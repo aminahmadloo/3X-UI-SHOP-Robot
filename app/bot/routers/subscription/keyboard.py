@@ -54,7 +54,7 @@ def purchase_duration_keyboard(devices: int, callback_data: SubscriptionData) ->
     return builder.as_markup()
 
 
-def service_purchase_plan_keyboard(plans: list, callback_data: SubscriptionData) -> InlineKeyboardMarkup:
+def service_purchase_plan_keyboard(plans: list, callback_data: SubscriptionData, custom_period_id: int | None = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for plan in plans:
         volume = f"{plan.volume_gb:,}".translate(str.maketrans("0123456789,", "۰۱۲۳۴۵۶۷۸۹٬"))
@@ -68,6 +68,8 @@ def service_purchase_plan_keyboard(plans: list, callback_data: SubscriptionData)
             callback_data=f"subscription_plan:{plan.id}",
         )
     builder.adjust(1)
+    if custom_period_id is not None:
+        builder.row(InlineKeyboardButton(text="📦 حجم دلخواه", callback_data=f"subscription_custom:{custom_period_id}"))
     builder.row(back_button(NavSubscription.BUY, text="🔙 تغییر نوع سرویس"))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()

@@ -30,6 +30,9 @@ class PeriodStates(StatesGroup):
     price = State()
     edit_volume = State()
     edit_price = State()
+    custom_price = State()
+    custom_min = State()
+    custom_max = State()
 
 
 def _home(): return InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavAdminTools.MAIN)
@@ -47,8 +50,19 @@ def _details_kb(p):
 
 def _plans_kb(p, plans):
     b=InlineKeyboardBuilder()
-    for x in plans: b.row(InlineKeyboardButton(text=f"{x.volume_gb:,} GB | {x.price_toman:,} تومان | {x.duration_days} روز", callback_data=f"sp:plan:{p.id}:{x.id}"))
-    b.row(InlineKeyboardButton(text="➕ ساخت سرویس جدید", callback_data=f"sp:create_plan:{p.id}")); b.row(InlineKeyboardButton(text="🔙 جزئیات دوره", callback_data=f"sp:view:{p.id}")); b.row(_back()); return b.as_markup()
+    for x in plans:
+        b.row(InlineKeyboardButton(
+            text=f"{x.volume_gb:,} GB | {x.price_toman:,} تومان | {x.duration_days} روز",
+            callback_data=f"sp:plan:{p.id}:{x.id}"
+        ))
+    b.row(InlineKeyboardButton(text="➕ ساخت سرویس جدید", callback_data=f"sp:create_plan:{p.id}"))
+    b.row(InlineKeyboardButton(text=f"💰 مبلغ پایه هر گیگ دوره | {p.custom_price_per_gb_toman:,} تومان", callback_data=f"sp:custom_price:{p.id}"))
+    b.row(InlineKeyboardButton(text=f"📦 حداقل حجم دلخواه | {p.custom_min_volume_gb:,} GB", callback_data=f"sp:custom_min:{p.id}"))
+    max_text = "نامحدود" if p.custom_max_volume_gb <= 0 else f"{p.custom_max_volume_gb:,} GB"
+    b.row(InlineKeyboardButton(text=f"📦 حداکثر حجم دلخواه | {max_text}", callback_data=f"sp:custom_max:{p.id}"))
+    b.row(InlineKeyboardButton(text="🔙 جزئیات دوره", callback_data=f"sp:view:{p.id}"))
+    b.row(_back())
+    return b.as_markup()
 
 def _plan_details_kb(p,x): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✏️ ویرایش",callback_data=f"sp:edit:{p.id}:{x.id}")],[InlineKeyboardButton(text="🗑 حذف",callback_data=f"sp:delete:{p.id}:{x.id}")],[InlineKeyboardButton(text="🔙 لیست پلن‌ها",callback_data=f"sp:plans:{p.id}")]])
 
@@ -115,6 +129,135 @@ async def plans(callback:CallbackQuery,session:AsyncSession):
     p=await ServicePeriod.get(session,int(callback.data.rsplit(':',1)[1]));
     if not p or p.is_archived: await callback.answer("❌ دوره پیدا نشد.",show_alert=True); return
     xs=await ServicePurchasePlan.list_by_type(session,p.service_type); await callback.answer(); await callback.message.edit_text(f"📦 <b>مدیریت پلن‌های {p.name}</b>\n\nتعداد: <b>{len(xs)}</b>",reply_markup=_plans_kb(p,xs))
+
+@router.callback_query(F.data.regexp(r"^sp:custom_price:\d+$"),IsAdmin())
+async def custom_price(callback:CallbackQuery,state:FSMContext,session:AsyncSession):
+    p=await ServicePeriod.get(session,int(callback.data.rsplit(":",1)[1]))
+    if not p or p.is_archived:
+        await callback.answer("❌ دوره پیدا نشد.",show_alert=True)
+        return
+    await state.clear()
+    await state.update_data(period_id=p.id)
+    await state.set_state(PeriodStates.custom_price)
+    await callback.answer()
+    await callback.message.edit_text(
+        f"💰 <b>مبلغ پایه هر گیگ دوره</b>\n\n"
+        f"دوره: <b>{p.name}</b>\n"
+        f"مقدار فعلی: <b>{p.custom_price_per_gb_toman:,} تومان</b>\n\n"
+        "مبلغ پایه هر گیگ را به تومان وارد کنید:"
+    )
+
+@router.message(PeriodStates.custom_price,IsAdmin())
+async def save_custom_price(message:Message,state:FSMContext,session:AsyncSession):
+    try:
+        value=int((message.text or "").replace(",","").replace("٬",""))
+        assert value>0
+    except:
+        await message.answer("❌ مبلغ نامعتبر است. مبلغ باید عدد صحیح بزرگ‌تر از صفر باشد.")
+        return
+    d=await state.get_data()
+    p=await ServicePeriod.get(session,int(d["period_id"]))
+    if not p:
+        await state.clear()
+        await message.answer("❌ دوره پیدا نشد.")
+        return
+    p.custom_price_per_gb_toman=value
+    await session.commit()
+    await state.clear()
+    await message.answer(
+        f"✅ مبلغ پایه هر گیگ دوره <b>{p.name}</b> روی <b>{value:,} تومان</b> تنظیم شد.",
+        reply_markup=_plans_kb(p,await ServicePurchasePlan.list_by_type(session,p.service_type))
+    )
+
+@router.callback_query(F.data.regexp(r"^sp:custom_min:\d+$"),IsAdmin())
+async def custom_min(callback:CallbackQuery,state:FSMContext,session:AsyncSession):
+    p=await ServicePeriod.get(session,int(callback.data.rsplit(":",1)[1]))
+    if not p or p.is_archived:
+        await callback.answer("❌ دوره پیدا نشد.",show_alert=True)
+        return
+    await state.clear()
+    await state.update_data(period_id=p.id)
+    await state.set_state(PeriodStates.custom_min)
+    await callback.answer()
+    await callback.message.edit_text(
+        f"📦 <b>حداقل حجم دلخواه</b>\n\n"
+        f"دوره: <b>{p.name}</b>\n"
+        f"مقدار فعلی: <b>{p.custom_min_volume_gb:,} GB</b>\n\n"
+        "حداقل حجم را به GB وارد کنید:"
+    )
+
+@router.message(PeriodStates.custom_min,IsAdmin())
+async def save_custom_min(message:Message,state:FSMContext,session:AsyncSession):
+    try:
+        value=int((message.text or "").replace(",","").replace("٬",""))
+        assert value>0
+    except:
+        await message.answer("❌ حجم نامعتبر است. حداقل حجم باید عدد صحیح بزرگ‌تر از صفر باشد.")
+        return
+    d=await state.get_data()
+    p=await ServicePeriod.get(session,int(d["period_id"]))
+    if not p:
+        await state.clear()
+        await message.answer("❌ دوره پیدا نشد.")
+        return
+    if p.custom_max_volume_gb>0 and value>p.custom_max_volume_gb:
+        await message.answer(
+            f"❌ حداقل حجم نمی‌تواند از حداکثر فعلی ({p.custom_max_volume_gb:,} GB) بیشتر باشد."
+        )
+        return
+    p.custom_min_volume_gb=value
+    await session.commit()
+    await state.clear()
+    await message.answer(
+        f"✅ حداقل حجم دلخواه دوره <b>{p.name}</b> روی <b>{value:,} GB</b> تنظیم شد.",
+        reply_markup=_plans_kb(p,await ServicePurchasePlan.list_by_type(session,p.service_type))
+    )
+
+@router.callback_query(F.data.regexp(r"^sp:custom_max:\d+$"),IsAdmin())
+async def custom_max(callback:CallbackQuery,state:FSMContext,session:AsyncSession):
+    p=await ServicePeriod.get(session,int(callback.data.rsplit(":",1)[1]))
+    if not p or p.is_archived:
+        await callback.answer("❌ دوره پیدا نشد.",show_alert=True)
+        return
+    await state.clear()
+    await state.update_data(period_id=p.id)
+    await state.set_state(PeriodStates.custom_max)
+    await callback.answer()
+    await callback.message.edit_text(
+        f"📦 <b>حداکثر حجم دلخواه</b>\n\n"
+        f"دوره: <b>{p.name}</b>\n"
+        f"مقدار فعلی: <b>{'نامحدود' if p.custom_max_volume_gb<=0 else f'{p.custom_max_volume_gb:,} GB'}</b>\n\n"
+        "حداکثر حجم را به GB وارد کنید.\n"
+        "برای نامحدود عدد <code>0</code> را وارد کنید:"
+    )
+
+@router.message(PeriodStates.custom_max,IsAdmin())
+async def save_custom_max(message:Message,state:FSMContext,session:AsyncSession):
+    try:
+        value=int((message.text or "").replace(",","").replace("٬",""))
+        assert value>=0
+    except:
+        await message.answer("❌ حجم نامعتبر است. عدد صفر یا بیشتر وارد کنید.")
+        return
+    d=await state.get_data()
+    p=await ServicePeriod.get(session,int(d["period_id"]))
+    if not p:
+        await state.clear()
+        await message.answer("❌ دوره پیدا نشد.")
+        return
+    if value>0 and value<p.custom_min_volume_gb:
+        await message.answer(
+            f"❌ حداکثر حجم نمی‌تواند از حداقل فعلی ({p.custom_min_volume_gb:,} GB) کمتر باشد."
+        )
+        return
+    p.custom_max_volume_gb=value
+    await session.commit()
+    await state.clear()
+    await message.answer(
+        f"✅ حداکثر حجم دلخواه دوره <b>{p.name}</b> روی "
+        f"<b>{'نامحدود' if value<=0 else f'{value:,} GB'}</b> تنظیم شد.",
+        reply_markup=_plans_kb(p,await ServicePurchasePlan.list_by_type(session,p.service_type))
+    )
 
 @router.callback_query(F.data.regexp(r"^sp:create_plan:\d+$"),IsAdmin())
 async def create_plan(callback:CallbackQuery,state:FSMContext,session:AsyncSession):

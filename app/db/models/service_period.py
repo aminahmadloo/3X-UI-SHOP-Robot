@@ -23,6 +23,9 @@ class ServicePeriod(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    custom_price_per_gb_toman: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    custom_min_volume_gb: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    custom_max_volume_gb: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     @classmethod
     async def get(cls, session: AsyncSession, period_id: int) -> Self | None:

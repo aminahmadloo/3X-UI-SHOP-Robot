@@ -1,7 +1,8 @@
+import asyncio
 import logging
 import re
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
@@ -14,15 +15,54 @@ from app.bot.services.customer_level import get_discounted_plan_price
 from app.bot.routers.subscription.keyboard import config_name_keyboard, devices_keyboard, duration_keyboard, managed_payment_method_keyboard, pay_keyboard, payment_method_keyboard, purchase_duration_keyboard, service_purchase_plan_keyboard, subscription_keyboard
 from app.bot.utils.navigation import NavSubscription
 from app.config import Config
-from app.db.models import ConnectedDeviceSettings, ServicePurchasePlan, User
+from app.db.models import ConnectedDeviceSettings, ServicePurchasePlan, ServicePeriod, User
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 
+_CUSTOM_VOLUME_MESSAGE_TTL = 5
+
+
+async def _delete_message_after(
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    delay: int = _CUSTOM_VOLUME_MESSAGE_TTL,
+) -> None:
+    await asyncio.sleep(delay)
+
+    try:
+        await bot.delete_message(
+            chat_id=chat_id,
+            message_id=message_id,
+        )
+    except Exception:
+        logger.debug(
+            "Could not delete Telegram message %s after TTL",
+            message_id,
+            exc_info=True,
+        )
+
+
+def _schedule_message_delete(
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    delay: int = _CUSTOM_VOLUME_MESSAGE_TTL,
+) -> None:
+    asyncio.create_task(
+        _delete_message_after(
+            bot=bot,
+            chat_id=chat_id,
+            message_id=message_id,
+            delay=delay,
+        )
+    )
 
 class PurchaseConfigState(StatesGroup):
     waiting_config_name = State()
     selecting_payment = State()
+    waiting_custom_volume = State()
 
 
 async def show_subscription(callback: CallbackQuery, client_data: ClientData | None, callback_data: SubscriptionData) -> None:
@@ -91,20 +131,15 @@ def _sanitize_config_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "", name.strip())
 
 
-@router.callback_query(F.data.regexp(r"^subscription_plan:\d+$"))
-async def callback_subscription_plan_selected(
-    callback: CallbackQuery,
+async def _start_plan_purchase(
+    *,
+    event: CallbackQuery | Message,
     user: User,
     session: AsyncSession,
     state: FSMContext,
     services: ServicesContainer,
+    plan: ServicePurchasePlan,
 ) -> None:
-    plan = await ServicePurchasePlan.get(session, int(callback.data.rsplit(":", 1)[1]))
-
-    if not plan:
-        await callback.answer("این پلن دیگر وجود ندارد.", show_alert=True)
-        return
-
     auto_name = await services.vpn._generate_unique_config_name(
         volume_gb=plan.volume_gb,
         duration_days=plan.duration_days,
@@ -117,16 +152,20 @@ async def callback_subscription_plan_selected(
         plan.price_toman,
     )
 
-    discount_percent = int(getattr(customer_level, "discount_percent", 0) or 0)
+    discount_percent = int(
+        getattr(customer_level, "discount_percent", 0) or 0
+    )
 
     data = SubscriptionData(
         state=NavSubscription.CONFIG_NAME,
         user_id=user.tg_id,
-        devices=(await ConnectedDeviceSettings.get_or_create(session)).max_connected_devices,
+        devices=(
+            await ConnectedDeviceSettings.get_or_create(session)
+        ).max_connected_devices,
         duration=plan.duration_days,
         price=discounted_price,
         original_price=plan.price_toman,
-        discount_percent=int(discount_percent or 0),
+        discount_percent=discount_percent,
         discount_level_title=str(
             getattr(customer_level, "title", "")
             or getattr(customer_level, "name", "")
@@ -154,18 +193,233 @@ async def callback_subscription_plan_selected(
             "config_name": data.config_name,
         }
     )
+
     await state.set_state(PurchaseConfigState.waiting_config_name)
 
-    await callback.answer()
-
-    await callback.message.edit_text(
+    message_text = (
         "⚙️ <b>نام کانفیگ</b>\n\n"
         f"نام خودکار:\n<code>{auto_name}</code>\n\n"
         "یا نام دلخواه خود را وارد کنید <b>(فقط انگلیسی)</b>:\n\n"
-        "نام انتخابی باید فقط شامل حروف انگلیسی، عدد، <code>_</code> یا <code>-</code> باشد.",
-        reply_markup=config_name_keyboard(data),
+        "نام انتخابی باید فقط شامل حروف انگلیسی، عدد، "
+        "<code>_</code> یا <code>-</code> باشد."
     )
 
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        await event.message.edit_text(
+            message_text,
+            reply_markup=config_name_keyboard(data),
+        )
+    else:
+        await event.answer(
+            message_text,
+            reply_markup=config_name_keyboard(data),
+        )
+
+
+@router.callback_query(F.data.regexp(r"^subscription_plan:\d+$"))
+async def callback_subscription_plan_selected(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
+    plan = await ServicePurchasePlan.get(
+        session,
+        int(callback.data.rsplit(":", 1)[1]),
+    )
+
+    if not plan or plan.is_custom:
+        await callback.answer(
+            "این پلن دیگر وجود ندارد.",
+            show_alert=True,
+        )
+        return
+
+    await _start_plan_purchase(
+        event=callback,
+        user=user,
+        session=session,
+        state=state,
+        services=services,
+        plan=plan,
+    )
+
+
+@router.callback_query(F.data.regexp(r"^subscription_custom:\d+$"))
+async def callback_subscription_custom_volume(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    period_id = int(callback.data.rsplit(":", 1)[1])
+    period = await ServicePeriod.get(session, period_id)
+
+    if not period or not period.is_active or period.is_archived:
+        await callback.answer(
+            "❌ این دوره دیگر فعال نیست.",
+            show_alert=True,
+        )
+        return
+
+    if period.custom_price_per_gb_toman <= 0:
+        await callback.answer(
+            "❌ مبلغ پایه هر گیگ برای این دوره هنوز توسط مدیر تنظیم نشده است.",
+            show_alert=True,
+        )
+        return
+
+    if period.custom_min_volume_gb <= 0:
+        await callback.answer(
+            "❌ حداقل حجم دلخواه برای این دوره هنوز توسط مدیر تنظیم نشده است.",
+            show_alert=True,
+        )
+        return
+
+    await state.clear()
+    await state.update_data(
+        custom_period_id=period.id,
+        custom_volume_prompt_message_id=callback.message.message_id,
+    )
+    await state.set_state(PurchaseConfigState.waiting_custom_volume)
+
+    max_text = (
+        "نامحدود"
+        if period.custom_max_volume_gb <= 0
+        else f"{period.custom_max_volume_gb:,} GB"
+    )
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "📦 <b>حجم دلخواه</b>\n\n"
+        f"📅 دوره: <b>{period.name}</b>\n"
+        f"⏱ مدت: <b>{period.duration_days} روز</b>\n"
+        f"💰 مبلغ پایه هر گیگ: "
+        f"<b>{period.custom_price_per_gb_toman:,} تومان</b>\n"
+        f"📦 حداقل حجم: "
+        f"<b>{period.custom_min_volume_gb:,} GB</b>\n"
+        f"📦 حداکثر حجم: <b>{max_text}</b>\n\n"
+        "حجم دلخواه خود را به GB وارد کنید:",
+    )
+
+
+@router.message(PurchaseConfigState.waiting_custom_volume)
+async def message_subscription_custom_volume(
+    message: Message,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+    services: ServicesContainer,
+    bot: Bot,
+) -> None:
+    raw = (
+        (message.text or "")
+        .replace(",", "")
+        .replace("٬", "")
+        .strip()
+    )
+
+    async def send_ttl_error(text: str) -> None:
+        error_message = await message.answer(text)
+
+        _schedule_message_delete(
+            bot=bot,
+            chat_id=error_message.chat.id,
+            message_id=error_message.message_id,
+        )
+
+    try:
+        volume = int(raw)
+
+        if volume <= 0:
+            raise ValueError
+
+    except ValueError:
+        await send_ttl_error(
+            "❌ حجم نامعتبر است. لطفاً یک عدد صحیح بزرگ‌تر از صفر وارد کنید."
+        )
+        return
+
+    data = await state.get_data()
+
+    period = await ServicePeriod.get(
+        session,
+        int(data.get("custom_period_id", 0) or 0),
+    )
+
+    if not period or not period.is_active or period.is_archived:
+        await state.clear()
+
+        await send_ttl_error(
+            "❌ این دوره دیگر فعال نیست. لطفاً دوباره دوره را انتخاب کنید."
+        )
+        return
+
+    if (
+        period.custom_price_per_gb_toman <= 0
+        or period.custom_min_volume_gb <= 0
+    ):
+        await state.clear()
+
+        await send_ttl_error(
+            "❌ تنظیمات حجم دلخواه این دوره کامل نیست. "
+            "لطفاً بعداً دوباره تلاش کنید."
+        )
+        return
+
+    if volume < period.custom_min_volume_gb:
+        await send_ttl_error(
+            f"❌ حداقل حجم قابل سفارش برای این دوره "
+            f"<b>{period.custom_min_volume_gb:,} GB</b> است."
+        )
+        return
+
+    if (
+        period.custom_max_volume_gb > 0
+        and volume > period.custom_max_volume_gb
+    ):
+        await send_ttl_error(
+            f"❌ حداکثر حجم قابل سفارش برای این دوره "
+            f"<b>{period.custom_max_volume_gb:,} GB</b> است."
+        )
+        return
+
+    # The entered volume is valid.
+    # Keep the original "custom volume" prompt visible for 5 seconds,
+    # then delete it directly through Bot.delete_message().
+    prompt_message_id = data.get("custom_volume_prompt_message_id")
+
+    if prompt_message_id:
+        _schedule_message_delete(
+            bot=bot,
+            chat_id=message.chat.id,
+            message_id=int(prompt_message_id),
+        )
+
+    price = volume * period.custom_price_per_gb_toman
+
+    custom_plan = ServicePurchasePlan(
+        service_type=period.service_type,
+        volume_gb=volume,
+        duration_days=period.duration_days,
+        price_toman=price,
+        is_custom=True,
+    )
+
+    session.add(custom_plan)
+    await session.commit()
+
+    await state.clear()
+
+    await _start_plan_purchase(
+        event=message,
+        user=user,
+        session=session,
+        state=state,
+        services=services,
+        plan=custom_plan,
+    )
 
 @router.callback_query(F.data == "subscription_config_name:auto")
 async def callback_config_name_auto(

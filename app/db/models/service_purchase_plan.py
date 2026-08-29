@@ -1,6 +1,6 @@
 from typing import Self
 
-from sqlalchemy import Integer, String, select
+from sqlalchemy import Boolean, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,6 +17,7 @@ class ServicePurchasePlan(Base):
     volume_gb: Mapped[int] = mapped_column(Integer, nullable=False)
     duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
     price_toman: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_custom: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0", index=True)
 
     @classmethod
     async def get(
@@ -34,10 +35,11 @@ class ServicePurchasePlan(Base):
         cls,
         session: AsyncSession,
         service_type: str,
+        *,
+        include_custom: bool = False,
     ) -> list[Self]:
-        result = await session.execute(
-            select(cls)
-            .where(cls.service_type == service_type)
-            .order_by(cls.id)
-        )
+        query = select(cls).where(cls.service_type == service_type)
+        if not include_custom:
+            query = query.where(cls.is_custom.is_(False))
+        result = await session.execute(query.order_by(cls.id))
         return list(result.scalars().all())

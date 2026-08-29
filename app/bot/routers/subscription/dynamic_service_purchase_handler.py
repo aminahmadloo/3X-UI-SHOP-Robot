@@ -36,7 +36,7 @@ async def period(callback:CallbackQuery,session:AsyncSession,user):
     plans=await ServicePurchasePlan.list_by_type(session,p.service_type)
     if not plans: await callback.answer("برای این دوره هنوز پلنی ثبت نشده است.",show_alert=True); return
     settings=await ConnectedDeviceSettings.get_or_create(session); data=SubscriptionData(state=NavSubscription.PLAN,user_id=user.tg_id,devices=settings.max_connected_devices)
-    await callback.answer(); await callback.message.edit_text(f"📅 <b>پلن‌های {p.name}</b>\n\nمدت پایه: <b>{p.duration_days} روز</b>\n\nلطفاً پلن مورد نظر را انتخاب کنید:",reply_markup=service_purchase_plan_keyboard(plans,data))
+    await callback.answer(); await callback.message.edit_text(f"📅 <b>پلن‌های {p.name}</b>\n\nمدت پایه: <b>{p.duration_days} روز</b>\n\nلطفاً پلن مورد نظر را انتخاب کنید:",reply_markup=service_purchase_plan_keyboard(plans,data,p.id))
 
 @router.callback_query(F.data.regexp(r"^subscription_back_plan:\d+$"))
 async def back_plan(callback:CallbackQuery,session:AsyncSession,user):
@@ -45,4 +45,4 @@ async def back_plan(callback:CallbackQuery,session:AsyncSession,user):
     p=next((p for p in await ServicePeriod.list_active(session) if p.service_type==x.service_type),None)
     if not p: await callback.answer("این دوره دیگر فعال نیست.",show_alert=True); return
     plans=await ServicePurchasePlan.list_by_type(session,p.service_type); settings=await ConnectedDeviceSettings.get_or_create(session); data=SubscriptionData(state=NavSubscription.PLAN,user_id=user.tg_id,devices=settings.max_connected_devices)
-    await callback.answer(); await callback.message.edit_text(f"📅 <b>پلن‌های {p.name}</b>\n\nلطفاً پلن مورد نظر را انتخاب کنید:",reply_markup=service_purchase_plan_keyboard(plans,data))
+    await callback.answer(); await callback.message.edit_text(f"📅 <b>پلن‌های {p.name}</b>\n\nلطفاً پلن مورد نظر را انتخاب کنید:",reply_markup=service_purchase_plan_keyboard(plans,data,p.id))
