@@ -1,0 +1,80 @@
+name: Apply My Services live sync fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: "!startsWith(github.event.head_commit.message, 'fix: My Services live sync')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch My Services handler
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('app/bot/routers/my_services/handler.py')
+          text = path.read_text(encoding='utf-8')
+          original = text
+
+          text = text.replace('from sqlalchemy import select\n', 'from sqlalchemy import delete, select\n', 1)
+
+          text = text.replace(
+              '    discovered: dict[tuple[int, str], object] = {}\n    changed = False\n',
+              '    discovered: dict[tuple[int, str], object] = {}\n    live_identities_by_server: dict[int, set[str]] = {}\n    changed = False\n',
+              1,
+          )
+
+          text = text.replace(
+              '        logger.info(\n            "MY_SERVICES LIVE DISCOVERY | Checking XUI server %s for user tg_id=%s.",\n            server.name,\n            user.tg_id,\n        )\n\n        for inbound in inbounds:\n',
+              '        logger.info(\n            "MY_SERVICES LIVE DISCOVERY | Checking XUI server %s for user tg_id=%s.",\n            server.name,\n            user.tg_id,\n        )\n\n        # A successful XUI read is authoritative for this server. Track every\n        # live client identity so stale DB rows can be removed safely below.\n        live_identities = live_identities_by_server.setdefault(server.id, set())\n\n        for inbound in inbounds:\n',
+              1,
+          )
+
+          text = text.replace(
+              '                client_id = str(getattr(client, "id", "") or "").strip()\n                identity = client_id or client_sub_id or client_email\n',
+              '                client_id = str(getattr(client, "id", "") or "").strip()\n                # 3X-UI identifies a client by UUID/email/subId depending on\n                # protocol and API version. Keep all available identities.\n                live_identities.update(\n                    value\n                    for value in (client_id, client_sub_id, client_email)\n                    if value\n                )\n                identity = client_id or client_sub_id or client_email\n',
+              1,
+          )
+
+          cleanup_anchor = '    if changed:\n        await session.commit()\n\n    result = await session.execute(\n        select(Subscription)\n'
+          cleanup = '''    # Remove orphaned DB subscriptions only for servers whose XUI read\n    # succeeded. A connection/API failure must never be interpreted as a\n    # deletion, but a successful read means XUI is the source of truth.\n    for server_id, live_identities in live_identities_by_server.items():\n        result = await session.execute(\n            select(Subscription).where(\n                Subscription.user_id == user.id,\n                Subscription.server_id == server_id,\n            )\n        )\n        server_subscriptions = list(result.scalars().all())\n        for subscription in server_subscriptions:\n            stored_client_id = str(subscription.client_id or "").strip()\n            stored_name = str(subscription.config_name or "").strip()\n            if stored_client_id in live_identities or stored_name in live_identities:\n                continue\n\n            logger.warning(\n                "MY_SERVICES LIVE DISCOVERY | Removing orphan DB subscription=%s "\n                "client_id=%s name=%s from server_id=%s: client is absent from live XUI.",\n                subscription.id,\n                stored_client_id or "unknown",\n                stored_name or "unknown",\n                server_id,\n            )\n            await session.execute(\n                delete(Subscription).where(Subscription.id == subscription.id)\n            )\n            changed = True\n\n    if changed:\n        await session.commit()\n\n    result = await session.execute(\n        select(Subscription)\n'''
+          if cleanup_anchor not in text:
+              raise SystemExit('cleanup anchor not found')
+          text = text.replace(cleanup_anchor, cleanup_anchor.replace('    if changed:\n        await session.commit()\n\n', cleanup), 1)
+
+          # In the focused sync path, match by UUID/subId/email and delete a\n          # record that is proven absent from a successfully-read XUI server.\n          text = text.replace(
+              '            client = live_clients.get(stored_client_id)\n            if client is None:\n                # Do not delete the DB record when an administrator removes a\n                # client from 3X-UI. Preserve the purchase/history record and\n                # mark it inactive so the discrepancy remains recoverable.\n                if subscription.status != "inactive":\n                    subscription.status = "inactive"\n                    changed = True\n                logger.warning(\n                    "Subscription %s (%s) client %s is missing from XUI server %s; synchronized status=inactive without deleting DB record.",\n                    subscription.id,\n                    subscription.config_name,\n                    stored_client_id,\n                    server.name,\n                )\n                continue\n',
+              '            client = live_clients.get(stored_client_id)\n            if client is None and subscription.config_name:\n                client = live_clients.get(str(subscription.config_name).strip())\n            if client is None:\n                await session.execute(\n                    delete(Subscription).where(Subscription.id == subscription.id)\n                )\n                changed = True\n                logger.warning(\n                    "Subscription %s (%s) client %s is missing from XUI server %s; removed orphan DB record.",\n                    subscription.id,\n                    subscription.config_name,\n                    stored_client_id,\n                    server.name,\n                )\n                continue\n',
+              1,
+          )
+
+          # The dashboard must render the same set it counts. There is no hidden\n          # [:8] truncation anymore; every synchronized service gets a button.\n          text = text.replace('for subscription in subscriptions[:8]:', 'for subscription in subscriptions:', 2)
+
+          if text == original:
+              raise SystemExit('No changes were applied')
+          path.write_text(text, encoding='utf-8')
+          print('Patched', path)
+          PY
+
+      - name: Validate syntax
+        run: python3 -m py_compile app/bot/routers/my_services/handler.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/bot/routers/my_services/handler.py
+          git rm .github/workflows/_apply-my-services-sync-fix.yml
+          git commit -m "fix: My Services live sync and button counts"
+          git push
