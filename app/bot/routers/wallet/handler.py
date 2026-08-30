@@ -50,24 +50,27 @@ def card_text(language: str, settings: CardSettings, amount: int) -> str:
     if language == "en":
         return (
             f"💳 <b>Card-to-card payment</b>\n\n"
-            f"Amount: <b>{amount:,} Toman</b>\n\n"
-            f"Card number:\n<code>{settings.card_number}</code>\n\n"
-            f"Card holder:\n<b>{settings.card_holder_name}</b>\n\n"
+            f"Card number:\n<code>{settings.card_number}</code>\n"
+            f"🏦 Bank: <b>{settings.bank_name or 'Unknown'}</b>\n"
+            f"Card holder:\n<b>{settings.card_holder_name}</b>\n"
+            f"Amount: <b>{amount:,} Toman</b>\n"
             "After transferring the amount, press the button below and send the receipt image."
         )
     if language == "ru":
         return (
             f"💳 <b>Оплата переводом</b>\n\n"
-            f"Сумма: <b>{amount:,} томан</b>\n\n"
-            f"Номер карты:\n<code>{settings.card_number}</code>\n\n"
-            f"Владелец карты:\n<b>{settings.card_holder_name}</b>\n\n"
+            f"Номер карты:\n<code>{settings.card_number}</code>\n"
+            f"🏦 Банк: <b>{settings.bank_name or 'Неизвестно'}</b>\n"
+            f"Владелец карты:\n<b>{settings.card_holder_name}</b>\n"
+            f"Сумма: <b>{amount:,} томан</b>\n"
             "После перевода нажмите кнопку ниже и отправьте фото чека."
         )
     return (
         f"💳 <b>پرداخت کارت به کارت</b>\n\n"
-        f"مبلغ قابل پرداخت: <b>{amount:,} تومان</b>\n\n"
-        f"شماره کارت:\n<code>{settings.card_number}</code>\n\n"
-        f"به نام:\n<b>{settings.card_holder_name}</b>\n\n"
+        f"شماره کارت:\n<code>{settings.card_number}</code>\n"
+        f"🏦 بانک: <b>{settings.bank_name or 'نامشخص'}</b>\n"
+        f"به نام:\n<b>{settings.card_holder_name}</b>\n"
+        f"مبلغ قابل پرداخت: <b>{amount:,} تومان</b>\n"
         "ابتدا مبلغ را واریز کنید، سپس روی «پرداخت کردم» بزنید و عکس رسید را ارسال کنید."
     )
 
@@ -178,7 +181,7 @@ async def callback_wallet_custom(
     else:
         text = (
             "💰 <b>مبلغ دلخواه</b>\n\n"
-            "لطفاً مبلغ موردنظر برای شارژ کیف پول را به تومان وارد کنید.\n\n"
+            "لطفاً مبلغ موردنظر برای شارژ را به تومان وارد کنید.\n\n"
             "مثال: <code>۳۵۰٬۰۰۰ تومان</code>"
         )
 
@@ -217,164 +220,3 @@ async def handle_custom_amount(
             "مثال: <code>۳۵۰٬۰۰۰ تومان</code>"
         )
         return
-
-    amount = int(raw)
-    if amount <= 0:
-        await message.answer("❌ مبلغ باید بیشتر از صفر باشد.")
-        return
-    if amount < 1000:
-        await message.answer("❌ حداقل مبلغ شارژ کیف پول <b>۱٬۰۰۰ تومان</b> است.")
-        return
-
-    if await has_pending_payment(session, user.tg_id):
-        await state.clear()
-        await message.answer("⏳ یک درخواست پرداخت شما در حال بررسی است. لطفاً منتظر بمانید.")
-        return
-
-    await state.update_data(card_payment_amount=amount)
-    await message.answer(
-        payment_method_text(user.language_code, amount),
-        reply_markup=payment_method_keyboard(user.language_code, amount),
-    )
-
-
-@router.callback_query(F.data.regexp(r"^wallet:method:card:\d+$"))
-async def callback_payment_card(
-    callback: CallbackQuery,
-    user: User,
-    session: AsyncSession,
-    state: FSMContext,
-    config: Config,
-) -> None:
-    amount = int(callback.data.rsplit(":", 1)[1])
-
-    if amount <= 0:
-        await state.clear()
-        await callback.answer("❌ مبلغ پرداخت معتبر نیست.", show_alert=True)
-        return
-
-    if await has_pending_payment(session, user.tg_id):
-        await callback.answer("⏳ یک درخواست پرداخت شما در حال بررسی است. لطفاً منتظر بمانید.", show_alert=True)
-        return
-
-    settings = await CardSettings.get_or_create(session, card_number=config.shop.CARD_NUMBER or "")
-    if not settings.is_active or not settings.card_number or not settings.card_holder_name:
-        await callback.answer("❌ پرداخت کارت به کارت در حال حاضر فعال نیست.", show_alert=True)
-        return
-
-    await state.set_state(CardPaymentState.waiting_receipt)
-    await state.update_data(card_payment_amount=amount)
-    await callback.answer()
-    await callback.message.edit_text(
-        card_text(user.language_code, settings, amount),
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="📋 کپی شماره کارت", copy_text=CopyTextButton(text=settings.card_number))],
-                [InlineKeyboardButton(text="📋 کپی مبلغ", copy_text=CopyTextButton(text=str(amount)))],
-                [InlineKeyboardButton(text="✅ پرداخت کردم", callback_data="wallet:custom:paid")],
-                [InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavMain.WALLET)],
-            ]
-        ),
-    )
-
-
-@router.callback_query(F.data == "wallet:custom:paid")
-async def callback_custom_card_paid(
-    callback: CallbackQuery,
-    user: User,
-    session: AsyncSession,
-    state: FSMContext,
-) -> None:
-    data = await state.get_data()
-    amount = int(data.get("card_payment_amount", 0))
-
-    if amount <= 0:
-        await state.clear()
-        await callback.answer("❌ درخواست پرداخت منقضی شده است.", show_alert=True)
-        return
-
-    if await has_pending_payment(session, user.tg_id):
-        await callback.answer("⏳ یک درخواست پرداخت شما در حال بررسی است. لطفاً منتظر بمانید.", show_alert=True)
-        return
-
-    await state.set_state(CardPaymentState.waiting_receipt)
-    await callback.answer()
-    await callback.message.edit_text(
-        f"📷 <b>ارسال رسید پرداخت</b>\n\n"
-        f"مبلغ: <b>{amount:,} تومان</b>\n\n"
-        "لطفاً عکس واضح رسید واریز را همینجا ارسال کنید.",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 انصراف", callback_data=NavMain.WALLET)]
-            ]
-        ),
-    )
-
-
-@router.message(CardPaymentState.waiting_receipt, F.photo)
-async def receive_card_receipt(message: Message, user: User, session: AsyncSession, state: FSMContext, config: Config, bot) -> None:
-    data = await state.get_data()
-    amount = int(data.get("card_payment_amount", 0))
-    if amount <= 0:
-        await state.clear()
-        await message.answer("❌ درخواست پرداخت منقضی شده است.")
-        return
-
-    if await has_pending_payment(session, user.tg_id):
-        await state.clear()
-        await message.answer("⏳ یک درخواست پرداخت شما در حال بررسی است. لطفاً منتظر بمانید.")
-        return
-
-    for _ in range(5):
-        tracking_code = generate_tracking_code(user.tg_id)
-        result = await session.execute(select(CardPayment.id).where(CardPayment.tracking_code == tracking_code))
-        if result.scalar_one_or_none() is None:
-            break
-    else:
-        await state.clear()
-        await message.answer("❌ خطا در ایجاد کد پیگیری. لطفاً دوباره تلاش کنید.")
-        return
-
-    payment = await CardPayment.create(session, user.tg_id, amount, message.photo[-1].file_id, tracking_code)
-    await state.clear()
-
-    user_text = (
-        "✅ <b>درخواست پرداخت شما ثبت شد.</b>\n\n"
-        f"🆔 کد پیگیری: <code>{payment.tracking_code}</code>\n"
-        f"💰 مبلغ پرداختی: <b>{amount:,} تومان</b>\n\n"
-        "📌 پیام: پس از تأیید توسط پشتیبانی، کیف پول شما شارژ می‌شود.\n\n"
-        "🙏 از صبر و شکیبایی شما متشکریم."
-    )
-    await message.answer(user_text)
-
-    settings = await CardSettings.get_or_create(
-        session,
-        card_number=config.shop.CARD_NUMBER or "",
-    )
-
-    admin_text = (
-        "💳 <b>درخواست جدید کارت به کارت</b>\n\n"
-        f"🆔 کد پیگیری: <code>{payment.tracking_code}</code>\n"
-        f"🆔 آیدی تلگرام پرداخت‌کننده: <code>{user.tg_id}</code>\n"
-        f"💳 کارت مقصد: <code>{settings.card_number}</code>\n"
-        f"💰 مبلغ: <b>{amount:,} تومان</b>\n"
-        f"🧾 شماره درخواست داخلی: <code>#{payment.id}</code>"
-    )
-    markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ تأیید و شارژ کیف پول", callback_data=f"cardpay:approve:{payment.id}")],
-        [InlineKeyboardButton(text="❌ رد پرداخت", callback_data=f"cardpay:reject:{payment.id}")],
-        [InlineKeyboardButton(
-            text="👤 مشاهده کاربر",
-            callback_data=f"cardpay:user:{user.tg_id}",
-        )],
-    ])
-    for admin_id in config.bot.ADMINS:
-        try:
-            await bot.send_photo(admin_id, message.photo[-1].file_id, caption=admin_text, reply_markup=markup)
-        except Exception:
-            logger.exception("Failed to notify admin %s about card payment %s", admin_id, payment.id)
-
-
-@router.message(CardPaymentState.waiting_receipt)
-async def invalid_card_receipt(message: Message) -> None:
-    await message.answer("📷 لطفاً رسید را به صورت <b>عکس</b> ارسال کنید.")
