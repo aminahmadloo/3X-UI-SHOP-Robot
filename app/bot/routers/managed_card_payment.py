@@ -80,10 +80,24 @@ def _deserialize_value(value, user_tg_id: int) -> SubscriptionData | None:
 def _managed_card_keyboard(card_number: str, amount: int, card_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📋 کپی شماره کارت", copy_text=CopyTextButton(text=card_number))],
-            [InlineKeyboardButton(text="📋 کپی مبلغ", copy_text=CopyTextButton(text=str(amount)))],
-            [InlineKeyboardButton(text="🔄 تعویض کارت", callback_data=f"managed_card:swap:{card_id}", style="success")],
-            [InlineKeyboardButton(text="✅ پرداخت کردم", callback_data="managed_card:paid")],
+            [
+                InlineKeyboardButton(
+                    text="📋 کپی شماره کارت",
+                    copy_text=CopyTextButton(text=card_number),
+                ),
+                InlineKeyboardButton(
+                    text="📋 کپی مبلغ",
+                    copy_text=CopyTextButton(text=str(amount)),
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔄 تعویض کارت",
+                    callback_data=f"managed_card:swap:{card_id}",
+                    style="success",
+                )
+            ],
+            [InlineKeyboardButton(text="✅ پرداخت کردم - رسید می‌فرستم", callback_data="managed_card:paid")],
             [InlineKeyboardButton(text="🔙 بازگشت", callback_data="managed_card:back")],
         ]
     )
