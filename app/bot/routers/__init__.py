@@ -47,6 +47,11 @@ from .wallet.overview import router as wallet_overview_router
 from app.bot.routers.customer_level.handler import router as customer_level_router
 from app.bot.routers.support.training_handler import router as support_training_router
 
+# Import after the legacy main-menu renewal router so its payment-method
+# keyboard receives the same persistent visibility/order policy as the
+# managed purchase flow.
+from . import payment_method_visibility as _payment_method_visibility
+
 
 def include(app: Application, dispatcher: Dispatcher) -> None:
     app.router.add_get(CONNECTION_WEBHOOK, download.handler.redirect_to_connection)
