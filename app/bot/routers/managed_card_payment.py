@@ -140,12 +140,15 @@ async def _render_managed_card(
     )
 
     if show_swap_notice:
+        # CallbackQuery.answer() does not accept/interpret a parse mode for
+        # the alert text. Keep this popup plain text so HTML tags such as
+        # <b> and <code> are not shown literally to the customer.
         notice = (
-            "🔄 <b>کارت عوض شد</b>\n\n"
-            f"💳 شماره کارت جدید:\n<code>{card.card_number}</code>\n\n"
-            f"🏦 بانک: <b>{card.bank_name or 'نامشخص'}</b>\n"
-            f"👤 بنام: <b>{card.card_holder_name}</b>\n\n"
-            f"💰 مبلغ را به این کارت واریز کنید: <b>{int(subscription_data.price):,} تومان</b>"
+            "🔄 کارت عوض شد\n\n"
+            f"💳 شماره کارت جدید:\n{card.card_number}\n\n"
+            f"🏦 بانک: {card.bank_name or 'نامشخص'}\n"
+            f"👤 بنام: {card.card_holder_name}\n\n"
+            f"💰 مبلغ را به این کارت واریز کنید: {int(subscription_data.price):,} تومان"
         )
         await callback.answer(notice, show_alert=True)
     else:
