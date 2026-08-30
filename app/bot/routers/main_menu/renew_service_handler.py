@@ -262,6 +262,42 @@ async def _original_plan(
     return None
 
 
+async def _resolve_renewal_payment_data(
+    session: AsyncSession,
+    user: User,
+    subscription_id: int,
+    plan_id: int,
+    services: ServicesContainer,
+) -> tuple[Subscription, ServicePurchasePlan, SubscriptionData] | None:
+    """Resolve renewal payment data from persistent identifiers.
+
+    FSM/Redis is deliberately not used as the source of truth. The subscription
+    is loaded for the current user, its original plan is recovered through the
+    existing fallback chain, and the callback plan id must match that resolved
+    plan. A fresh SubscriptionData is then rebuilt with the current discount.
+    """
+    subscription = await _get_subscription(
+        session, user, subscription_id, services
+    )
+    if subscription is None:
+        return None
+
+    plan = await _original_plan(session, subscription)
+    if plan is None or plan.id != plan_id:
+        logger.warning(
+            "Renewal payment plan mismatch: subscription=%s persisted_plan=%s "
+            "callback_plan=%s resolved_plan=%s",
+            subscription.id,
+            subscription.plan_id,
+            plan_id,
+            plan.id if plan else None,
+        )
+        return None
+
+    data = await _subscription_data(session, subscription, plan, user)
+    return subscription, plan, data
+
+
 @router.callback_query(F.data == ENTRY_CALLBACK)
 async def entry(
     callback: CallbackQuery,
@@ -440,58 +476,14 @@ async def payment_methods(
     subscription_id = int(subscription_id_text)
     plan_id = int(plan_id_text)
 
-    packed = (await state.get_data()).get("subscription_data")
-    if not packed:
-        await callback.answer("❌ اطلاعات سفارش تمدید منقضی شده است.", show_alert=True)
-        await state.clear()
-        return
-
-    try:
-        data = SubscriptionData.deserialize(packed)
-    except Exception:
-        await callback.answer("❌ اطلاعات سفارش تمدید نامعتبر است.", show_alert=True)
-        await state.clear()
-        return
-
-    if data.user_id != user.tg_id or data.subscription_id != subscription_id or data.plan_id != plan_id:
-        await callback.answer("❌ اطلاعات سفارش با این کاربر یا سرویس مطابقت ندارد.", show_alert=True)
-        await state.clear()
-        return
-
-    subscription = await _get_subscription(session, user, subscription_id, services)
-    plan = await ServicePurchasePlan.get(session, plan_id)
-    if subscription is None or plan is None or plan.volume_gb <= 0 or plan.duration_days <= 0:
-        await callback.answer("❌ سرویس یا پلن تمدید دیگر معتبر نیست.", show_alert=True)
-        await state.clear()
-        return
-
-    if plan.id != subscription.plan_id:
-        original_plan = await _original_plan(session, subscription)
-        if original_plan is None or original_plan.id != plan.id:
-            await callback.answer("❌ پلن اصلی سرویس تغییر کرده است؛ سفارش تمدید را دوباره بسازید.", show_alert=True)
-            await state.clear()
-            return
-
-    data.duration = plan.duration_days
-    data.volume_gb = plan.volume_gb
-    customer_level, purchase_count, discounted_price = await get_discounted_plan_price(
-        session,
-        user.tg_id,
-        plan.price_toman,
+    resolved = await _resolve_renewal_payment_data(
+        session, user, subscription_id, plan_id, services
     )
-    data.price = discounted_price
-    data.original_price = plan.price_toman
-    data.discount_percent = int(
-        getattr(customer_level, "discount_percent", 0) or 0
-    )
-    data.discount_level_title = str(
-        getattr(customer_level, "title", "")
-        or getattr(customer_level, "name", "")
-        or ""
-    )
-    data.devices = subscription.devices
-    data.config_name = subscription.config_name
-    data.subscription_id = subscription.id
+    if resolved is None:
+        await callback.answer("❌ سرویس یا پلن اصلی دیگر معتبر نیست.", show_alert=True)
+        return
+
+    subscription, plan, data = resolved
     await state.update_data(subscription_data=data.serialize())
 
     await callback.answer()
@@ -529,51 +521,14 @@ async def gateway_payment(
         await callback.answer("⏳ یک درخواست پرداخت شما در حال بررسی است. لطفاً ابتدا همان درخواست را تعیین تکلیف کنید.", show_alert=True)
         return
 
-    current_state = await state.get_data()
-    logger.warning("GATEWAY DEBUG FULL STATE=%s", current_state)
-
-    packed = current_state.get("subscription_data")
-    logger.warning("GATEWAY DEBUG PACKED=%s", packed)
-
-    try:
-        data = SubscriptionData.deserialize(packed or "")
-    except Exception:
-        await callback.answer("❌ اطلاعات سفارش تمدید منقضی یا نامعتبر است.", show_alert=True)
-        await state.clear()
-        return
-
-    if data.user_id != user.tg_id or data.subscription_id != subscription_id or data.plan_id != plan_id:
-        await callback.answer("❌ اطلاعات سفارش با این کاربر یا سرویس مطابقت ندارد.", show_alert=True)
-        await state.clear()
-        return
-
-    subscription = await _get_subscription(session, user, subscription_id, services)
-    plan = await ServicePurchasePlan.get(session, plan_id)
-    if subscription is None or plan is None or plan.id != subscription.plan_id:
+    resolved = await _resolve_renewal_payment_data(
+        session, user, subscription_id, plan_id, services
+    )
+    if resolved is None:
         await callback.answer("❌ سرویس یا پلن اصلی دیگر معتبر نیست.", show_alert=True)
-        await state.clear()
         return
 
-    data.duration = plan.duration_days
-    data.volume_gb = plan.volume_gb
-    customer_level, purchase_count, discounted_price = await get_discounted_plan_price(
-        session,
-        user.tg_id,
-        plan.price_toman,
-    )
-    data.price = discounted_price
-    data.original_price = plan.price_toman
-    data.discount_percent = int(
-        getattr(customer_level, "discount_percent", 0) or 0
-    )
-    data.discount_level_title = str(
-        getattr(customer_level, "title", "")
-        or getattr(customer_level, "name", "")
-        or ""
-    )
-    data.devices = subscription.devices
-    data.config_name = subscription.config_name
-    data.subscription_id = subscription.id
+    subscription, plan, data = resolved
     await state.update_data(subscription_data=data.serialize())
 
     try:
@@ -609,46 +564,14 @@ async def card_payment(
         await callback.answer("⏳ یک درخواست پرداخت شما در حال بررسی است. لطفاً ابتدا همان درخواست را تعیین تکلیف کنید.", show_alert=True)
         return
 
-    packed = (await state.get_data()).get("subscription_data")
-    try:
-        data = SubscriptionData.deserialize(packed or "")
-    except Exception:
-        await callback.answer("❌ اطلاعات سفارش تمدید منقضی یا نامعتبر است.", show_alert=True)
-        await state.clear()
-        return
-
-    if data.user_id != user.tg_id or data.subscription_id != subscription_id or data.plan_id != plan_id:
-        await callback.answer("❌ اطلاعات سفارش با این کاربر یا سرویس مطابقت ندارد.", show_alert=True)
-        await state.clear()
-        return
-
-    subscription = await _get_subscription(session, user, subscription_id, services)
-    plan = await ServicePurchasePlan.get(session, plan_id)
-    if subscription is None or plan is None or plan.id != subscription.plan_id:
+    resolved = await _resolve_renewal_payment_data(
+        session, user, subscription_id, plan_id, services
+    )
+    if resolved is None:
         await callback.answer("❌ سرویس یا پلن اصلی دیگر معتبر نیست.", show_alert=True)
-        await state.clear()
         return
 
-    data.duration = plan.duration_days
-    data.volume_gb = plan.volume_gb
-    customer_level, purchase_count, discounted_price = await get_discounted_plan_price(
-        session,
-        user.tg_id,
-        plan.price_toman,
-    )
-    data.price = discounted_price
-    data.original_price = plan.price_toman
-    data.discount_percent = int(
-        getattr(customer_level, "discount_percent", 0) or 0
-    )
-    data.discount_level_title = str(
-        getattr(customer_level, "title", "")
-        or getattr(customer_level, "name", "")
-        or ""
-    )
-    data.devices = subscription.devices
-    data.config_name = subscription.config_name
-    data.subscription_id = subscription.id
+    subscription, plan, data = resolved
     await state.update_data(subscription_data=data.serialize())
 
     await callback.answer()
