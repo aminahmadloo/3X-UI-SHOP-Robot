@@ -36,10 +36,9 @@ async def _next_card(session: AsyncSession, current_id: int) -> CardSettings | N
 
 
 def _payment_text(user: User, card: CardSettings, amount: int) -> str:
-    text = card_text(user.language_code, card, amount)
-    if card.bank_name:
-        text += f"\n🏦 بانک: <b>{card.bank_name}</b>"
-    return text
+    # card_text() already renders the bank name when it is configured.
+    # Do not append it a second time here.
+    return card_text(user.language_code, card, amount)
 
 
 def _keyboard(card: CardSettings, amount: int, paid_callback: str, back_callback: str) -> InlineKeyboardMarkup:
@@ -106,10 +105,26 @@ async def _render_service(callback: CallbackQuery, user: User, state: FSMContext
         custom_service_total=amount,
         card_payment_card_id=card.id,
     )
+
+    # Renewal and ordinary custom-service purchases share this card-payment
+    # renderer, but they must return to their own payment-method screen.
+    if subscription_data.is_extend and subscription_data.subscription_id and subscription_data.plan_id:
+        back_callback = (
+            f"main_renewal:methods:{subscription_data.subscription_id}:"
+            f"{subscription_data.plan_id}"
+        )
+    else:
+        back_callback = "custom_service:back"
+
     await callback.answer()
     await callback.message.edit_text(
         _payment_text(user, card, amount),
-        reply_markup=_keyboard(card, amount, "custom_service:card:paid", "custom_service:back"),
+        reply_markup=_keyboard(
+            card,
+            amount,
+            "custom_service:card:paid",
+            back_callback,
+        ),
     )
 
 
@@ -163,11 +178,23 @@ async def swap_card(callback: CallbackQuery, user: User, session: AsyncSession, 
         except Exception:
             subscription_data = None
         if subscription_data and subscription_data.user_id == user.tg_id:
+            if subscription_data.is_extend and subscription_data.subscription_id and subscription_data.plan_id:
+                back_callback = (
+                    f"main_renewal:methods:{subscription_data.subscription_id}:"
+                    f"{subscription_data.plan_id}"
+                )
+            else:
+                back_callback = "custom_service:back"
             await state.update_data(card_payment_card_id=card.id)
             await callback.answer(_swap_alert(card), show_alert=True)
             await callback.message.edit_text(
                 _payment_text(user, card, int(subscription_data.price)),
-                reply_markup=_keyboard(card, int(subscription_data.price), "custom_service:card:paid", "custom_service:back"),
+                reply_markup=_keyboard(
+                    card,
+                    int(subscription_data.price),
+                    "custom_service:card:paid",
+                    back_callback,
+                ),
             )
             return
 
