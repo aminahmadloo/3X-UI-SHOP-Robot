@@ -5,10 +5,7 @@ from aiogram.types import CallbackQuery, CopyTextButton, InlineKeyboardButton, I
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import SubscriptionData
-from app.bot.routers.custom_service_card_payment import (
-    CustomServiceCardPaymentState,
-    custom_service_payment_card,
-)
+from app.bot.routers.custom_service_card_payment import CustomServiceCardPaymentState
 from app.bot.routers.subscription.keyboard import (
     managed_payment_method_keyboard,
     managed_payment_method_keyboard_renewal,
@@ -21,6 +18,63 @@ from app.db.models import CardSettings, User
 router = Router(name=__name__)
 
 MANAGED_CARD_SUBSCRIPTION_KEY = "managed_card_subscription"
+
+
+def _subscription_dict(subscription_data: SubscriptionData) -> dict:
+    return {
+        "state": NavSubscription.CONFIG_NAME,
+        "is_extend": subscription_data.is_extend,
+        "is_change": subscription_data.is_change,
+        "user_id": subscription_data.user_id,
+        "devices": subscription_data.devices,
+        "duration": subscription_data.duration,
+        "price": subscription_data.price,
+        "original_price": subscription_data.original_price,
+        "discount_percent": subscription_data.discount_percent,
+        "discount_level_title": subscription_data.discount_level_title,
+        "plan_id": subscription_data.plan_id,
+        "volume_gb": subscription_data.volume_gb,
+        "config_name": subscription_data.config_name,
+        "subscription_id": subscription_data.subscription_id,
+    }
+
+
+def _deserialize_value(value, user_tg_id: int) -> SubscriptionData | None:
+    if not value:
+        return None
+    try:
+        if isinstance(value, str):
+            subscription_data = SubscriptionData.deserialize(value)
+        elif isinstance(value, dict):
+            subscription_data = SubscriptionData(
+                state=NavSubscription.CONFIG_NAME,
+                is_extend=value.get("is_extend", False),
+                is_change=value.get("is_change", False),
+                user_id=value.get("user_id", user_tg_id),
+                devices=value.get("devices", 0),
+                duration=value.get("duration", 0),
+                price=value.get("price", 0),
+                original_price=value.get("original_price", 0),
+                discount_percent=value.get("discount_percent", 0),
+                discount_level_title=value.get("discount_level_title", ""),
+                plan_id=value.get("plan_id", 0),
+                volume_gb=value.get("volume_gb", 0),
+                config_name=value.get("config_name", ""),
+            )
+            subscription_data.subscription_id = int(value.get("subscription_id", 0) or 0)
+        else:
+            return None
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+    if (
+        subscription_data.user_id != user_tg_id
+        or subscription_data.price <= 0
+        or subscription_data.plan_id <= 0
+        or not subscription_data.config_name
+    ):
+        return None
+    return subscription_data
 
 
 def _managed_card_keyboard(card_number: str, amount: int, card_id: int) -> InlineKeyboardMarkup:
@@ -36,21 +90,17 @@ def _managed_card_keyboard(card_number: str, amount: int, card_id: int) -> Inlin
 
 
 def _deserialize_managed_card(data: dict, user_tg_id: int) -> SubscriptionData | None:
-    stored = data.get(MANAGED_CARD_SUBSCRIPTION_KEY)
-    if not stored:
-        return None
-    try:
-        subscription_data = SubscriptionData.deserialize(stored)
-    except Exception:
-        return None
-    if (
-        subscription_data.user_id != user_tg_id
-        or subscription_data.price <= 0
-        or subscription_data.plan_id <= 0
-        or not subscription_data.config_name
+    # Prefer the dedicated managed snapshot. Fall back to the canonical
+    # purchase context so a payment-method round trip cannot lose the order.
+    for key in (
+        MANAGED_CARD_SUBSCRIPTION_KEY,
+        "subscription_data",
+        "custom_service_subscription",
     ):
-        return None
-    return subscription_data
+        subscription_data = _deserialize_value(data.get(key), user_tg_id)
+        if subscription_data is not None:
+            return subscription_data
+    return None
 
 
 async def _render_managed_card(
@@ -61,9 +111,12 @@ async def _render_managed_card(
     state: FSMContext,
 ) -> None:
     serialized = subscription_data.serialize()
+    canonical = _subscription_dict(subscription_data)
     await state.set_state(CustomServiceCardPaymentState.waiting_receipt)
     await state.update_data(
-        subscription_data=serialized,
+        # Keep the canonical purchase context as a dict. This is the format
+        # consumed by the managed payment-method callback after pressing Back.
+        subscription_data=canonical,
         custom_service_subscription=serialized,
         custom_service_total=int(subscription_data.price),
         card_payment_card_id=card.id,
@@ -94,34 +147,19 @@ async def managed_card_payment(
     plan_id = int((callback.data or "").rsplit(":", 1)[1])
     data = await state.get_data()
     packed = data.get("subscription_data")
-    if not isinstance(packed, dict):
+
+    # The context can be a canonical dict or a serialized SubscriptionData,
+    # depending on which payment screen the user returned from.
+    subscription_data = _deserialize_value(packed, user.tg_id)
+    if subscription_data is None:
+        subscription_data = _deserialize_managed_card(data, user.tg_id)
+
+    if subscription_data is None:
         await state.clear()
         await callback.answer("❌ اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید.", show_alert=True)
         return
 
-    try:
-        subscription_data = SubscriptionData(
-            state=NavSubscription.CONFIG_NAME,
-            is_extend=packed.get("is_extend", False),
-            is_change=packed.get("is_change", False),
-            user_id=packed.get("user_id", user.tg_id),
-            devices=packed.get("devices", 0),
-            duration=packed.get("duration", 0),
-            price=packed.get("price", 0),
-            original_price=packed.get("original_price", 0),
-            discount_percent=packed.get("discount_percent", 0),
-            discount_level_title=packed.get("discount_level_title", ""),
-            plan_id=packed.get("plan_id", 0),
-            volume_gb=packed.get("volume_gb", 0),
-            config_name=packed.get("config_name", ""),
-        )
-        subscription_data.subscription_id = int(packed.get("subscription_id", 0))
-    except (TypeError, ValueError):
-        await state.clear()
-        await callback.answer("❌ اطلاعات سفارش نامعتبر است.", show_alert=True)
-        return
-
-    if subscription_data.user_id != user.tg_id or subscription_data.plan_id != plan_id:
+    if subscription_data.plan_id != plan_id:
         await callback.answer("❌ اطلاعات سفارش با پلن انتخاب‌شده مطابقت ندارد.", show_alert=True)
         return
     if subscription_data.price <= 0 or not subscription_data.config_name:
@@ -209,6 +247,15 @@ async def managed_card_payment_back(
         await state.clear()
         await callback.answer("❌ اطلاعات سفارش نامعتبر یا منقضی شده است.", show_alert=True)
         return
+
+    # Returning to payment-method selection must preserve the canonical order
+    # snapshot and must not leave a serialized value in subscription_data.
+    await state.update_data(
+        subscription_data=_subscription_dict(subscription_data),
+        custom_service_subscription=subscription_data.serialize(),
+        custom_service_total=int(subscription_data.price),
+        **{MANAGED_CARD_SUBSCRIPTION_KEY: subscription_data.serialize()},
+    )
 
     await callback.answer()
     if subscription_data.is_extend:
