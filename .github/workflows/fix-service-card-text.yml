@@ -1,0 +1,68 @@
+name: Fix service card payment text
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.event.head_commit.message != 'fix: apply service card payment text layout'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply service card payment text layout
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/bot/routers/custom_service_card_payment.py')
+          text = path.read_text(encoding='utf-8')
+
+          old_import = 'from app.bot.routers.wallet.handler import card_text, generate_tracking_code, has_pending_payment'
+          new_import = 'from app.bot.routers.wallet.handler import generate_tracking_code, has_pending_payment'
+          if old_import not in text:
+              raise SystemExit('Expected import line not found')
+          text = text.replace(old_import, new_import, 1)
+
+          marker = '\ndef _service_card_keyboard(card_number: str, amount: int) -> InlineKeyboardMarkup:\n'
+          helper = '''\n\ndef _service_service_card_text(settings: CardSettings, amount: int) -> str:\n    """Build the customer-facing card-to-card payment text for service purchases."""\n    if not settings.card_number or not settings.card_holder_name or not settings.is_active:\n        return "❌ پرداخت کارت به کارت در حال حاضر فعال نیست."\n\n    return (\n        "💳 <b>پرداخت کارت به\\nکارت</b>\\n\\n"\n        f"شماره کارت: <code>{settings.card_number}</code>\\n"\n        f"بانک: {settings.bank_name or 'نامشخص'}\\n"\n        f"به نام: {settings.card_holder_name}\\n\\n"\n        f"مبلغ قابل پرداخت: {amount:,} تومان\\n\\n"\n        "ابتدا مبلغ را واریز کنید، سپس روی «پرداخت کردم-رسید می فرستم» بزنید و عکس رسید را ارسال کنید."\n    )\n'''
+          if marker not in text:
+              raise SystemExit('Expected keyboard marker not found')
+          text = text.replace(marker, helper + marker, 1)
+
+          old_call = 'card_text(user.language_code, settings, int(subscription_data.price))'
+          new_call = '_service_service_card_text(settings, int(subscription_data.price))'
+          if old_call not in text:
+              raise SystemExit('Expected service card_text call not found')
+          text = text.replace(old_call, new_call, 1)
+
+          old_button = 'InlineKeyboardButton(text="✅ پرداخت کردم", callback_data="custom_service:card:paid")'
+          new_button = 'InlineKeyboardButton(text="✅ پرداخت کردم-رسید می فرستم", callback_data="custom_service:card:paid")'
+          if old_button not in text:
+              raise SystemExit('Expected payment button not found')
+          text = text.replace(old_button, new_button, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          python -m py_compile app/bot/routers/custom_service_card_payment.py
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/bot/routers/custom_service_card_payment.py .github/workflows/fix-service-card-text.yml
+          git commit -m "fix: apply service card payment text layout"
+          git push origin main
+
+      - name: Remove temporary workflow
+        run: |
+          git rm .github/workflows/fix-service-card-text.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: remove temporary service card text workflow"
+          git push origin main
