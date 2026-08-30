@@ -59,14 +59,13 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         multi_card_wallet_receipt_router,
         multi_card_service_receipt_router,
         # Managed purchase/renewal card payment must be registered before the
-        # legacy generic multi-card router because both historically accepted
-        # the same mp_card callback. The dedicated router owns managed-card
-        # navigation; the generic router remains responsible for custom/wallet
-        # card flows and card swapping outside the managed namespace.
+        # generic multi-card router because both historically accepted mp_card.
+        # The managed router owns its entire card-payment lifecycle and uses a
+        # dedicated callback namespace so its FSM context cannot be hijacked by
+        # the generic custom-service/card router.
         managed_card_payment.router,
         multi_card_payment_router,
         custom_service_card_payment.router,
-        managed_card_payment.router,
         custom_service.router,
         wallet_gateway_router,
         wallet_overview_router,
