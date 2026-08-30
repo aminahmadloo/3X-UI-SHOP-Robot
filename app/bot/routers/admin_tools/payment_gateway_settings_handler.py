@@ -4,12 +4,14 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
+from app.bot.payment_gateways import GatewayFactory
 from app.bot.utils.navigation import NavAdminTools
 from app.config import Config
-from app.db.models import PaymentGatewaySettings
+from app.db.models import PaymentGatewaySettings, PaymentMethodSettings
 
 router = Router(name=__name__)
 
@@ -36,8 +38,73 @@ def menu_markup(settings: PaymentGatewaySettings | None) -> InlineKeyboardMarkup
         rows.append([
             InlineKeyboardButton(text="🟢 استفاده از مسیر .env", callback_data="paymentgateway:use_env")
         ])
+    rows.append([
+        InlineKeyboardButton(
+            text="👁️ مدیریت نمایش روش‌های پرداخت",
+            callback_data="paymentgateway:methods",
+        )
+    ])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavAdminTools.MAIN)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def payment_methods_markup(methods: list[PaymentMethodSettings]) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+
+    for method in methods:
+        action = "🔴 مخفی کردن" if method.enabled else "🟢 نمایش دادن"
+        rows.append([
+            InlineKeyboardButton(
+                text=f"{action} | {method.display_name}",
+                callback_data=f"paymentmethod:toggle:{method.id}",
+            )
+        ])
+
+    rows.append([
+        InlineKeyboardButton(
+            text="🔙 تنظیمات درگاه‌ها",
+            callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS,
+        )
+    ])
+    rows.append([InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavAdminTools.MAIN)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def show_payment_methods(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    gateway_factory: GatewayFactory,
+) -> None:
+    methods = await PaymentMethodSettings.get_manageable(
+        session,
+        gateway_factory.get_gateways(),
+    )
+
+    lines = [
+        "👁️ <b>نمایش روش‌های پرداخت برای مشتری</b>",
+        "",
+        "روش‌های فعال در این بخش در مرحله «انتخاب روش پرداخت» مشتری نمایش داده می‌شوند.",
+        "",
+    ]
+
+    for method in methods:
+        status = "🟢 نمایش داده می‌شود" if method.enabled else "🔴 مخفی است"
+        lines.append(f"{method.display_name}: <b>{status}</b>")
+
+    lines.extend([
+        "",
+        "ترتیب فعلی مشتری:",
+        "1️⃣ زرین‌پال",
+        "2️⃣ کارت به کارت",
+        "3️⃣ کیف پول",
+        "",
+        "درگاه‌های جدیدی که در آینده به سیستم اضافه شوند نیز به‌صورت خودکار در این فهرست قابل مدیریت خواهند بود.",
+    ])
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=payment_methods_markup(methods),
+    )
 
 
 async def show_menu(callback: CallbackQuery, session: AsyncSession, config: Config) -> None:
@@ -78,9 +145,59 @@ async def show_menu(callback: CallbackQuery, session: AsyncSession, config: Conf
 
 
 @router.callback_query(F.data == NavAdminTools.PAYMENT_GATEWAY_SETTINGS, IsAdmin())
-async def payment_gateway_settings_menu(callback: CallbackQuery, session: AsyncSession, config: Config) -> None:
+async def payment_gateway_settings_menu(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    config: Config,
+) -> None:
     await callback.answer()
     await show_menu(callback, session, config)
+
+
+@router.callback_query(F.data == "paymentgateway:methods", IsAdmin())
+async def payment_methods_menu(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    gateway_factory: GatewayFactory,
+) -> None:
+    await callback.answer()
+    await show_payment_methods(callback, session, gateway_factory)
+
+
+@router.callback_query(F.data.regexp(r"^paymentmethod:toggle:\d+$"), IsAdmin())
+async def toggle_payment_method(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    gateway_factory: GatewayFactory,
+) -> None:
+    method_id = int(callback.data.rsplit(":", 1)[1])
+    methods = await PaymentMethodSettings.get_manageable(
+        session,
+        gateway_factory.get_gateways(),
+    )
+    method = next((item for item in methods if item.id == method_id), None)
+
+    if method is None:
+        await callback.answer("❌ روش پرداخت پیدا نشد.", show_alert=True)
+        return
+
+    if method.enabled:
+        enabled_count = sum(1 for item in methods if item.enabled)
+        if enabled_count <= 1:
+            await callback.answer(
+                "❌ حداقل یک روش پرداخت باید برای مشتری فعال باشد.",
+                show_alert=True,
+            )
+            return
+        method.enabled = False
+        message = f"{method.display_name} برای مشتری مخفی شد."
+    else:
+        method.enabled = True
+        message = f"{method.display_name} برای مشتری نمایش داده شد."
+
+    await session.commit()
+    await callback.answer(message, show_alert=True)
+    await show_payment_methods(callback, session, gateway_factory)
 
 
 @router.callback_query(F.data == "paymentgateway:edit_zarinpal_url", IsAdmin())
