@@ -7,7 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.models import ServicesContainer
+from app.bot.models import ServicesContainer, SubscriptionData
 from app.db.models import CustomServicePricing
 
 router = Router(name=__name__)
@@ -69,7 +69,6 @@ def _schedule_prompt_delete(
                 delay,
             )
         )
-
 
 
 class CustomServiceState(StatesGroup):
@@ -188,11 +187,7 @@ async def handle_custom_service_days(
         return
 
     pricing = await CustomServicePricing.get_or_create(session)
-
     data = await state.get_data()
-
-    # The days prompt is deleted 5 seconds AFTER the valid days value
-    # has been received, not 5 seconds after the prompt was displayed.
     _schedule_prompt_delete(
         message.bot,
         message.chat.id,
@@ -231,9 +226,6 @@ async def handle_custom_service_gigabytes(
     data = await state.get_data()
     days = int(data["custom_service_days"])
     pricing = await CustomServicePricing.get_or_create(session)
-
-    # The GB prompt is deleted 5 seconds AFTER the valid GB value
-    # has been received.
     _schedule_prompt_delete(
         message.bot,
         message.chat.id,
@@ -274,9 +266,6 @@ async def handle_custom_service_devices(
     days = int(data["custom_service_days"])
     gigabytes = int(data["custom_service_gigabytes"])
     pricing = await CustomServicePricing.get_or_create(session)
-
-    # The devices prompt is deleted 5 seconds AFTER the valid
-    # number of users/devices has been received.
     _schedule_prompt_delete(
         message.bot,
         message.chat.id,
@@ -299,8 +288,6 @@ async def handle_custom_service_devices(
         _payment_invoice_text(days, gigabytes, value, int(total)),
         reply_markup=_payment_keyboard(),
     )
-
-    # Final custom-service invoice/prompt is cleaned up automatically.
     _schedule_delete(prompt, 5.0)
 
 
@@ -312,6 +299,42 @@ async def custom_service_payment_back(
 ) -> None:
     data = await state.get_data()
 
+    # The card-payment screen stores the canonical SubscriptionData in
+    # custom_service_subscription. Prefer that snapshot when returning,
+    # because it is the same source used to render the card-payment amount
+    # and it also survives the transition into the card-payment FSM state.
+    stored = data.get("custom_service_subscription") or data.get("subscription_data")
+    if stored:
+        try:
+            subscription_data = SubscriptionData.deserialize(stored)
+        except Exception:
+            subscription_data = None
+
+        if subscription_data is not None and subscription_data.user_id == callback.from_user.id:
+            days = int(subscription_data.duration)
+            gigabytes = int(subscription_data.volume_gb)
+            devices = int(subscription_data.devices)
+            total = int(subscription_data.price)
+
+            if 7 <= days <= 90 and 5 <= gigabytes <= 400 and 2 <= devices <= 10 and total > 0:
+                # Rehydrate the legacy scalar fields as well, so the next
+                # payment-method selection uses exactly the same invoice.
+                await state.update_data(
+                    custom_service_days=days,
+                    custom_service_gigabytes=gigabytes,
+                    custom_service_devices=devices,
+                    custom_service_total=total,
+                )
+                await state.set_state(CustomServiceState.waiting_payment)
+                await callback.answer()
+                await callback.message.edit_text(
+                    _payment_invoice_text(days, gigabytes, devices, total),
+                    reply_markup=_payment_keyboard(),
+                )
+                return
+
+    # Backward-compatible fallback for states created before the canonical
+    # subscription snapshot was stored.
     try:
         days = int(data["custom_service_days"])
         gigabytes = int(data["custom_service_gigabytes"])
