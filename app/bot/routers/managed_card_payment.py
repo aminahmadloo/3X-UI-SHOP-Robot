@@ -123,6 +123,8 @@ async def _render_managed_card(
     card: CardSettings,
     subscription_data: SubscriptionData,
     state: FSMContext,
+    *,
+    show_swap_notice: bool = False,
 ) -> None:
     serialized = subscription_data.serialize()
     canonical = _subscription_dict(subscription_data)
@@ -136,7 +138,19 @@ async def _render_managed_card(
         card_payment_card_id=card.id,
         **{MANAGED_CARD_SUBSCRIPTION_KEY: serialized},
     )
-    await callback.answer()
+
+    if show_swap_notice:
+        notice = (
+            "🔄 <b>کارت عوض شد</b>\n\n"
+            f"💳 شماره کارت جدید:\n<code>{card.card_number}</code>\n\n"
+            f"🏦 بانک: <b>{card.bank_name or 'نامشخص'}</b>\n"
+            f"👤 بنام: <b>{card.card_holder_name}</b>\n\n"
+            f"💰 مبلغ را به این کارت واریز کنید: <b>{int(subscription_data.price):,} تومان</b>"
+        )
+        await callback.answer(notice, show_alert=True)
+    else:
+        await callback.answer()
+
     text = card_text(user.language_code, card, int(subscription_data.price))
     if card.bank_name:
         text += f"\n🏦 بانک: <b>{card.bank_name}</b>"
@@ -213,7 +227,14 @@ async def managed_card_swap(
             break
     next_card = next_card or cards[0]
 
-    await _render_managed_card(callback, user, next_card, subscription_data, state)
+    await _render_managed_card(
+        callback,
+        user,
+        next_card,
+        subscription_data,
+        state,
+        show_swap_notice=True,
+    )
     return None
 
 
