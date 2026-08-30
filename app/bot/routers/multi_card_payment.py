@@ -142,7 +142,24 @@ async def swap_card(callback: CallbackQuery, user: User, session: AsyncSession, 
     stored_subscription = data.get("custom_service_subscription") or data.get("subscription_data")
     if stored_subscription:
         try:
-            subscription_data = SubscriptionData.deserialize(stored_subscription)
+            if isinstance(stored_subscription, str):
+                subscription_data = SubscriptionData.deserialize(stored_subscription)
+            elif isinstance(stored_subscription, dict):
+                subscription_data = SubscriptionData(
+                    state=NavSubscription.CONFIG_NAME,
+                    is_extend=stored_subscription.get("is_extend", False),
+                    is_change=stored_subscription.get("is_change", False),
+                    user_id=stored_subscription.get("user_id", user.tg_id),
+                    devices=stored_subscription.get("devices", 0),
+                    duration=stored_subscription.get("duration", 0),
+                    price=stored_subscription.get("price", 0),
+                    plan_id=stored_subscription.get("plan_id", 0),
+                    volume_gb=stored_subscription.get("volume_gb", 0),
+                    config_name=stored_subscription.get("config_name", ""),
+                )
+                subscription_data.subscription_id = stored_subscription.get("subscription_id", 0)
+            else:
+                subscription_data = None
         except Exception:
             subscription_data = None
         if subscription_data and subscription_data.user_id == user.tg_id:
@@ -213,6 +230,29 @@ async def managed_card_start(callback: CallbackQuery, user: User, session: Async
     plan_id = int(callback.data.rsplit(":", 1)[1])
     data = await state.get_data()
     packed = data.get("subscription_data")
+
+    # The canonical purchase context is a dict. Older managed-card code stored
+    # a serialized string here, especially after the first payment attempt.
+    # Accept both representations so returning from a payment screen never
+    # invalidates the order context.
+    if isinstance(packed, str):
+        try:
+            restored = SubscriptionData.deserialize(packed)
+            packed = {
+                "is_extend": restored.is_extend,
+                "is_change": restored.is_change,
+                "user_id": restored.user_id,
+                "devices": restored.devices,
+                "duration": restored.duration,
+                "price": restored.price,
+                "plan_id": restored.plan_id,
+                "volume_gb": restored.volume_gb,
+                "config_name": restored.config_name,
+                "subscription_id": restored.subscription_id,
+            }
+        except Exception:
+            packed = None
+
     if not isinstance(packed, dict):
         await state.clear()
         await callback.answer("❌ اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید.", show_alert=True)
@@ -241,8 +281,23 @@ async def managed_card_start(callback: CallbackQuery, user: User, session: Async
     if subscription_data.price <= 0 or not subscription_data.config_name:
         await callback.answer("❌ اطلاعات مبلغ یا نام کانفیگ سفارش نامعتبر است.", show_alert=True)
         return
+
+    # Keep subscription_data in its canonical dict form in FSM. The dedicated
+    # card-receipt context remains serialized separately for receipt handling.
     await state.update_data(
-        subscription_data=subscription_data.serialize(),
+        subscription_data={
+            "state": NavSubscription.CONFIG_NAME,
+            "is_extend": subscription_data.is_extend,
+            "is_change": subscription_data.is_change,
+            "user_id": subscription_data.user_id,
+            "devices": subscription_data.devices,
+            "duration": subscription_data.duration,
+            "price": subscription_data.price,
+            "plan_id": subscription_data.plan_id,
+            "volume_gb": subscription_data.volume_gb,
+            "config_name": subscription_data.config_name,
+            "subscription_id": subscription_data.subscription_id,
+        },
         custom_service_subscription=subscription_data.serialize(),
         custom_service_days=subscription_data.duration,
         custom_service_gigabytes=subscription_data.volume_gb,
