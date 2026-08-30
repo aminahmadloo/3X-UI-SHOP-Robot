@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -38,121 +37,78 @@ class TestAccountService:
     async def create_test_account(self, user: User) -> tuple[str, TestAccount] | None:
         async with self.session_factory() as session:
             settings = await self.get_settings(session)
-
             if not settings.enabled:
                 return None
 
             fresh_user = await User.get(session=session, tg_id=user.tg_id)
-
             if fresh_user and fresh_user.is_trial_used:
                 return None
 
-            existing_records = await TestAccount.get_all_by_telegram_id(
-                session=session,
-                telegram_user_id=user.tg_id,
-            )
-
-            active_existing = [
-                record
-                for record in existing_records
-                if record.status in {"active", "pending"}
-            ]
-
-            if active_existing:
-                logger.warning(
-                    "User %s already has test account records: %s",
-                    user.tg_id,
-                    [record.id for record in active_existing],
-                )
+            existing = await TestAccount.get_by_telegram_id(session, user.tg_id)
+            if existing and existing.status in {"active", "deleted", "pending"}:
                 return None
-
-            for record in existing_records:
-                if record.status == "failed":
-                    await session.delete(record)
-
-            if existing_records:
+            if existing and existing.status == "failed":
+                await session.delete(existing)
                 await session.commit()
 
             server = await self.server_pool_service.get_available_server()
-
             if server is None:
-                logger.warning(
-                    "No available server for test account of user %s",
-                    user.tg_id,
-                )
+                logger.warning("No available server for test account of user %s", user.tg_id)
                 return None
 
             connection = await self.server_pool_service.get_connection_for_server(server)
-
             if connection is None:
-                logger.warning(
-                    "Could not connect to server %s for test account",
-                    server.name,
-                )
+                logger.warning("Could not connect to server %s for test account", server.name)
                 return None
 
-            inbounds = await self.server_pool_service.get_selected_inbounds(
-                server,
-                connection.api,
-            )
-
+            inbounds = await self.server_pool_service.get_selected_inbounds(server, connection.api)
             if not inbounds:
-                logger.warning(
-                    "No configured inbound available on server %s",
-                    server.name,
-                )
+                logger.warning("No configured inbound available on server %s", server.name)
                 return None
+
+            selected_inbounds = inbounds
 
             logger.info(
                 "Creating test account for user %s on selected inbounds: %s",
                 user.tg_id,
-                [int(inbound.id) for inbound in inbounds],
+                [int(inbound.id) for inbound in selected_inbounds],
             )
 
             client_id = str(uuid.uuid4())
-            subscription_token = client_id
-
+            client_email = f"test-{user.tg_id}-{uuid.uuid4().hex[:6]}"
             quota_bytes = int(settings.volume_mb) * self.BYTES_PER_MB
-            expires_at = datetime.utcnow() + timedelta(
-                days=int(settings.duration_days)
-            )
+            expires_at = datetime.utcnow() + timedelta(days=int(settings.duration_days))
             expiry_ms = int(expires_at.timestamp() * 1000)
 
-            created_records: list[TestAccount] = []
-            created_inbounds: list[int] = []
+            record = TestAccount(
+                telegram_user_id=user.tg_id,
+                username=user.username,
+                first_name=user.first_name,
+                server_id=server.id,
+                inbound_id=int(selected_inbounds[0].id),
+                client_id=client_id,
+                client_email=client_email,
+                subscription_token=client_id,
+                quota_bytes=quota_bytes,
+                expires_at=expires_at,
+                status="pending",
+            )
+            session.add(record)
+            try:
+                await session.commit()
+                await session.refresh(record)
+            except IntegrityError:
+                await session.rollback()
+                logger.info("User %s already reserved a test account.", user.tg_id)
+                return None
+
+            created_inbounds = []
 
             try:
-                for inbound in inbounds:
-                    inbound_id = int(inbound.id)
-
-                    client_email = (
-                        f"test-{user.tg_id}-"
-                        f"{uuid.uuid4().hex[:8]}-in{inbound_id}"
-                    )
-
-                    record = TestAccount(
-                        telegram_user_id=user.tg_id,
-                        username=user.username,
-                        first_name=user.first_name,
-                        server_id=server.id,
-                        inbound_id=inbound_id,
-                        client_id=client_id,
-                        client_email=client_email,
-                        subscription_token=subscription_token,
-                        quota_bytes=quota_bytes,
-                        expires_at=expires_at,
-                        status="pending",
-                    )
-
-                    session.add(record)
-
-                    await session.flush()
-
-                    protocol = str(
-                        getattr(inbound, "protocol", "") or ""
-                    ).lower()
-
+                for inbound in selected_inbounds:
                     flow = ""
+                    protocol = str(getattr(inbound, "protocol", "") or "").lower()
+
                     if protocol == "vless":
                         flow = "xtls-rprx-vision"
 
@@ -163,7 +119,7 @@ class TestAccountService:
                         enable=True,
                         expiry_time=expiry_ms,
                         total_gb=quota_bytes,
-                        sub_id=subscription_token,
+                        sub_id=client_id,
                         tg_id=user.tg_id,
                         flow=flow,
                         limit_ip=0,
@@ -172,95 +128,70 @@ class TestAccountService:
                     if protocol == "trojan":
                         client.password = client_id
 
-                    logger.info(
-                        "Creating test client %s on inbound %s",
-                        client_email,
-                        inbound_id,
-                    )
-
                     await connection.api.client.add(
-                        inbound_id=inbound_id,
-                        clients=[copy.deepcopy(client)],
+                        inbound_id=int(inbound.id),
+                        clients=[client],
                     )
 
-                    created_records.append(record)
-                    created_inbounds.append(inbound_id)
+                    created_inbounds.append(int(inbound.id))
 
-                if len(created_records) != len(inbounds):
-                    raise RuntimeError(
-                        "Not all selected inbounds received a test client"
+                    logger.info(
+                        "Successfully created test client %s on inbound %s",
+                        client_email,
+                        inbound.id,
                     )
-
-                for record in created_records:
-                    record.status = "active"
-
-                await session.execute(
-                    update(User)
-                    .where(User.tg_id == user.tg_id)
-                    .values(is_trial_used=True)
-                )
-
-                await session.commit()
 
             except Exception as exception:
                 logger.exception(
-                    "Failed to create complete multi-inbound test account "
-                    "for user %s",
-                    user.tg_id,
+                    "Failed to create test client %s on inbound %s in 3X-UI",
+                    client_email,
+                    getattr(inbound, "id", "unknown"),
                 )
 
-                await session.rollback()
-
-                # Roll back every XUI client that was already created.
-                for inbound_id in created_inbounds:
+                # Best-effort cleanup of any copies already created.
+                for created_inbound_id in created_inbounds:
                     try:
                         await connection.api.client.delete(
-                            inbound_id,
+                            created_inbound_id,
                             client_id,
                         )
-                        logger.info(
-                            "Rolled back test client %s from inbound %s",
+                    except Exception:
+                        logger.exception(
+                            "Failed to rollback test client %s from inbound %s",
                             client_id,
-                            inbound_id,
-                        )
-                    except Exception as rollback_exception:
-                        logger.error(
-                            "Could not rollback test client %s from inbound %s: %s",
-                            client_id,
-                            inbound_id,
-                            rollback_exception,
+                            created_inbound_id,
                         )
 
+                record.status = "failed"
+                record.failure_reason = str(exception)
+                await session.commit()
                 return None
 
-            subscription_settings = await SubscriptionSettings.get_or_create(
-                session
+            record.status = "active"
+            await session.execute(
+                update(User).where(User.tg_id == user.tg_id).values(is_trial_used=True)
             )
+            await session.commit()
 
+            subscription_settings = await SubscriptionSettings.get_or_create(session)
             base_host = subscription_settings.domain or connection.server.host
-
             subscription_base = extract_base_url(
                 url=base_host,
                 port=subscription_settings.port,
                 path=subscription_settings.path,
             )
-
-            subscription_key = (
-                f"{subscription_base}{subscription_token}"
-            )
-
-            await session.refresh(created_records[0])
+            subscription_key = f"{subscription_base}{client_id}"
+            await session.refresh(record)
 
             logger.info(
-                "Created complete multi-inbound test account for Telegram "
-                "user %s on %s: inbounds=%s client_id=%s",
+                "Created one-time test account %s for Telegram user %s on %s "
+                "with selected inbounds %s",
+                client_email,
                 user.tg_id,
                 server.name,
                 created_inbounds,
-                client_id,
             )
-
-            return subscription_key, created_records[0]
+            return subscription_key, record
 
     async def _delete_from_xui(self, record: TestAccount) -> bool:
         async with self.session_factory() as session:

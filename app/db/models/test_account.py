@@ -46,14 +46,16 @@ class TestAccount(Base):
     __tablename__ = "test_accounts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    telegram_user_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False, index=True)
+    # One logical test account may span multiple selected inbounds.
+    # Therefore telegram_user_id is intentionally NOT unique.
+    telegram_user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     first_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     server_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     inbound_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    client_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    client_id: Mapped[str] = mapped_column(String(64), nullable=False)
     client_email: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
-    subscription_token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    subscription_token: Mapped[str] = mapped_column(String(64), nullable=False)
     quota_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
@@ -66,6 +68,22 @@ class TestAccount(Base):
     @classmethod
     async def get_by_telegram_id(cls, session: AsyncSession, telegram_user_id: int) -> Self | None:
         result = await session.execute(
-            select(cls).where(cls.telegram_user_id == telegram_user_id)
+            select(cls)
+            .where(cls.telegram_user_id == telegram_user_id)
+            .order_by(cls.id.asc())
+            .limit(1)
         )
         return result.scalar_one_or_none()
+
+    @classmethod
+    async def get_all_by_telegram_id(
+        cls,
+        session: AsyncSession,
+        telegram_user_id: int,
+    ) -> list[Self]:
+        result = await session.execute(
+            select(cls)
+            .where(cls.telegram_user_id == telegram_user_id)
+            .order_by(cls.id.asc())
+        )
+        return list(result.scalars().all())
