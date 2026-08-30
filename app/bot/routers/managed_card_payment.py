@@ -4,7 +4,10 @@ from aiogram.types import CallbackQuery, CopyTextButton, InlineKeyboardButton, I
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import SubscriptionData
-from app.bot.routers.custom_service_card_payment import custom_service_payment_card
+from app.bot.routers.custom_service_card_payment import (
+    CustomServiceCardPaymentState,
+    custom_service_payment_card,
+)
 from app.bot.routers.subscription.keyboard import (
     managed_payment_method_keyboard,
     managed_payment_method_keyboard_renewal,
@@ -16,22 +19,47 @@ from app.db.models import CardSettings, User
 router = Router(name=__name__)
 
 
+MANAGED_CARD_SUBSCRIPTION_KEY = "managed_card_subscription"
+
+
 def _managed_card_keyboard(card_number: str, amount: int) -> InlineKeyboardMarkup:
     """Card-payment keyboard used by regular purchase/renewal flows.
 
-    The card-payment screen itself is rendered by the shared custom-service
-    card-payment handler. We replace only its Back callback so regular
-    purchase/renewal returns to the payment-method screen instead of the
-    custom-service invoice.
+    Managed purchase/renewal deliberately uses its own callback namespace so
+    that the Back/Paid actions cannot be confused with the generic custom
+    service card-payment flow. The generic flow is still reused for rendering
+    and receipt processing, but its navigation state is never authoritative
+    for this managed screen.
     """
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📋 کپی شماره کارت", copy_text=CopyTextButton(text=card_number))],
             [InlineKeyboardButton(text="📋 کپی مبلغ", copy_text=CopyTextButton(text=str(amount)))],
-            [InlineKeyboardButton(text="✅ پرداخت کردم", callback_data="custom_service:card:paid")],
+            [InlineKeyboardButton(text="✅ پرداخت کردم", callback_data="managed_card:paid")],
             [InlineKeyboardButton(text="🔙 بازگشت", callback_data="managed_card:back")],
         ]
     )
+
+
+def _deserialize_managed_card(data: dict, user_tg_id: int) -> SubscriptionData | None:
+    stored = data.get(MANAGED_CARD_SUBSCRIPTION_KEY)
+    if not stored:
+        return None
+
+    try:
+        subscription_data = SubscriptionData.deserialize(stored)
+    except Exception:
+        return None
+
+    if (
+        subscription_data.user_id != user_tg_id
+        or subscription_data.price <= 0
+        or subscription_data.plan_id <= 0
+        or not subscription_data.config_name
+    ):
+        return None
+
+    return subscription_data
 
 
 @router.callback_query(F.data.regexp(r"^mp_card:\d+$"))
@@ -78,9 +106,10 @@ async def managed_card_payment(
         await callback.answer("❌ اطلاعات مبلغ یا نام کانفیگ سفارش نامعتبر است.", show_alert=True)
         return
 
+    serialized = subscription_data.serialize()
     await state.update_data(
-        subscription_data=subscription_data.serialize(),
-        custom_service_subscription=subscription_data.serialize(),
+        subscription_data=serialized,
+        custom_service_subscription=serialized,
         custom_service_days=subscription_data.duration,
         custom_service_gigabytes=subscription_data.volume_gb,
         custom_service_devices=subscription_data.devices,
@@ -91,6 +120,7 @@ async def managed_card_payment(
         custom_service_user_id=subscription_data.user_id,
         custom_service_plan_id=subscription_data.plan_id,
         custom_service_subscription_id=subscription_data.subscription_id,
+        MANAGED_CARD_SUBSCRIPTION_KEY=serialized,
     )
 
     await custom_service_payment_card(
@@ -102,8 +132,7 @@ async def managed_card_payment(
     )
 
     # custom_service_payment_card renders the common card-payment screen.
-    # For regular purchase/renewal, replace only the Back callback so it
-    # returns to the payment-method selection screen for this exact order.
+    # Replace only its navigation with managed callbacks for this exact order.
     settings = await CardSettings.get_or_create(
         session,
         card_number=config.shop.CARD_NUMBER or "",
@@ -117,6 +146,39 @@ async def managed_card_payment(
         )
 
 
+@router.callback_query(F.data == "managed_card:paid")
+async def managed_card_payment_paid(
+    callback: CallbackQuery,
+    user: User,
+    state: FSMContext,
+) -> None:
+    """Move managed card payment to receipt upload without losing order state."""
+    data = await state.get_data()
+    subscription_data = _deserialize_managed_card(data, user.tg_id)
+    if subscription_data is None:
+        await state.clear()
+        await callback.answer("❌ درخواست پرداخت منقضی شده است.", show_alert=True)
+        return
+
+    await state.set_state(CustomServiceCardPaymentState.waiting_receipt)
+    await state.update_data(
+        custom_service_subscription=subscription_data.serialize(),
+        custom_service_total=int(subscription_data.price),
+        MANAGED_CARD_SUBSCRIPTION_KEY=subscription_data.serialize(),
+    )
+    await callback.answer()
+    await callback.message.edit_text(
+        f"📷 <b>ارسال رسید پرداخت سرویس</b>\n\n"
+        f"مبلغ: <b>{int(subscription_data.price):,} تومان</b>\n\n"
+        "لطفاً عکس واضح رسید واریز را همینجا ارسال کنید.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 انصراف", callback_data="custom_service:back")]
+            ]
+        ),
+    )
+
+
 @router.callback_query(F.data == "managed_card:back")
 async def managed_card_payment_back(
     callback: CallbackQuery,
@@ -124,22 +186,11 @@ async def managed_card_payment_back(
     state: FSMContext,
     gateway_factory,
 ) -> None:
+    """Return to the payment-method screen using the managed order snapshot."""
     data = await state.get_data()
-    stored = data.get("subscription_data") or data.get("custom_service_subscription")
+    subscription_data = _deserialize_managed_card(data, user.tg_id)
 
-    if not stored:
-        await state.clear()
-        await callback.answer("❌ اطلاعات سفارش منقضی شده است.", show_alert=True)
-        return
-
-    try:
-        subscription_data = SubscriptionData.deserialize(stored)
-    except Exception:
-        await state.clear()
-        await callback.answer("❌ اطلاعات سفارش نامعتبر است.", show_alert=True)
-        return
-
-    if subscription_data.user_id != user.tg_id or subscription_data.price <= 0 or subscription_data.plan_id <= 0:
+    if subscription_data is None:
         await state.clear()
         await callback.answer("❌ اطلاعات سفارش نامعتبر یا منقضی شده است.", show_alert=True)
         return
@@ -148,7 +199,7 @@ async def managed_card_payment_back(
 
     if subscription_data.is_extend:
         await callback.message.edit_text(
-            "💳 <b>انتخاب روش پرداخت افزایش زمان</b>\n\n"
+            "💳 <b>انتخاب روش پرداخت تمدید سرویس</b>\n\n"
             f"📦 <b>سرویس:</b> <code>{subscription_data.config_name}</code>\n"
             f"💾 <b>حجم:</b> {subscription_data.volume_gb} GB\n"
             f"📅 <b>مدت:</b> {subscription_data.duration} روز\n"
