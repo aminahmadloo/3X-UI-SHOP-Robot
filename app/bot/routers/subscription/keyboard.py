@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import sqlite3
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -16,6 +19,94 @@ from app.bot.routers.misc.keyboard import back_button, back_to_main_menu_button,
 from app.bot.utils.constants import Currency
 from app.bot.utils.formatting import format_device_count, format_subscription_period
 from app.bot.utils.navigation import NavDownload, NavMain, NavSubscription
+
+
+_PAYMENT_METHOD_DEFAULTS = {
+    "pay_zarinpal": ("🏦 زرین‌پال", 10),
+    "mp_card": ("💳 کارت به کارت", 20),
+    "mp_wallet": ("💰 کیف پول", 30),
+}
+
+
+def _payment_method_db_path() -> Path:
+    db_name = os.getenv("DB_NAME", "bot_database").strip() or "bot_database"
+    return Path("/app/data") / f"{db_name}.sqlite3"
+
+
+def _enabled_payment_methods() -> set[str]:
+    """Read payment visibility synchronously for the existing sync keyboard API.
+
+    The payment keyboards are intentionally kept synchronous because they are
+    used by many routers. The settings table is tiny and this read is only used
+    while constructing a Telegram keyboard. On any read error we fail open to
+    the three historical payment methods rather than breaking purchases.
+    """
+    defaults = set(_PAYMENT_METHOD_DEFAULTS)
+    path = _payment_method_db_path()
+
+    try:
+        with sqlite3.connect(path, timeout=2) as connection:
+            rows = connection.execute(
+                "SELECT method_key FROM payment_method_settings WHERE enabled = 1"
+            ).fetchall()
+        return {str(row[0]) for row in rows} or defaults
+    except (sqlite3.Error, OSError):
+        return defaults
+
+
+def _gateway_callback(gateway: PaymentGateway) -> str:
+    callback = gateway.callback
+    return str(getattr(callback, "value", callback) or "")
+
+
+def _payment_method_buttons(
+    builder: InlineKeyboardBuilder,
+    price_toman: int,
+    gateways: list[PaymentGateway],
+) -> None:
+    enabled = _enabled_payment_methods()
+    gateway_map = {_gateway_callback(gateway): gateway for gateway in gateways}
+
+    # Fixed order for the current methods. Newly registered gateways are
+    # rendered afterwards according to their gateway callback/order setting.
+    ordered_keys = ["pay_zarinpal", "mp_card", "mp_wallet"]
+    ordered_keys.extend(
+        key for key in gateway_map
+        if key not in ordered_keys
+    )
+
+    for key in ordered_keys:
+        if key not in enabled:
+            continue
+
+        if key == "mp_card":
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"💳 کارت به کارت | {price_toman:,} تومان",
+                    callback_data=f"mp_card:{{plan_id}}",
+                )
+            )
+            continue
+
+        if key == "mp_wallet":
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"💰 کیف پول | {price_toman:,} تومان",
+                    callback_data=f"mp_wallet:{{plan_id}}",
+                )
+            )
+            continue
+
+        gateway = gateway_map.get(key)
+        if gateway is None:
+            continue
+
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{gateway.name} | {price_toman:,} تومان",
+                callback_data=f"mp:{key}:{{plan_id}}",
+            )
+        )
 
 
 def change_subscription_button() -> InlineKeyboardButton:
@@ -76,29 +167,42 @@ def service_purchase_plan_keyboard(plans: list, callback_data: SubscriptionData,
 
 
 def managed_payment_method_keyboard(plan_id: int, price_toman: int, gateways: list[PaymentGateway]) -> InlineKeyboardMarkup:
-    """Use compact callbacks for managed plans so Telegram's 64-byte callback limit is never exceeded."""
+    """Build the managed payment keyboard in the configured customer order."""
     builder = InlineKeyboardBuilder()
-    for gateway in gateways:
-        callback_data = f"mp:{gateway.callback}:{plan_id}"
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{gateway.name} | {price_toman:,} تومان",
-                callback_data=callback_data,
-            )
-        )
+    enabled = _enabled_payment_methods()
+    gateway_map = {_gateway_callback(gateway): gateway for gateway in gateways}
 
-    builder.row(
-        InlineKeyboardButton(
-            text=f"💰 کیف پول | {price_toman:,} تومان",
-            callback_data=f"mp_wallet:{plan_id}",
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text=f"💳 کارت به کارت | {price_toman:,} تومان",
-            callback_data=f"mp_card:{plan_id}",
-        )
-    )
+    # Required customer order: ZarinPal -> card-to-card -> wallet.
+    ordered_keys = ["pay_zarinpal", "mp_card", "mp_wallet"]
+    ordered_keys.extend(key for key in gateway_map if key not in ordered_keys)
+
+    for key in ordered_keys:
+        if key not in enabled:
+            continue
+
+        if key == "mp_card":
+            builder.row(InlineKeyboardButton(
+                text=f"💳 کارت به کارت | {price_toman:,} تومان",
+                callback_data=f"mp_card:{plan_id}",
+            ))
+            continue
+
+        if key == "mp_wallet":
+            builder.row(InlineKeyboardButton(
+                text=f"💰 کیف پول | {price_toman:,} تومان",
+                callback_data=f"mp_wallet:{plan_id}",
+            ))
+            continue
+
+        gateway = gateway_map.get(key)
+        if gateway is None:
+            continue
+
+        builder.row(InlineKeyboardButton(
+            text=f"{gateway.name} | {price_toman:,} تومان",
+            callback_data=f"mp:{key}:{plan_id}",
+        ))
+
     builder.row(InlineKeyboardButton(text="🔙 تغییر سرویس", callback_data=f"subscription_back_plan:{plan_id}"))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
@@ -111,39 +215,34 @@ def managed_payment_method_keyboard_traffic(
     gateways: list[PaymentGateway],
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    enabled = _enabled_payment_methods()
+    gateway_map = {_gateway_callback(gateway): gateway for gateway in gateways}
+    ordered_keys = ["pay_zarinpal", "mp_card", "mp_wallet"]
+    ordered_keys.extend(key for key in gateway_map if key not in ordered_keys)
 
-    for gateway in gateways:
-        callback_data = f"mp:{gateway.callback}:{plan_id}"
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{gateway.name} | {price_toman:,} تومان",
-                callback_data=callback_data,
-            )
-        )
+    for key in ordered_keys:
+        if key not in enabled:
+            continue
+        if key == "mp_card":
+            builder.row(InlineKeyboardButton(
+                text=f"💳 کارت به کارت | {price_toman:,} تومان",
+                callback_data=f"mp_card:{plan_id}",
+            ))
+        elif key == "mp_wallet":
+            builder.row(InlineKeyboardButton(
+                text=f"💰 کیف پول | {price_toman:,} تومان",
+                callback_data=f"mp_wallet:{plan_id}",
+            ))
+        else:
+            gateway = gateway_map.get(key)
+            if gateway is not None:
+                builder.row(InlineKeyboardButton(
+                    text=f"{gateway.name} | {price_toman:,} تومان",
+                    callback_data=f"mp:{key}:{plan_id}",
+                ))
 
-    builder.row(
-        InlineKeyboardButton(
-            text=f"💰 کیف پول | {price_toman:,} تومان",
-            callback_data=f"mp_wallet:{plan_id}",
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text=f"💳 کارت به کارت | {price_toman:,} تومان",
-            callback_data=f"mp_card:{plan_id}",
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 تغییر حجم",
-            callback_data=f"traffic:add:{subscription_id}",
-        )
-    )
-
+    builder.row(InlineKeyboardButton(text="🔙 تغییر حجم", callback_data=f"traffic:add:{subscription_id}"))
     builder.row(back_to_main_menu_button())
-
     return builder.as_markup()
 
 
@@ -153,39 +252,34 @@ def managed_payment_method_keyboard_renewal(
     gateways: list[PaymentGateway],
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    enabled = _enabled_payment_methods()
+    gateway_map = {_gateway_callback(gateway): gateway for gateway in gateways}
+    ordered_keys = ["pay_zarinpal", "mp_card", "mp_wallet"]
+    ordered_keys.extend(key for key in gateway_map if key not in ordered_keys)
 
-    for gateway in gateways:
-        callback_data = f"mp:{gateway.callback}:{plan_id}"
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{gateway.name} | {price_toman:,} تومان",
-                callback_data=callback_data,
-            )
-        )
+    for key in ordered_keys:
+        if key not in enabled:
+            continue
+        if key == "mp_card":
+            builder.row(InlineKeyboardButton(
+                text=f"💳 کارت به کارت | {price_toman:,} تومان",
+                callback_data=f"mp_card:{plan_id}",
+            ))
+        elif key == "mp_wallet":
+            builder.row(InlineKeyboardButton(
+                text=f"💰 کیف پول | {price_toman:,} تومان",
+                callback_data=f"mp_wallet:{plan_id}",
+            ))
+        else:
+            gateway = gateway_map.get(key)
+            if gateway is not None:
+                builder.row(InlineKeyboardButton(
+                    text=f"{gateway.name} | {price_toman:,} تومان",
+                    callback_data=f"mp:{key}:{plan_id}",
+                ))
 
-    builder.row(
-        InlineKeyboardButton(
-            text=f"💰 کیف پول | {price_toman:,} تومان",
-            callback_data=f"mp_wallet:{plan_id}",
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text=f"💳 کارت به کارت | {price_toman:,} تومان",
-            callback_data=f"mp_card:{plan_id}",
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 تغییر سرویس",
-            callback_data=f"renewal:service:{plan_id}",
-        )
-    )
-
+    builder.row(InlineKeyboardButton(text="🔙 تغییر سرویس", callback_data=f"renewal:service:{plan_id}"))
     builder.row(back_to_main_menu_button())
-
     return builder.as_markup()
 
 
@@ -223,19 +317,11 @@ def duration_keyboard(plan_service: PlanService, callback_data: SubscriptionData
 def config_name_keyboard(callback_data: SubscriptionData) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    builder.button(
-        text="✅ استفاده از نام خودکار",
-        callback_data="subscription_config_name:auto",
-    )
-
-    builder.button(
-        text="✏️ وارد کردن نام دلخواه",
-        callback_data="subscription_config_name:custom",
-    )
+    builder.button(text="✅ استفاده از نام خودکار", callback_data="subscription_config_name:auto")
+    builder.button(text="✏️ وارد کردن نام دلخواه", callback_data="subscription_config_name:custom")
 
     builder.adjust(1)
     builder.row(back_to_main_menu_button())
-
     return builder.as_markup()
 
 
@@ -253,7 +339,44 @@ def pay_keyboard(pay_url: str, callback_data: SubscriptionData) -> InlineKeyboar
 
 def payment_method_keyboard(plan: Plan | None, callback_data: SubscriptionData, gateways: list[PaymentGateway], price_override: float | None = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for gateway in gateways:
+    enabled = _enabled_payment_methods()
+    gateway_map = {_gateway_callback(gateway): gateway for gateway in gateways}
+    ordered_keys = ["pay_zarinpal", "mp_card", "mp_wallet"]
+    ordered_keys.extend(key for key in gateway_map if key not in ordered_keys)
+
+    for key in ordered_keys:
+        if key not in enabled:
+            continue
+
+        if key == "mp_card":
+            price = price_override
+            if price is None and plan is not None:
+                price = plan.get_price(currency=Currency.TOMAN, duration=callback_data.duration)
+            if price is None:
+                continue
+            callback_data.state = "mp_card"
+            builder.row(InlineKeyboardButton(
+                text=f"💳 کارت به کارت | {price} تومان",
+                callback_data=f"mp_card:{callback_data.plan_id or 0}",
+            ))
+            continue
+
+        if key == "mp_wallet":
+            price = price_override
+            if price is None and plan is not None:
+                price = plan.get_price(currency=Currency.TOMAN, duration=callback_data.duration)
+            if price is None:
+                continue
+            callback_data.state = "mp_wallet"
+            builder.row(InlineKeyboardButton(
+                text=f"💰 کیف پول | {price} تومان",
+                callback_data=f"mp_wallet:{callback_data.plan_id or 0}",
+            ))
+            continue
+
+        gateway = gateway_map.get(key)
+        if gateway is None:
+            continue
         if price_override is None:
             if plan is None:
                 continue
@@ -263,7 +386,11 @@ def payment_method_keyboard(plan: Plan | None, callback_data: SubscriptionData, 
         if price is None:
             continue
         callback_data.state = gateway.callback
-        builder.row(InlineKeyboardButton(text=f"{gateway.name} | {price} {gateway.currency.symbol}", callback_data=callback_data.pack()))
+        builder.row(InlineKeyboardButton(
+            text=f"{gateway.name} | {price} {gateway.currency.symbol}",
+            callback_data=callback_data.pack(),
+        ))
+
     callback_data.state = NavSubscription.DEVICES
     builder.row(back_button(callback_data.pack(), text=_("subscription:button:change_duration")))
     builder.row(back_to_main_menu_button())
@@ -272,12 +399,7 @@ def payment_method_keyboard(plan: Plan | None, callback_data: SubscriptionData, 
 
 def payment_success_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text=_("subscription:button:download_app"),
-            callback_data=NavMain.REDIRECT_TO_DOWNLOAD,
-        )
-    )
+    builder.row(InlineKeyboardButton(text=_("subscription:button:download_app"), callback_data=NavMain.REDIRECT_TO_DOWNLOAD))
     builder.row(close_notification_button())
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
