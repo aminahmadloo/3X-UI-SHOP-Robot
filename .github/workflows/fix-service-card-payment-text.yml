@@ -1,4 +1,4 @@
-name: Fix service card payment text
+name: Fix renewal card payment navigation
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.event.head_commit.message != 'fix: format service card payment details'
+    if: github.event.head_commit.message != 'fix: renewal card payment navigation'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -19,28 +19,60 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Patch card payment text
+      - name: Patch renewal card payment flow
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          path = Path('app/bot/routers/wallet/handler.py')
+          path = Path('app/bot/routers/multi_card_payment.py')
           text = path.read_text(encoding='utf-8')
 
-          old = '''    return (\n        f"💳 <b>پرداخت کارت به کارت</b>\\n\\n"\n        f"شماره کارت:\\n<code>{settings.card_number}</code>\\n"\n        f"🏦 بانک: <b>{settings.bank_name or 'نامشخص'}</b>\\n"\n        f"به نام:\\n<b>{settings.card_holder_name}</b>\\n"\n        f"مبلغ قابل پرداخت: <b>{amount:,} تومان</b>\\n"\n        "ابتدا مبلغ را واریز کنید، سپس روی «پرداخت کردم» بزنید و عکس رسید را ارسال کنید."\n    )'''
+          old_text = '''def _payment_text(user: User, card: CardSettings, amount: int) -> str:
+              text = card_text(user.language_code, card, amount)
+              if card.bank_name:
+                  text += f"\\n🏦 بانک: <b>{card.bank_name}</b>"
+              return text
+          '''
 
-          new = '''    return (\n        "💳 <b>پرداخت کارت به\\nکارت</b>\\n\\n"\n        f"<b>شماره کارت:</b> <b><code>{settings.card_number}</code></b>\\n"\n        f"<b>بانک:</b> <b>{settings.bank_name or 'نامشخص'}</b>\\n"\n        f"<b>به نام:</b> <b>{settings.card_holder_name}</b>\\n\\n"\n        f"<b>مبلغ قابل پرداخت: {amount:,} تومان</b>\\n\\n"\n        "ابتدا مبلغ را واریز کنید، سپس روی «پرداخت کردم-رسید می فرستم» بزنید و عکس رسید را ارسال کنید."\n    )'''
+          new_text = '''def _payment_text(user: User, card: CardSettings, amount: int) -> str:
+              # card_text() already renders the bank name. Do not append it again.
+              return card_text(user.language_code, card, amount)
+          '''
 
-          if old not in text:
-              raise SystemExit('Expected Persian card_text block was not found; refusing unsafe modification.')
+          if old_text not in text:
+              raise SystemExit('Expected _payment_text block not found; refusing unsafe modification.')
+          text = text.replace(old_text, new_text, 1)
 
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          old_render = '''    await callback.message.edit_text(
+              _payment_text(user, card, amount),
+              reply_markup=_keyboard(card, amount, "custom_service:card:paid", "custom_service:back"),
+          )
+          '''
+
+          new_render = '''    if subscription_data.is_extend and subscription_data.subscription_id and subscription_data.plan_id:
+              back_callback = (
+                  f"main_renewal:methods:{subscription_data.subscription_id}:{subscription_data.plan_id}"
+              )
+          else:
+              back_callback = "custom_service:back"
+
+          await callback.message.edit_text(
+              _payment_text(user, card, amount),
+              reply_markup=_keyboard(card, amount, "custom_service:card:paid", back_callback),
+          )
+          '''
+
+          if old_render not in text:
+              raise SystemExit('Expected _render_service block not found; refusing unsafe modification.')
+          text = text.replace(old_render, new_render, 1)
+
+          path.write_text(text, encoding='utf-8')
           PY
 
       - name: Validate Python syntax
-        run: python -m py_compile app/bot/routers/wallet/handler.py
+        run: python -m py_compile app/bot/routers/multi_card_payment.py
 
       - name: Commit fix and remove temporary workflow
         shell: bash
@@ -49,6 +81,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           rm -f .github/workflows/fix-service-card-payment-text.yml
-          git add app/bot/routers/wallet/handler.py .github/workflows/fix-service-card-payment-text.yml
-          git commit -m 'fix: format service card payment details'
+          git add app/bot/routers/multi_card_payment.py .github/workflows/fix-service-card-payment-text.yml
+          git diff --cached --check
+          git commit -m 'fix: renewal card payment navigation'
           git push origin HEAD:main
