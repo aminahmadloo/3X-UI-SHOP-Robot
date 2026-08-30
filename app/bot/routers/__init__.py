@@ -47,9 +47,6 @@ from .wallet.overview import router as wallet_overview_router
 from app.bot.routers.customer_level.handler import router as customer_level_router
 from app.bot.routers.support.training_handler import router as support_training_router
 
-# Import after the legacy main-menu renewal router so its payment-method
-# keyboard receives the same persistent visibility/order policy as the
-# managed purchase flow.
 from . import payment_method_visibility as _payment_method_visibility
 
 
@@ -61,6 +58,12 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         commands.router,
         multi_card_wallet_receipt_router,
         multi_card_service_receipt_router,
+        # Managed purchase/renewal card payment must be registered before the
+        # legacy generic multi-card router because both historically accepted
+        # the same mp_card callback. The dedicated router owns managed-card
+        # navigation; the generic router remains responsible for custom/wallet
+        # card flows and card swapping outside the managed namespace.
+        managed_card_payment.router,
         multi_card_payment_router,
         custom_service_card_payment.router,
         managed_card_payment.router,
