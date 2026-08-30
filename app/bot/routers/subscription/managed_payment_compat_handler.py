@@ -26,14 +26,34 @@ async def callback_managed_payment_compat(
     """Handle the compact payment callback used by purchase/renewal keyboards.
 
     The purchase flow historically used ``mp:subscription:pay_*`` while the
-    current keyboard emits ``mp:pay_*``.  This compatibility handler accepts
-    the current form before the dynamic-renewal router can consume it.
+    current keyboard emits ``mp:pay_*``. This compatibility handler accepts
+    both dict and serialized-string purchase contexts so changing payment
+    methods after returning from another gateway cannot invalidate the order.
     Traffic add-ons are excluded by requiring a positive duration.
     """
     gateway_callback, plan_id_text = callback.data[3:].rsplit(":", 1)
 
     data = await state.get_data()
     packed = data.get("subscription_data")
+
+    if isinstance(packed, str):
+        try:
+            restored = SubscriptionData.deserialize(packed)
+            packed = {
+                "is_extend": restored.is_extend,
+                "is_change": restored.is_change,
+                "user_id": restored.user_id,
+                "devices": restored.devices,
+                "duration": restored.duration,
+                "price": restored.price,
+                "plan_id": restored.plan_id,
+                "volume_gb": restored.volume_gb,
+                "config_name": restored.config_name,
+                "subscription_id": restored.subscription_id,
+            }
+        except Exception:
+            packed = None
+
     if not isinstance(packed, dict):
         await callback.answer("اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید.", show_alert=True)
         return
