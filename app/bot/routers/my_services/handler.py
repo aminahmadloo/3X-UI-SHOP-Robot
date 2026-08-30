@@ -537,6 +537,7 @@ async def _sync_subscriptions_with_xui(
             subscriptions_by_server.setdefault(subscription.server_id, []).append(subscription)
 
     changed = False
+    deleted_subscription_ids: set[int] = set()
 
     for server_id, server_subscriptions in subscriptions_by_server.items():
         # Do not access subscription.server lazily inside AsyncSession.
@@ -597,6 +598,7 @@ async def _sync_subscriptions_with_xui(
                 await session.execute(
                     delete(Subscription).where(Subscription.id == subscription.id)
                 )
+                deleted_subscription_ids.add(subscription.id)
                 changed = True
                 logger.warning(
                     "Subscription %s (%s) client %s is missing from XUI server %s; removed orphan DB record.",
@@ -689,11 +691,15 @@ async def _sync_subscriptions_with_xui(
 
     if changed:
         await session.commit()
-        # Refresh ORM state after commit so the caller renders the synchronized
-        # values rather than stale pre-commit attributes.
-        for subscription in subscriptions:
-            if subscription.server_id is not None:
-                await session.refresh(subscription)
+
+    # Some subscriptions may have been removed directly with DELETE above.
+    # Never return those stale ORM instances to callers.
+    if deleted_subscription_ids:
+        subscriptions = [
+            subscription
+            for subscription in subscriptions
+            if subscription.id not in deleted_subscription_ids
+        ]
 
     return subscriptions
 
