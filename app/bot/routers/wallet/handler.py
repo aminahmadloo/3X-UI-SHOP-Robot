@@ -66,12 +66,12 @@ def card_text(language: str, settings: CardSettings, amount: int) -> str:
             "После перевода нажмите кнопку ниже и отправьте фото чека."
         )
     return (
-        f"💳 <b>پرداخت کارت به کارت</b>\n\n"
-        f"شماره کارت:\n<code>{settings.card_number}</code>\n"
+        f"💳 <b>پرداخت کارت به\nکارت</b>\n\n"
+        f"شماره کارت:\n<b>{settings.card_number}</b>\n"
         f"🏦 بانک: <b>{settings.bank_name or 'نامشخص'}</b>\n"
-        f"به نام:\n<b>{settings.card_holder_name}</b>\n"
-        f"مبلغ قابل پرداخت: <b>{amount:,} تومان</b>\n"
-        "ابتدا مبلغ را واریز کنید، سپس روی «پرداخت کردم» بزنید و عکس رسید را ارسال کنید."
+        f"به نام:\n<b>{settings.card_holder_name}</b>\n\n"
+        f"مبلغ قابل پرداخت: <b>{amount:,} تومان</b>\n\n"
+        "ابتدا مبلغ را واریز کنید، سپس روی «پرداخت کردم-رسید می فرستم» بزنید و عکس رسید را ارسال کنید."
     )
 
 
