@@ -68,7 +68,7 @@ class BotConfig:
     TOKEN: str
     ADMINS: list[int]
     DEV_ID: int
-    SUPPORT_ID: int
+    SUPPORT_IDS: list[int]
     DOMAIN: str
     PORT: int
 
@@ -223,7 +223,11 @@ def load_config() -> Config:
             TOKEN=env.str("BOT_TOKEN"),
             ADMINS=bot_admins,
             DEV_ID=env.int("BOT_DEV_ID"),
-            SUPPORT_ID=env.int("BOT_SUPPORT_ID"),
+            SUPPORT_IDS=[
+                int(value.strip())
+                for value in env.str("BOT_SUPPORT_ID").split(",")
+                if value.strip()
+            ],
             DOMAIN=f"https://{env.str('BOT_DOMAIN')}",
             PORT=env.int("BOT_PORT", default=DEFAULT_BOT_PORT),
         ),

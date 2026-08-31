@@ -175,17 +175,27 @@ async def receive_new_ticket(
 
     try:
         username = f"@{user.username}" if user.username else "بدون یوزرنیم"
-        await message.bot.send_message(
-            chat_id=config.bot.SUPPORT_ID,
-            text=(
-                f"🎫 <b>تیکت جدید #{ticket.id}</b>\n\n"
-                f"👤 {user.first_name}\n"
-                f"🔗 {username}\n"
-                f"🆔 <code>{user.tg_id}</code>\n\n"
-                f"💬 پیام کاربر:\n{message.text[:3000]}"
-            ),
-            reply_markup=admin_ticket_keyboard(ticket.id),
+        support_text = (
+            f"🎫 <b>تیکت جدید #{ticket.id}</b>\n\n"
+            f"👤 {user.first_name}\n"
+            f"🔗 {username}\n"
+            f"🆔 <code>{user.tg_id}</code>\n\n"
+            f"💬 پیام کاربر:\n{message.text[:3000]}"
         )
+
+        for support_id in config.bot.SUPPORT_IDS:
+            try:
+                await message.bot.send_message(
+                    chat_id=support_id,
+                    text=support_text,
+                    reply_markup=admin_ticket_keyboard(ticket.id),
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to notify support %s for ticket %s",
+                    support_id,
+                    ticket.id,
+                )
     except Exception:
         logger.exception("Failed to notify support for ticket %s", ticket.id)
 
@@ -272,7 +282,7 @@ async def callback_ticket_reply(
         await callback.answer("❌ شناسه تیکت نامعتبر است.", show_alert=True)
         return
 
-    if callback.from_user.id == config.bot.SUPPORT_ID:
+    if callback.from_user.id in config.bot.SUPPORT_IDS:
         result = await session.execute(select(SupportTicket).where(SupportTicket.id == ticket_id))
         ticket = result.scalar_one_or_none()
         if not ticket or ticket.status == "closed":
@@ -323,14 +333,25 @@ async def receive_user_ticket_reply(
     await session.commit()
     await state.clear()
 
-    try:
-        await message.bot.send_message(
-            chat_id=config.bot.SUPPORT_ID,
-            text=f"💬 <b>پاسخ جدید در تیکت #{ticket.id}</b>\n\n👤 {user.first_name}\n\n{message.text[:3000]}",
-            reply_markup=admin_ticket_keyboard(ticket.id),
-        )
-    except Exception:
-        logger.exception("Failed to notify support about ticket reply %s", ticket.id)
+    support_text = (
+        f"💬 <b>پاسخ جدید در تیکت #{ticket.id}</b>\n\n"
+        f"👤 {user.first_name}\n\n"
+        f"{message.text[:3000]}"
+    )
+
+    for support_id in config.bot.SUPPORT_IDS:
+        try:
+            await message.bot.send_message(
+                chat_id=support_id,
+                text=support_text,
+                reply_markup=admin_ticket_keyboard(ticket.id),
+            )
+        except Exception:
+            logger.exception(
+                "Failed to notify support %s about ticket reply %s",
+                support_id,
+                ticket.id,
+            )
 
     await message.answer(
         f"✅ پاسخ شما در تیکت #{ticket.id} ثبت شد.",
@@ -345,7 +366,7 @@ async def receive_admin_ticket_reply(
     config: Config,
     state: FSMContext,
 ) -> None:
-    if message.from_user is None or message.from_user.id != config.bot.SUPPORT_ID:
+    if message.from_user is None or message.from_user.id not in config.bot.SUPPORT_IDS:
         return
     if not message.text:
         await message.answer("❌ لطفاً پاسخ متنی خود را ارسال کنید.")
@@ -403,7 +424,7 @@ async def callback_ticket_close(
         await callback.answer("❌ تیکت پیدا نشد.", show_alert=True)
         return
 
-    is_admin = callback.from_user.id == config.bot.SUPPORT_ID
+    is_admin = callback.from_user.id in config.bot.SUPPORT_IDS
     if not is_admin and ticket.user_id != user.id:
         await callback.answer("❌ دسترسی به این تیکت مجاز نیست.", show_alert=True)
         return

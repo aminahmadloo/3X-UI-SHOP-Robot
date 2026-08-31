@@ -89,7 +89,7 @@ async def command_subscription(
 async def command_support(message: Message, config: Config) -> None:
     await message.answer(
         text=_("support:message:main"),
-        reply_markup=support_keyboard(config.bot.SUPPORT_ID),
+        reply_markup=support_keyboard(),
     )
 
 
