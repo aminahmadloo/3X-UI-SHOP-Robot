@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 import qrcode
 
+from app.bot.services.xui_inbound_adapter import get_inbounds
 from app.bot.models import ServicesContainer
 from app.bot.utils.navigation import NavMain, NavSubscription
 from app.db.models import Server, Subscription, User
@@ -242,7 +243,7 @@ async def _discover_user_subscriptions_from_xui(
             continue
 
         try:
-            inbounds = await connection.api.inbound.get_list()
+            inbounds = await get_inbounds(connection.api)
         except Exception as exception:
             logger.warning(
                 "MY_SERVICES LIVE DISCOVERY | Failed to read inbounds from %s: %s",
@@ -563,7 +564,7 @@ async def _sync_subscriptions_with_xui(
             continue
 
         try:
-            inbounds = await connection.api.inbound.get_list()
+            inbounds = await get_inbounds(connection.api)
         except Exception as exception:
             logger.warning(
                 "Could not read XUI clients from server %s while synchronizing My Services: %s",

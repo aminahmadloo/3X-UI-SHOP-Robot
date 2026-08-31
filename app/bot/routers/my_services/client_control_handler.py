@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.bot.services.xui_inbound_adapter import get_inbounds
 from app.bot.models import ServicesContainer
 from app.bot.utils.navigation import NavMain, NavSubscription
 from app.db.models import Server, Subscription, SubscriptionSettings, User
@@ -47,7 +48,7 @@ async def _set_subscription_client_enabled(
         return False
 
     try:
-        inbounds = await connection.api.inbound.get_list()
+        inbounds = await get_inbounds(connection.api)
         matches = []
 
         for inbound in inbounds:

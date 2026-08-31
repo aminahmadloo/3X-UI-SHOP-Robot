@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.bot.models import ClientData
 from app.bot.services import NotificationService, VPNService
+from app.bot.services.xui_inbound_adapter import get_inbounds
 from app.db.models import Subscription
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ async def _get_subscription_client_data(
         return None
 
     try:
-        inbounds = await connection.api.inbound.get_list()
+        inbounds = await get_inbounds(connection.api)
         target_client_id = str(subscription.client_id).strip()
         client = None
         matched_inbound = None

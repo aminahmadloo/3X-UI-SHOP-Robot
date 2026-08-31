@@ -6,6 +6,7 @@ from py3xui import Client
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.bot.services.xui_inbound_adapter import get_inbounds
 from app.bot.models import ServicesContainer
 from app.bot.utils.time import add_days_to_timestamp, get_current_timestamp
 from app.db.models import Server, ServicePurchasePlan, Subscription, User
@@ -67,7 +68,7 @@ async def extend_existing_subscription(
             return False
 
         try:
-            inbounds = await connection.api.inbound.get_list()
+            inbounds = await get_inbounds(connection.api)
         except Exception:
             return False
 

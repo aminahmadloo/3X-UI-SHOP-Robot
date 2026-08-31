@@ -10,6 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.bot.services.xui_inbound_adapter import get_inbounds
 from app.bot.services.server_pool import ServerPoolService
 from app.bot.utils.network import extract_base_url
 from app.config import Config
@@ -275,7 +276,7 @@ class TestAccountService:
             return False
 
         try:
-            inbounds = await connection.api.inbound.get_list()
+            inbounds = await get_inbounds(connection.api)
 
             target_inbounds = [
                 inbound
@@ -321,7 +322,7 @@ class TestAccountService:
             if failed:
                 # Verify whether any copy of the test client remains.
                 try:
-                    remaining = await connection.api.inbound.get_list()
+                    remaining = await get_inbounds(connection.api)
                     still_exists = any(
                         str(c.id or "") == str(record.client_id)
                         or str(c.uuid or "") == str(record.client_id)
@@ -369,7 +370,7 @@ class TestAccountService:
                 continue
 
             try:
-                inbounds = await connection.api.inbound.get_list()
+                inbounds = await get_inbounds(connection.api)
                 live_client = None
                 for inbound in inbounds:
                     for client in inbound.settings.clients or []:

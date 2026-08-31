@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import ClientData
+from app.bot.services.xui_inbound_adapter import get_inbounds
 from app.bot.utils.network import extract_base_url
 from app.bot.utils.time import add_days_to_timestamp, days_to_timestamp, get_current_timestamp
 from app.config import Config
@@ -65,7 +66,7 @@ class VPNService:
 
         if connection:
             try:
-                inbounds = await connection.api.inbound.get_list()
+                inbounds = await get_inbounds(connection.api)
                 for inbound in inbounds:
                     for client in inbound.settings.clients or []:
                         if client.email:
@@ -92,7 +93,7 @@ class VPNService:
             return []
 
         try:
-            inbounds: list[Inbound] = await connection.api.inbound.get_list()
+            inbounds: list[Inbound] = await get_inbounds(connection.api)
         except Exception as exception:
             logger.error(f"Failed to fetch inbounds while looking up client {user.tg_id}: {exception}")
             return []
@@ -219,7 +220,7 @@ class VPNService:
             return None
 
         try:
-            inbounds: list[Inbound] = await connection.api.inbound.get_list()
+            inbounds: list[Inbound] = await get_inbounds(connection.api)
             client: Client | None = None
             matched_inbound: Inbound | None = None
 
@@ -692,7 +693,7 @@ class VPNService:
                 )
 
             try:
-                refreshed_inbounds = await connection.api.inbound.get_list()
+                refreshed_inbounds = await get_inbounds(connection.api)
                 for refreshed in refreshed_inbounds:
                     for client in refreshed.settings.clients or []:
                         if str(client.id) == str(client_uuid):
