@@ -1,4 +1,4 @@
-from urllib.parse import urlencode
+from urllib.parse import quote
 
 from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.i18n import gettext as _
@@ -12,6 +12,13 @@ def referral_keyboard(
     referral_link: str | None = None,
     connect: bool = False,
 ) -> InlineKeyboardMarkup:
+    share_text = (
+        "من به‌تازگی مشتری تونلVPN شدم و از کیفیت سرویس‌هاش واقعاً راضی‌ام. "
+        "پینگ عالی، سرعت مناسب و قیمت‌های مقرون‌به‌صرفه از مزیت‌های این سرویسه.\n"
+        "اگر دوست داشتی تو هم امتحانش کنی، از طریق لینک زیر وارد شو و خریدت رو انجام بده:\n\n"
+        f"🔗 {referral_link}"
+    )
+
     builder = InlineKeyboardBuilder()
 
     if referral_link:
@@ -24,17 +31,8 @@ def referral_keyboard(
                 text="📨 دعوت دوستان",
                 url=(
                     "https://t.me/share/url?"
-                    + urlencode(
-                        {
-                            "url": referral_link,
-                            "text": (
-                                "من به‌تازگی مشتری تونلVPN شدم و از کیفیت سرویس‌هاش واقعاً راضی‌ام. "
-                                "پینگ عالی، سرعت مناسب و قیمت‌های مقرون‌به‌صرفه از مزیت‌های این سرویسه.\n"
-                                "اگر دوست داشتی تو هم امتحانش کنی، از طریق لینک زیر وارد شو و خریدت رو انجام بده:\n\n"
-                                f"🔗 {referral_link}"
-                            ),
-                        }
-                    )
+                    f"url={quote(referral_link, safe='')}"
+                    f"&text={quote(share_text, safe='')}"
                 ),
             ),
         )
