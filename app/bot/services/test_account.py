@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -123,73 +122,87 @@ class TestAccountService:
             created_inbounds: list[int] = []
 
             try:
-                for inbound in inbounds:
-                    inbound_id = int(inbound.id)
+                # 3X-UI >= 3.2.5 enforces subId uniqueness globally.
+                # Therefore we must NOT create one client per inbound with
+                # the same subId. Instead create ONE logical client and
+                # attach it to all selected inbounds in a single
+                # /panel/api/clients/add request.
+                inbound_ids = [int(inbound.id) for inbound in inbounds]
+                primary_inbound = inbounds[0]
+                primary_inbound_id = int(primary_inbound.id)
 
-                    client_email = (
-                        f"test-{user.tg_id}-"
-                        f"{uuid.uuid4().hex[:8]}-in{inbound_id}"
-                    )
+                client_email = (
+                    f"test-{user.tg_id}-"
+                    f"{uuid.uuid4().hex[:8]}"
+                )
 
-                    record = TestAccount(
-                        telegram_user_id=user.tg_id,
-                        username=user.username,
-                        first_name=user.first_name,
-                        server_id=server.id,
-                        inbound_id=inbound_id,
-                        client_id=client_id,
-                        client_email=client_email,
-                        subscription_token=subscription_token,
-                        quota_bytes=quota_bytes,
-                        expires_at=expires_at,
-                        status="pending",
-                    )
+                record = TestAccount(
+                    telegram_user_id=user.tg_id,
+                    username=user.username,
+                    first_name=user.first_name,
+                    server_id=server.id,
+                    inbound_id=primary_inbound_id,
+                    client_id=client_id,
+                    client_email=client_email,
+                    subscription_token=subscription_token,
+                    quota_bytes=quota_bytes,
+                    expires_at=expires_at,
+                    status="pending",
+                )
 
-                    session.add(record)
+                session.add(record)
+                await session.flush()
 
-                    await session.flush()
+                # Do not force protocol-specific fields here.
+                # The 3X-UI multi-inbound endpoint applies the proper
+                # protocol defaults for each attached inbound.
+                client = Client(
+                    id=client_id,
+                    uuid=client_id,
+                    email=client_email,
+                    enable=True,
+                    expiry_time=expiry_ms,
+                    total_gb=quota_bytes,
+                    sub_id=subscription_token,
+                    tg_id=user.tg_id,
+                    limit_ip=0,
+                )
 
-                    protocol = str(
-                        getattr(inbound, "protocol", "") or ""
-                    ).lower()
+                client_payload = client.model_dump(
+                    by_alias=True,
+                    exclude_none=True,
+                )
 
-                    flow = ""
-                    if protocol == "vless":
-                        flow = "xtls-rprx-vision"
+                logger.info(
+                    "Creating one test client %s with subId %s on "
+                    "selected inbounds %s",
+                    client_email,
+                    subscription_token,
+                    inbound_ids,
+                )
 
-                    client = Client(
-                        id=client_id,
-                        uuid=client_id,
-                        email=client_email,
-                        enable=True,
-                        expiry_time=expiry_ms,
-                        total_gb=quota_bytes,
-                        sub_id=subscription_token,
-                        tg_id=user.tg_id,
-                        flow=flow,
-                        limit_ip=0,
-                    )
+                endpoint = connection.api.client._url(
+                    "panel/api/clients/add"
+                )
 
-                    if protocol == "trojan":
-                        client.password = client_id
+                await connection.api.client._post(
+                    endpoint,
+                    {
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    },
+                    {
+                        "client": client_payload,
+                        "inboundIds": inbound_ids,
+                    },
+                )
 
-                    logger.info(
-                        "Creating test client %s on inbound %s",
-                        client_email,
-                        inbound_id,
-                    )
+                created_records.append(record)
+                created_inbounds.extend(inbound_ids)
 
-                    await connection.api.client.add(
-                        inbound_id=inbound_id,
-                        clients=[copy.deepcopy(client)],
-                    )
-
-                    created_records.append(record)
-                    created_inbounds.append(inbound_id)
-
-                if len(created_records) != len(inbounds):
+                if len(created_inbounds) != len(inbound_ids):
                     raise RuntimeError(
-                        "Not all selected inbounds received a test client"
+                        "Not all selected inbounds received the test client"
                     )
 
                 for record in created_records:
