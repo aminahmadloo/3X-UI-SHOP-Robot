@@ -1,305 +1,48 @@
 <!doctype html>
 <html lang="fa" dir="rtl">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="robots" content="noindex,nofollow">
-  <meta name="theme-color" content="#0b1020">
-  <title>ToonelVPN | اشتراک شما</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #070b16;
-      --panel: rgba(16, 23, 43, .82);
-      --panel-2: rgba(24, 33, 58, .72);
-      --line: rgba(255,255,255,.09);
-      --text: #f6f8ff;
-      --muted: #9da8c2;
-      --brand: #6d7cff;
-      --brand-2: #8f6cff;
-      --good: #31d59b;
-      --warn: #ffbf5b;
-      --bad: #ff647c;
-      --shadow: 0 24px 70px rgba(0,0,0,.35);
-      --radius: 24px;
-    }
-    * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: Tahoma, "Segoe UI", system-ui, sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(circle at 15% 0%, rgba(109,124,255,.20), transparent 30%),
-        radial-gradient(circle at 85% 10%, rgba(143,108,255,.17), transparent 28%),
-        linear-gradient(160deg, #060914 0%, #0b1020 55%, #080b15 100%);
-    }
-    a { color: inherit; text-decoration: none; }
-    button { font: inherit; }
-    .wrap { width: min(960px, calc(100% - 28px)); margin: 0 auto; padding: 28px 0 44px; }
-    .hero {
-      position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 30px;
-      padding: 28px; background: linear-gradient(145deg, rgba(25,34,64,.94), rgba(10,15,30,.86));
-      box-shadow: var(--shadow); margin-bottom: 18px;
-    }
-    .hero::after { content:""; position:absolute; width:260px; height:260px; border-radius:50%; background:rgba(109,124,255,.13); filter:blur(10px); left:-90px; top:-130px; }
-    .brand { display:flex; align-items:center; gap:14px; position:relative; z-index:1; }
-    .logo { width:52px; height:52px; border-radius:17px; display:grid; place-items:center; background:linear-gradient(135deg,var(--brand),var(--brand-2)); box-shadow:0 12px 30px rgba(109,124,255,.28); font-weight:900; letter-spacing:-2px; }
-    .brand h1 { margin:0; font-size:22px; }
-    .brand p { margin:5px 0 0; color:var(--muted); font-size:13px; }
-    .user { margin-top:25px; position:relative; z-index:1; }
-    .user-label { color:var(--muted); font-size:12px; margin-bottom:6px; }
-    .user-value { font-size:20px; font-weight:800; word-break:break-word; }
-    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
-    .card { border:1px solid var(--line); border-radius:var(--radius); background:var(--panel); box-shadow:var(--shadow); padding:20px; backdrop-filter:blur(18px); }
-    .card h2 { margin:0 0 17px; font-size:16px; }
-    .stats { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-    .stat { padding:15px; border:1px solid var(--line); border-radius:17px; background:rgba(255,255,255,.035); }
-    .stat span { display:block; color:var(--muted); font-size:12px; margin-bottom:7px; }
-    .stat strong { display:block; font-size:16px; }
-    .status { display:inline-flex; align-items:center; gap:7px; padding:7px 11px; border-radius:999px; font-size:12px; background:rgba(49,213,155,.12); color:var(--good); }
-    .status.bad { background:rgba(255,100,124,.12); color:var(--bad); }
-    .status.warn { background:rgba(255,191,91,.12); color:var(--warn); }
-    .progress { height:10px; border-radius:999px; background:#202941; overflow:hidden; margin:14px 0 8px; }
-    .progress > i { display:block; height:100%; width:0; border-radius:inherit; background:linear-gradient(90deg,var(--brand),var(--brand-2)); transition:width .4s ease; }
-    .progress-row { display:flex; justify-content:space-between; gap:10px; color:var(--muted); font-size:12px; }
-    .actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-    .btn { min-height:46px; border:1px solid var(--line); border-radius:15px; color:var(--text); background:rgba(255,255,255,.055); cursor:pointer; padding:10px 13px; transition:.2s ease; }
-    .btn:hover { transform:translateY(-1px); background:rgba(255,255,255,.09); }
-    .btn.primary { border:0; background:linear-gradient(135deg,var(--brand),var(--brand-2)); font-weight:800; }
-    .btn small { display:block; color:var(--muted); font-size:10px; margin-top:2px; }
-    .btn.primary small { color:rgba(255,255,255,.76); }
-    .config-list { display:grid; gap:10px; max-height:390px; overflow:auto; padding-left:2px; }
-    .config { display:flex; align-items:center; gap:10px; border:1px solid var(--line); background:rgba(255,255,255,.035); border-radius:16px; padding:12px; }
-    .config-main { min-width:0; flex:1; }
-    .config-name { font-weight:800; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .config-meta { color:var(--muted); font-size:10px; margin-top:5px; }
-    .copy { flex:0 0 auto; min-width:78px; padding:9px 10px; border-radius:12px; border:1px solid var(--line); background:rgba(109,124,255,.12); color:#cbd1ff; cursor:pointer; }
-    .copy.done { color:var(--good); }
-    .links { display:grid; gap:9px; }
-    .sub-link { display:flex; align-items:center; gap:8px; padding:12px; border:1px solid var(--line); border-radius:14px; background:rgba(255,255,255,.035); }
-    .sub-link code { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; direction:ltr; text-align:left; color:#cbd1ff; font-size:11px; }
-    .footer { text-align:center; color:var(--muted); font-size:11px; padding:20px 0 0; }
-    .toast { position:fixed; left:50%; bottom:22px; transform:translate(-50%, 20px); opacity:0; pointer-events:none; padding:12px 16px; border-radius:14px; background:#171f35; border:1px solid var(--line); box-shadow:var(--shadow); transition:.25s ease; z-index:10; font-size:12px; }
-    .toast.show { transform:translate(-50%,0); opacity:1; }
-    .empty { color:var(--muted); text-align:center; padding:20px 8px; font-size:13px; }
-    @media (max-width: 700px) { .grid { grid-template-columns:1fr; } .hero { padding:22px; border-radius:24px; } .wrap { width:min(100% - 18px,960px); padding-top:10px; } .actions { grid-template-columns:1fr; } .user-value { font-size:18px; } }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0b1020">
+<title>ToonelVPN | اشتراک شما</title>
+<style>
+:root{color-scheme:dark;--bg:#070b16;--panel:rgba(16,23,43,.84);--line:rgba(255,255,255,.09);--text:#f6f8ff;--muted:#9da8c2;--brand:#6d7cff;--brand2:#8f6cff;--good:#31d59b;--warn:#ffbf5b;--bad:#ff647c;--shadow:0 24px 70px rgba(0,0,0,.35);--r:24px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;min-height:100vh;font-family:Tahoma,"Segoe UI",system-ui,sans-serif;color:var(--text);background:radial-gradient(circle at 15% 0%,rgba(109,124,255,.2),transparent 30%),radial-gradient(circle at 85% 10%,rgba(143,108,255,.17),transparent 28%),linear-gradient(160deg,#060914,#0b1020 55%,#080b15)}
+a{color:inherit;text-decoration:none}button{font:inherit}.wrap{width:min(980px,calc(100% - 24px));margin:auto;padding:18px 0 40px}.hero,.card{border:1px solid var(--line);background:var(--panel);box-shadow:var(--shadow);backdrop-filter:blur(18px)}.hero{position:relative;overflow:hidden;border-radius:30px;padding:26px;margin-bottom:14px;background:linear-gradient(145deg,rgba(25,34,64,.96),rgba(10,15,30,.88))}.hero:after{content:"";position:absolute;width:280px;height:280px;border-radius:50%;background:rgba(109,124,255,.13);filter:blur(12px);left:-110px;top:-150px}.brand{display:flex;align-items:center;gap:14px;position:relative;z-index:1}.logo{width:64px;height:64px;border-radius:19px;display:grid;place-items:center;overflow:hidden;background:linear-gradient(135deg,var(--brand),var(--brand2));box-shadow:0 12px 30px rgba(109,124,255,.28);font-weight:900}.logo img{width:100%;height:100%;object-fit:contain;padding:5px}.brand h1{margin:0;font-size:23px}.brand p{margin:5px 0 0;color:var(--muted);font-size:13px}.identity{position:relative;z-index:1;margin-top:24px;padding-top:18px;border-top:1px solid var(--line)}.eyebrow{color:var(--muted);font-size:12px;margin-bottom:7px}.identity strong{font-size:19px;word-break:break-word}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{border-radius:var(--r);padding:20px}.card h2{margin:0 0 16px;font-size:16px}.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stat{padding:14px;border:1px solid var(--line);border-radius:17px;background:rgba(255,255,255,.035)}.stat span{display:block;color:var(--muted);font-size:11px;margin-bottom:7px}.stat strong{display:block;font-size:15px;word-break:break-word}.status{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;font-size:12px;background:rgba(49,213,155,.12);color:var(--good)}.status.warn{background:rgba(255,191,91,.12);color:var(--warn)}.status.bad{background:rgba(255,100,124,.12);color:var(--bad)}.progress{height:11px;border-radius:999px;background:#202941;overflow:hidden;margin:15px 0 8px}.progress i{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--brand),var(--brand2));transition:width .45s}.progress-row{display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:11px}.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.btn{min-height:46px;border:1px solid var(--line);border-radius:15px;color:var(--text);background:rgba(255,255,255,.055);cursor:pointer;padding:9px 12px;transition:.2s}.btn:hover{transform:translateY(-1px);background:rgba(255,255,255,.09)}.btn.primary{border:0;background:linear-gradient(135deg,var(--brand),var(--brand2));font-weight:800}.btn small{display:block;color:var(--muted);font-size:10px;margin-top:2px}.btn.primary small{color:rgba(255,255,255,.78)}.links{display:grid;gap:9px}.sub-link{display:flex;align-items:center;gap:8px;padding:11px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.035)}.sub-link code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;direction:ltr;text-align:left;color:#cbd1ff;font-size:10px}.copy{flex:0 0 auto;min-width:64px;padding:8px 9px;border-radius:11px;border:1px solid var(--line);background:rgba(109,124,255,.12);color:#cbd1ff;cursor:pointer}.copy.done{color:var(--good)}.config-list{display:grid;gap:10px;max-height:520px;overflow:auto}.config{display:flex;align-items:center;gap:12px;border:1px solid var(--line);background:rgba(255,255,255,.035);border-radius:17px;padding:13px}.config-icon{width:40px;height:40px;flex:0 0 40px;border-radius:13px;display:grid;place-items:center;background:rgba(109,124,255,.13);font-size:18px}.config-main{min-width:0;flex:1}.config-name{font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.config-meta{color:var(--muted);font-size:10px;margin-top:5px;line-height:1.7}.config .copy{min-width:72px}.notice{margin-top:14px;border-radius:18px;padding:15px 17px;border:1px solid rgba(109,124,255,.2);background:rgba(109,124,255,.07);color:#dbe0ff;font-size:12px;line-height:2}.footer{text-align:center;color:var(--muted);font-size:10px;padding:18px 0 0}.toast{position:fixed;left:50%;bottom:20px;transform:translate(-50%,20px);opacity:0;pointer-events:none;padding:11px 15px;border-radius:14px;background:#171f35;border:1px solid var(--line);box-shadow:var(--shadow);transition:.25s;z-index:10;font-size:12px}.toast.show{transform:translate(-50%,0);opacity:1}.empty{color:var(--muted);text-align:center;padding:22px 8px;font-size:12px}@media(max-width:700px){.grid{grid-template-columns:1fr}.hero{padding:21px;border-radius:24px}.wrap{width:min(100% - 14px,980px);padding-top:8px}.actions{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}.brand h1{font-size:20px}.identity strong{font-size:17px}.config{align-items:flex-start}.config .copy{margin-top:2px}}
+</style>
 </head>
-<body
-  data-sub-url="{{ .subUrl }}"
-  data-json-url="{{ .subJsonUrl }}"
-  data-clash-url="{{ .subClashUrl }}"
-  data-expire="{{ .expire }}"
-  data-enabled="{{ .enabled }}"
-  data-used-byte="{{ .downloadByte }}"
-  data-upload-byte="{{ .uploadByte }}"
-  data-total-byte="{{ .totalByte }}"
-  data-datepicker="{{ .datepicker }}"
->
-  <main class="wrap">
-    <section class="hero">
-      <div class="brand">
-        <div class="logo">TV</div>
-        <div>
-          <h1>ToonelVPN</h1>
-          <p>صفحه اختصاصی مدیریت اشتراک شما</p>
-        </div>
-      </div>
-      <div class="user">
-        <div class="user-label">اشتراک فعال</div>
-        <div class="user-value">
-          {{ range .emails }}{{ . }} {{ end }}
-          {{ if not .emails }}اشتراک شما{{ end }}
-        </div>
-      </div>
-    </section>
-
-    <div class="grid">
-      <section class="card">
-        <h2>📊 وضعیت سرویس</h2>
-        <div id="status" class="status"><b>●</b><span>در حال بررسی...</span></div>
-        <div class="stats" style="margin-top:14px">
-          <div class="stat"><span>مصرف‌شده</span><strong>{{ .used }}</strong></div>
-          <div class="stat"><span>باقی‌مانده</span><strong>{{ .remained }}</strong></div>
-          <div class="stat"><span>حجم کل</span><strong>{{ .total }}</strong></div>
-          <div class="stat"><span>آپلود</span><strong>{{ .upload }}</strong></div>
-        </div>
-        <div class="progress"><i id="bar"></i></div>
-        <div class="progress-row"><span id="percent">۰٪ مصرف</span><span>{{ .download }}</span></div>
-      </section>
-
-      <section class="card">
-        <h2>⏳ زمان اشتراک</h2>
-        <div class="stats">
-          <div class="stat"><span>تاریخ انقضا</span><strong id="expiry">در حال محاسبه...</strong></div>
-          <div class="stat"><span>زمان باقی‌مانده</span><strong id="days">در حال محاسبه...</strong></div>
-          <div class="stat"><span>شناسه اشتراک</span><strong style="font-size:12px;direction:ltr;text-align:right">{{ .sId }}</strong></div>
-          <div class="stat"><span>آخرین اتصال</span><strong>{{ if .lastOnline }}ثبت شده{{ else }}هنوز ثبت نشده{{ end }}</strong></div>
-        </div>
-      </section>
-    </div>
-
-    <div class="grid" style="margin-top:14px">
-      <section class="card">
-        <h2>⚡ دسترسی سریع</h2>
-        <div class="actions">
-          <button class="btn primary" data-copy="sub">📋 کپی لینک اشتراک<small>برای V2Ray / Sing-box و سایر کلاینت‌ها</small></button>
-          <button class="btn" data-open="v2box">📱 نصب در V2Box<small>Android / iOS</small></button>
-          <button class="btn" data-open="v2rayng">🤖 افزودن به V2RayNG<small>Android</small></button>
-          <button class="btn" data-open="happ">🚀 افزودن به Happ<small>Android / iOS</small></button>
-          <button class="btn" data-copy="json">🧾 کپی لینک JSON<small>در صورت فعال بودن JSON</small></button>
-          <button class="btn" data-copy="clash">☁️ کپی لینک Clash<small>برای Clash / Mihomo</small></button>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>🔗 لینک‌های اشتراک</h2>
-        <div class="links">
-          <div class="sub-link"><code data-link="sub"></code><button class="copy" data-copy="sub">کپی</button></div>
-          <div class="sub-link" data-optional="json"><code data-link="json"></code><button class="copy" data-copy="json">کپی</button></div>
-          <div class="sub-link" data-optional="clash"><code data-link="clash"></code><button class="copy" data-copy="clash">کپی</button></div>
-        </div>
-      </section>
-    </div>
-
-    <section class="card" style="margin-top:14px">
-      <h2>🌐 کانفیگ‌های داخل اشتراک <span id="config-count" style="color:var(--muted);font-size:11px;font-weight:normal"></span></h2>
-      <div id="configs" class="config-list">
-        <div class="empty">در حال دریافت اطلاعات کانفیگ‌ها...</div>
-      </div>
-    </section>
-
-    {{ if .subSupportUrl }}
-    <section class="card" style="margin-top:14px">
-      <h2>🛟 پشتیبانی</h2>
-      <p style="color:var(--muted);font-size:13px;line-height:1.9;margin:0 0 13px">اگر در اتصال یا استفاده از سرویس مشکلی دارید، از طریق پشتیبانی ToonelVPN با ما در ارتباط باشید.</p>
-      <a class="btn primary" href="{{ .subSupportUrl }}" target="_blank" rel="noopener" style="display:block;text-align:center">ارتباط با پشتیبانی</a>
-    </section>
-    {{ end }}
-
-    <div class="footer">ToonelVPN · اشتراک امن و سریع شما</div>
-  </main>
-  <div id="toast" class="toast"></div>
-
-  <script>
-    (() => {
-      const body = document.body;
-      const subUrl = body.dataset.subUrl || '';
-      const jsonUrl = body.dataset.jsonUrl || '';
-      const clashUrl = body.dataset.clashUrl || '';
-      const expire = Number(body.dataset.expire || 0);
-      const enabled = body.dataset.enabled === 'true';
-      const down = Number(body.dataset.usedByte || 0);
-      const up = Number(body.dataset.uploadByte || 0);
-      const total = Number(body.dataset.totalByte || 0);
-      const used = down + up;
-      const toast = document.getElementById('toast');
-
-      const showToast = (text) => {
-        toast.textContent = text;
-        toast.classList.add('show');
-        clearTimeout(window.__toastTimer);
-        window.__toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
-      };
-
-      const copy = async (value, button) => {
-        if (!value) { showToast('این لینک در حال حاضر فعال نیست'); return; }
-        try {
-          await navigator.clipboard.writeText(value);
-          if (button) { button.classList.add('done'); button.textContent = '✓ کپی شد'; setTimeout(() => { button.classList.remove('done'); button.textContent = 'کپی'; }, 1300); }
-          showToast('لینک با موفقیت کپی شد');
-        } catch (_) { showToast('کپی خودکار انجام نشد؛ لینک را دستی انتخاب کنید'); }
-      };
-
-      const values = { sub: subUrl, json: jsonUrl, clash: clashUrl };
-      document.querySelectorAll('[data-link]').forEach(el => {
-        const key = el.dataset.link;
-        el.textContent = values[key] || 'فعال نیست';
-        if (!values[key]) el.closest('[data-optional]')?.remove();
-      });
-      document.querySelectorAll('[data-optional]').forEach(el => {
-        const key = el.dataset.optional;
-        if (!values[key]) el.remove();
-      });
-      document.querySelectorAll('[data-copy]').forEach(btn => btn.addEventListener('click', () => copy(values[btn.dataset.copy], btn)));
-
-      const openers = {
-        v2box: () => subUrl && `v2box://install-sub?url=${encodeURIComponent(subUrl)}&name=${encodeURIComponent('ToonelVPN')}`,
-        v2rayng: () => subUrl && `v2rayng://install-config?url=${encodeURIComponent(subUrl)}`,
-        happ: () => subUrl && `happ://add/${subUrl}`
-      };
-      document.querySelectorAll('[data-open]').forEach(btn => btn.addEventListener('click', () => {
-        const target = openers[btn.dataset.open]?.();
-        if (!target) { showToast('لینک اشتراک موجود نیست'); return; }
-        window.location.href = target;
-      }));
-
-      const status = document.getElementById('status');
-      const statusText = status.querySelector('span');
-      const now = Date.now();
-      if (!enabled) { status.className = 'status bad'; statusText.textContent = 'غیرفعال'; }
-      else if (total > 0 && used >= total) { status.className = 'status warn'; statusText.textContent = 'حجم تمام شده'; }
-      else if (expire > 0 && expire * 1000 <= now) { status.className = 'status bad'; statusText.textContent = 'منقضی شده'; }
-      else { status.className = 'status'; statusText.textContent = 'فعال'; }
-
-      const pct = total > 0 ? Math.min(100, Math.max(0, (used / total) * 100)) : 0;
-      document.getElementById('bar').style.width = pct + '%';
-      document.getElementById('percent').textContent = total > 0 ? Math.round(pct).toLocaleString('fa-IR') + '٪ مصرف' : 'حجم نامحدود';
-
-      const expiry = document.getElementById('expiry');
-      const days = document.getElementById('days');
-      if (!expire) {
-        expiry.textContent = 'بدون انقضا';
-        days.textContent = 'نامحدود';
-      } else {
-        const date = new Date(expire * 1000);
-        const jalali = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year:'numeric', month:'long', day:'numeric' }).format(date);
-        expiry.textContent = jalali;
-        const remaining = Math.max(0, expire * 1000 - Date.now());
-        const d = Math.floor(remaining / 86400000);
-        const h = Math.floor((remaining % 86400000) / 3600000);
-        days.textContent = d > 0 ? `${d.toLocaleString('fa-IR')} روز` : `${h.toLocaleString('fa-IR')} ساعت`;
-      }
-
-      const configs = document.getElementById('configs');
-      const linkNodes = [
-        {{ range .links }}
-        { url: "{{ . }}" },
-        {{ end }}
-      ];
-      if (!linkNodes.length) {
-        configs.innerHTML = '<div class="empty">کانفیگی برای نمایش وجود ندارد.</div>';
-      } else {
-        configs.innerHTML = '';
-        document.getElementById('config-count').textContent = `(${linkNodes.length.toLocaleString('fa-IR')} کانفیگ)`;
-        linkNodes.forEach((item, index) => {
-          let name = `کانفیگ ${index + 1}`;
-          try {
-            const raw = item.url.split('#')[1] || '';
-            if (raw) name = decodeURIComponent(raw);
-          } catch (_) {}
-          const row = document.createElement('div');
-          row.className = 'config';
-          const main = document.createElement('div');
-          main.className = 'config-main';
-          const title = document.createElement('div');
-          title.className = 'config-name';
-          title.textContent = name;
-          const meta = document.createElement('div');
-          meta.className = 'config-meta';
-          meta.textContent = 'کانفیگ شماره ' + (index + 1).toLocaleString('fa-IR');
-          main.append(title, meta);
-          const button = document.createElement('button');
-          button.className = 'copy';
-          button.textContent = 'کپی';
-          button.addEventListener('click', () => copy(item.url, button));
-          row.append(main, button);
-          configs.append(row);
-        });
-      }
-    })();
-  </script>
-</body>
-</html>
+<body data-sub-url="{{ .subUrl }}" data-json-url="{{ .subJsonUrl }}" data-clash-url="{{ .subClashUrl }}" data-expire="{{ .expire }}" data-enabled="{{ .enabled }}" data-used-byte="{{ .downloadByte }}" data-upload-byte="{{ .uploadByte }}" data-total-byte="{{ .totalByte }}">
+<main class="wrap">
+<section class="hero">
+<div class="brand"><div class="logo"><img src="data:image/png;base64,__TOONELVPN_LOGO_BASE64__" alt="ToonelVPN" onerror="this.style.display='none';this.parentElement.textContent='TV'"></div><div><h1>ToonelVPN</h1><p>مدیریت اشتراک اینترنت شما</p></div></div>
+<div class="identity"><div class="eyebrow">اشتراک فعال</div><strong id="identity">اشتراک شما</strong></div>
+</section>
+<div class="grid">
+<section class="card"><h2>📊 وضعیت سرویس</h2><div id="status" class="status"><b>●</b><span>در حال بررسی...</span></div><div class="stats" style="margin-top:14px"><div class="stat"><span>مصرف‌شده</span><strong>{{ .used }}</strong></div><div class="stat"><span>باقی‌مانده</span><strong>{{ .remained }}</strong></div><div class="stat"><span>حجم کل</span><strong>{{ .total }}</strong></div><div class="stat"><span>آپلود</span><strong>{{ .upload }}</strong></div></div><div class="progress"><i id="bar"></i></div><div class="progress-row"><span id="percent">۰٪ مصرف</span><span>{{ .download }}</span></div></section>
+<section class="card"><h2>⏳ زمان اشتراک</h2><div class="stats"><div class="stat"><span>تاریخ انقضا</span><strong id="expiry">در حال محاسبه...</strong></div><div class="stat"><span>زمان باقی‌مانده</span><strong id="days">در حال محاسبه...</strong></div><div class="stat"><span>شناسه اشتراک</span><strong style="font-size:11px;direction:ltr;text-align:right">{{ .sId }}</strong></div><div class="stat"><span>آخرین اتصال</span><strong>{{ if .lastOnline }}ثبت شده{{ else }}هنوز ثبت نشده{{ end }}</strong></div></div></section>
+</div>
+<div class="grid" style="margin-top:14px">
+<section class="card"><h2>⚡ دسترسی سریع</h2><div class="actions"><button class="btn primary" data-copy="sub">📋 کپی لینک اشتراک<small>V2Ray / Sing-box و کلاینت‌های سازگار</small></button><button class="btn" data-open="v2box">📱 افزودن به V2Box<small>Android / iOS</small></button><button class="btn" data-open="v2rayng">🤖 افزودن به V2RayNG<small>Android</small></button><button class="btn" data-open="happ">🚀 افزودن به Happ<small>Android / iOS</small></button><button class="btn" data-copy="json">🧾 کپی لینک JSON<small>در صورت فعال بودن</small></button><button class="btn" data-copy="clash">☁️ کپی لینک Clash<small>Clash / Mihomo</small></button></div></section>
+<section class="card"><h2>🔗 لینک‌های اشتراک</h2><div class="links"><div class="sub-link"><code data-link="sub"></code><button class="copy" data-copy="sub">کپی</button></div><div class="sub-link" data-optional="json"><code data-link="json"></code><button class="copy" data-copy="json">کپی</button></div><div class="sub-link" data-optional="clash"><code data-link="clash"></code><button class="copy" data-copy="clash">کپی</button></div></div></section>
+</div>
+<section class="card" style="margin-top:14px"><h2>🌐 کانفیگ‌های داخل اشتراک <span id="config-count" style="color:var(--muted);font-size:11px;font-weight:normal"></span></h2><div id="configs" class="config-list">{{ range $i, $link := .links }}<div class="config source-config" data-link="{{ $link }}" data-email="{{ index $.emails $i }}"><div class="config-icon">🌐</div><div class="config-main"><div class="config-name">در حال شناسایی...</div><div class="config-meta">در حال خواندن پروتکل و مشخصات اتصال</div></div><button class="copy" type="button">کپی</button></div>{{ else }}<div class="empty">کانفیگی در این اشتراک وجود ندارد.</div>{{ end }}</div></section>
+{{ if .announce }}<div class="notice">📢 {{ .announce }}</div>{{ end }}
+{{ if .subSupportUrl }}<section class="card" style="margin-top:14px"><h2>🛟 پشتیبانی ToonelVPN</h2><p style="color:var(--muted);font-size:12px;line-height:2;margin:0 0 12px">اگر در اتصال یا استفاده از سرویس مشکلی دارید، از طریق پشتیبانی ToonelVPN با ما در ارتباط باشید.</p><a class="btn primary" href="{{ .subSupportUrl }}" target="_blank" rel="noopener" style="display:block;text-align:center">ارتباط با پشتیبانی</a></section>{{ end }}
+<div class="footer">ToonelVPN · اشتراک امن، سریع و پایدار</div>
+</main><div id="toast" class="toast"></div>
+<script>
+(()=>{const b=document.body,sub=b.dataset.subUrl||'',json=b.dataset.jsonUrl||'',clash=b.dataset.clashUrl||'',exp=Number(b.dataset.expire||0),enabled=b.dataset.enabled==='true',down=Number(b.dataset.usedByte||0),up=Number(b.dataset.uploadByte||0),total=Number(b.dataset.totalByte||0),toast=document.getElementById('toast');
+const show=t=>{toast.textContent=t;toast.classList.add('show');clearTimeout(window.__tt);window.__tt=setTimeout(()=>toast.classList.remove('show'),1800)};
+const copy=async(v,btn)=>{if(!v){show('این لینک فعال نیست');return}try{await navigator.clipboard.writeText(v);if(btn){const old=btn.textContent;btn.textContent='✓ کپی شد';btn.classList.add('done');setTimeout(()=>{btn.textContent=old;btn.classList.remove('done')},1300)}show('لینک با موفقیت کپی شد')}catch(e){show('کپی خودکار انجام نشد')}};
+const vals={sub,json,clash};document.querySelectorAll('[data-link]').forEach(e=>{const k=e.dataset.link;e.textContent=vals[k]||'فعال نیست';if(!vals[k])e.closest('[data-optional]')?.remove()});document.querySelectorAll('[data-optional]').forEach(e=>{if(!vals[e.dataset.optional])e.remove()});document.querySelectorAll('[data-copy]').forEach(x=>x.addEventListener('click',()=>copy(vals[x.dataset.copy],x)));
+const openers={v2box:()=>sub&&`v2box://install-sub?url=${encodeURIComponent(sub)}&name=${encodeURIComponent('ToonelVPN')}`,v2rayng:()=>sub&&`v2rayng://install-config?url=${encodeURIComponent(sub)}`,happ:()=>sub&&`happ://add/${sub}`};document.querySelectorAll('[data-open]').forEach(x=>x.addEventListener('click',()=>{const u=openers[x.dataset.open]?.();if(!u){show('لینک اشتراک موجود نیست');return}location.href=u}));
+const status=document.getElementById('status'),st=status.querySelector('span'),used=down+up;if(!enabled){status.className='status bad';st.textContent='غیرفعال'}else if(total>0&&used>=total){status.className='status warn';st.textContent='حجم تمام شده'}else if(exp&&exp*1000<=Date.now()){status.className='status bad';st.textContent='منقضی شده'}else if(exp&&exp*1000-Date.now()<3*864e5){status.className='status warn';st.textContent='نزدیک انقضا'}else{st.textContent='فعال'}
+const pct=total?Math.min(100,Math.max(0,used/total*100)):0;document.getElementById('bar').style.width=pct+'%';document.getElementById('percent').textContent=total?Math.round(pct).toLocaleString('fa-IR')+'٪ مصرف':'حجم نامحدود';
+const ex=document.getElementById('expiry'),dy=document.getElementById('days');if(!exp){ex.textContent='بدون انقضا';dy.textContent='نامحدود'}else{const d=new Date(exp*1000);ex.textContent=new Intl.DateTimeFormat('fa-IR-u-ca-persian',{year:'numeric',month:'long',day:'numeric'}).format(d);const left=Math.max(0,exp*1000-Date.now());const days=Math.floor(left/864e5),hours=Math.floor(left%864e5/36e5);dy.textContent=days?`${days.toLocaleString('fa-IR')} روز`:hours?`${hours.toLocaleString('fa-IR')} ساعت`:'کمتر از یک ساعت'}
+const configs=[...document.querySelectorAll('.source-config')];const seen=new Map();let shown=0;const clean=s=>{try{return decodeURIComponent(s)}catch(e){return s}};const meta=link=>{const out={name:'کانفیگ',protocol:'نامشخص',transport:'نامشخص',security:'نامشخص'};try{const u=new URL(link);out.protocol=(u.protocol||'').replace(':','').toUpperCase();const p=u.searchParams;out.transport=(p.get('type')||p.get('network')||p.get('transport')||'tcp').toUpperCase();out.security=(p.get('security')||'none').toUpperCase();const hash=clean(u.hash.slice(1));if(hash)out.remark=hash.split('|')[0]}catch(e){}return out};
+configs.forEach(c=>{const link=c.dataset.link||'',email=c.dataset.email||'',m=meta(link);let name=m.remark||'کانفیگ';if(email&&name.toLowerCase().endsWith(('-'+email).toLowerCase()))name=name.slice(0,-email.length-1);if(!name||name==='کانفیگ')name='کانفیگ';const key=name.toLowerCase();if(!seen.has(key))seen.set(key,1);else{name+=` · ${seen.get(key)+1}`;seen.set(key,seen.get(key)+1)}c.querySelector('.config-name').textContent=name;c.querySelector('.config-meta').textContent=`${m.protocol}  ·  ${m.transport}  ·  ${m.security}`;c.querySelector('.copy').addEventListener('click',()=>copy(link,c.querySelector('.copy')));shown++});document.getElementById('config-count').textContent=`(${shown.toLocaleString('fa-IR')} کانفیگ)`;
+const emails=[...document.querySelectorAll('.source-config')].map(x=>x.dataset.email).filter(Boolean);const unique=[...new Set(emails)];document.getElementById('identity').textContent=unique.length===1?unique[0]:'اشتراک شما';
+})();
+</script>
+</body></html>
