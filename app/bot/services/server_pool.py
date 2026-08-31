@@ -3,6 +3,8 @@ import logging
 from dataclasses import dataclass
 
 from py3xui import AsyncApi
+
+from app.bot.services.xui_inbound_adapter import get_inbounds
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.config import Config
@@ -49,7 +51,7 @@ class ServerPoolService:
 
             api = self._build_api(server)
             try:
-                inbounds = await api.inbound.get_list()
+                inbounds = await get_inbounds(api)
                 if not inbounds:
                     raise RuntimeError("3X-UI API returned no inbounds")
 
@@ -84,7 +86,7 @@ class ServerPoolService:
     async def get_inbound_id(self, api: AsyncApi, preferred_id: int | None = None) -> int | None:
         """Return the requested inbound when it exists, otherwise the first inbound."""
         try:
-            inbounds = await api.inbound.get_list()
+            inbounds = await get_inbounds(api)
         except Exception as exception:
             logger.error(f"Failed to fetch inbounds: {exception}")
             return None
@@ -114,7 +116,7 @@ class ServerPoolService:
                 return []
 
         try:
-            return await connection.api.inbound.get_list()
+            return await get_inbounds(connection.api)
         except Exception as exception:
             logger.error(f"Failed to fetch inbounds for server {server.name}: {exception}")
             return []
@@ -154,7 +156,7 @@ class ServerPoolService:
     async def get_selected_inbounds(self, server: Server, api: AsyncApi):
         """Return configured live inbounds, preserving legacy fallback when none are configured."""
         try:
-            inbounds = await api.inbound.get_list()
+            inbounds = await get_inbounds(api)
         except Exception as exception:
             logger.error(f"Failed to fetch inbounds for server {server.name}: {exception}")
             return []
@@ -250,7 +252,7 @@ class ServerPoolService:
 
             for connection in connections:
                 try:
-                    inbounds = await connection.api.inbound.get_list()
+                    inbounds = await get_inbounds(connection.api)
                     total_inbounds += len(inbounds)
 
                 except Exception as exc:
