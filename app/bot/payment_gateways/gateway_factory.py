@@ -8,6 +8,7 @@ from app.bot.models import ServicesContainer
 from app.config import Config
 
 from ._gateway import PaymentGateway
+from .nahanramz import NahanRamz
 from .zarinpal import ZarinPal
 
 
@@ -44,3 +45,8 @@ class GatewayFactory:
 
         if config.shop.PAYMENT_ZARINPAL_ENABLED:
             self.register_gateway(ZarinPal(*dependencies))
+
+        # Keep NahanRamz registered before credentials exist so the admin UI
+        # can configure it without a code or .env change. The customer payment
+        # method remains disabled until the admin enables it.
+        self.register_gateway(NahanRamz(*dependencies))
