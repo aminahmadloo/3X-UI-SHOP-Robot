@@ -12,12 +12,11 @@ from aiohttp.web import Application, Request, Response
 from aiogram import Bot
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.utils.i18n import I18n
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import ServicesContainer, SubscriptionData
 from app.bot.payment_gateways._gateway import PaymentGateway
-from app.bot.utils.constants import Currency, NAHANRAMZ_WEBHOOK, TransactionStatus
-from app.bot.utils.navigation import NavSubscription
+from app.bot.utils.constants import Currency, TransactionStatus
 from app.config import Config
 from app.db.models import PaymentGatewaySettings, Transaction
 
@@ -28,13 +27,14 @@ class NahanRamz(PaymentGateway):
     """NahanRamz hosted checkout integration.
 
     This gateway is intentionally isolated from ZarinPal/card/wallet flows.
-    Secrets are read from the persistent admin-managed gateway settings so the
+    Secrets are read from persistent admin-managed gateway settings so the
     integration can be deployed before the merchant has an account.
     """
 
     name = "🪙 نهان رمز"
     currency = Currency.TOMAN
-    callback = NavSubscription.PAY_NAHANRAMZ
+    callback = "pay_nahanramz"
+    WEBHOOK_PATH = "/nahanramz"
     API_BASE_URL = "https://checkout.nahansepehr.ir"
     PAYMENT_SESSIONS_PATH = "/api/v1/payment-sessions"
     RATES_PATH = "/api/v1/rates"
@@ -57,7 +57,7 @@ class NahanRamz(PaymentGateway):
         self.bot = bot
         self.i18n = i18n
         self.services = services
-        self.app.router.add_post(NAHANRAMZ_WEBHOOK, self.webhook_handler)
+        self.app.router.add_post(self.WEBHOOK_PATH, self.webhook_handler)
         logger.info("NahanRamz payment gateway initialized.")
 
     async def _get_credentials(self) -> tuple[str | None, str | None]:
@@ -85,9 +85,7 @@ class NahanRamz(PaymentGateway):
             ) as response:
                 body = await response.json(content_type=None)
                 if response.status >= 400:
-                    raise RuntimeError(
-                        f"NahanRamz HTTP {response.status}: {body}"
-                    )
+                    raise RuntimeError(f"NahanRamz HTTP {response.status}: {body}")
                 return body
 
     @staticmethod
@@ -102,9 +100,7 @@ class NahanRamz(PaymentGateway):
 
     async def create_payment(self, data: SubscriptionData) -> str:
         if data.payment_kind not in {"subscription", "wallet_topup"}:
-            raise RuntimeError(
-                f"NahanRamz is not supported for payment kind: {data.payment_kind}"
-            )
+            raise RuntimeError(f"NahanRamz is not supported for payment kind: {data.payment_kind}")
 
         api_key, webhook_secret = await self._get_credentials()
         if not api_key:
@@ -114,18 +110,16 @@ class NahanRamz(PaymentGateway):
 
         amount = self._validate_toman(data.price)
         merchant_order_id = f"toonel-{uuid.uuid4().hex}"
-
-        payload = {
-            "merchant_order_id": merchant_order_id,
-            "amount": amount,
-            "currency": "IRT",
-            "processing_model": "MANAGED_CUSTODIAL",
-        }
         response = await self._request(
             "POST",
             self.PAYMENT_SESSIONS_PATH,
             api_key,
-            payload,
+            {
+                "merchant_order_id": merchant_order_id,
+                "amount": amount,
+                "currency": "IRT",
+                "processing_model": "MANAGED_CUSTODIAL",
+            },
         )
         checkout_url = str(response.get("checkout_url") or "").strip()
         if not checkout_url:
@@ -140,74 +134,40 @@ class NahanRamz(PaymentGateway):
                 status=TransactionStatus.PENDING,
             )
             if transaction is None:
-                raise RuntimeError(
-                    f"Could not create NahanRamz transaction {merchant_order_id}"
-                )
+                raise RuntimeError(f"Could not create NahanRamz transaction {merchant_order_id}")
 
-        logger.info(
-            "NahanRamz payment session created: user=%s order=%s",
-            data.user_id,
-            merchant_order_id,
-        )
+        logger.info("NahanRamz payment session created: user=%s order=%s", data.user_id, merchant_order_id)
         return checkout_url
 
     async def handle_payment_succeeded(self, payment_id: str) -> None:
         lock = self.storage.redis.lock(
-            f"payment:nahanramz:{payment_id}",
-            timeout=300,
-            blocking_timeout=10,
+            f"payment:nahanramz:{payment_id}", timeout=300, blocking_timeout=10
         )
         async with lock:
             async with self.session() as session:
-                transaction = await Transaction.get_by_id(
-                    session=session,
-                    payment_id=payment_id,
-                )
+                transaction = await Transaction.get_by_id(session=session, payment_id=payment_id)
                 if transaction is None:
-                    raise RuntimeError(
-                        f"NahanRamz transaction {payment_id} was not found"
-                    )
+                    raise RuntimeError(f"NahanRamz transaction {payment_id} was not found")
                 if transaction.status == TransactionStatus.COMPLETED:
-                    logger.info(
-                        "Ignoring duplicate NahanRamz success for %s",
-                        payment_id,
-                    )
+                    logger.info("Ignoring duplicate NahanRamz success for %s", payment_id)
                     return
                 if transaction.status == TransactionStatus.CANCELED:
-                    logger.warning(
-                        "Ignoring success for canceled NahanRamz transaction %s",
-                        payment_id,
-                    )
+                    logger.warning("Ignoring success for canceled NahanRamz transaction %s", payment_id)
                     return
-
             await self._on_payment_succeeded(payment_id)
 
     async def handle_payment_canceled(self, payment_id: str) -> None:
         async with self.session() as session:
-            transaction = await Transaction.get_by_id(
-                session=session,
-                payment_id=payment_id,
-            )
+            transaction = await Transaction.get_by_id(session=session, payment_id=payment_id)
             if transaction is None:
-                raise RuntimeError(
-                    f"NahanRamz transaction {payment_id} was not found"
-                )
+                raise RuntimeError(f"NahanRamz transaction {payment_id} was not found")
             if transaction.status == TransactionStatus.COMPLETED:
-                logger.info(
-                    "Ignoring cancellation for completed NahanRamz transaction %s",
-                    payment_id,
-                )
+                logger.info("Ignoring cancellation for completed NahanRamz transaction %s", payment_id)
                 return
         await self._on_payment_canceled(payment_id)
 
     @classmethod
-    def _verify_signature(
-        cls,
-        raw_body: bytes,
-        signature: str,
-        secret: str,
-        timestamp: str,
-    ) -> bool:
+    def _verify_signature(cls, raw_body: bytes, signature: str, secret: str, timestamp: str) -> bool:
         try:
             ts = int(timestamp)
         except (TypeError, ValueError):
@@ -215,9 +175,7 @@ class NahanRamz(PaymentGateway):
         if abs(int(time.time()) - ts) > cls.SIGNATURE_MAX_AGE_SECONDS:
             return False
         expected = "sha256=" + hmac.new(
-            secret.encode("utf-8"),
-            raw_body,
-            hashlib.sha256,
+            secret.encode("utf-8"), raw_body, hashlib.sha256
         ).hexdigest()
         return hmac.compare_digest(signature.strip(), expected)
 
@@ -233,14 +191,12 @@ class NahanRamz(PaymentGateway):
         if not webhook_secret:
             logger.error("NahanRamz webhook rejected: secret is not configured")
             return Response(text="webhook is not configured", status=503)
-
         if not self._verify_signature(raw_body, signature, webhook_secret, timestamp):
             logger.warning("NahanRamz webhook rejected: invalid signature/replay")
             return Response(text="invalid signature", status=401)
 
         try:
             import json
-
             payload = json.loads(raw_body.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):
             return Response(text="invalid json", status=400)
@@ -253,9 +209,7 @@ class NahanRamz(PaymentGateway):
         if environment != "live" or payload.get("livemode") is not True:
             logger.info(
                 "Ignoring non-live NahanRamz webhook: event=%s environment=%s delivery=%s",
-                event,
-                environment,
-                delivery_id,
+                event, environment, delivery_id,
             )
             return Response(text="ok", status=200)
 
@@ -274,16 +228,13 @@ class NahanRamz(PaymentGateway):
             elif event == "payment.review_required":
                 logger.warning(
                     "NahanRamz payment requires review: order=%s delivery=%s",
-                    merchant_order_id,
-                    delivery_id,
+                    merchant_order_id, delivery_id,
                 )
             return Response(text="ok", status=200)
         except Exception:
             logger.exception(
                 "NahanRamz webhook processing failed: event=%s order=%s delivery=%s",
-                event,
-                merchant_order_id,
-                delivery_id,
+                event, merchant_order_id, delivery_id,
             )
             return Response(text="retry", status=500)
 
@@ -293,5 +244,4 @@ class NahanRamz(PaymentGateway):
             raise RuntimeError("API Key تنظیم نشده است")
         if not webhook_secret:
             raise RuntimeError("Webhook Secret تنظیم نشده است")
-        response = await self._request("GET", self.RATES_PATH, api_key)
-        return response
+        return await self._request("GET", self.RATES_PATH, api_key)
