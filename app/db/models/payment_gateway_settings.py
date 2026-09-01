@@ -21,8 +21,10 @@ class PaymentGatewaySettings(Base):
     nahanramz_api_key: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     nahanramz_webhook_secret: Mapped[str] = mapped_column(String(500), nullable=False, default="")
 
-    # KPay credentials identify the shop/card already configured in KPay.
-    # Full card numbers are never stored in ToonelVPN.
+    # KPay: legacy column name is retained for DB compatibility. Its value is
+    # the KPay ACCOUNT ACCESS TOKEN used for Bearer authentication, not the
+    # Shop API key shown in the KPay dashboard. Shop/Card UUIDs are discovered
+    # automatically from KPay and cached below. Full card numbers are never stored.
     kpay_api_key: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     kpay_shop_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     kpay_card_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
