@@ -1,0 +1,26 @@
+Safe point: safe-after-nahanramz-gateway-20260901
+Date: 2026-09-01
+
+NahanRamz gateway implementation completed in the repository.
+
+Previous restore point:
+d98dfb31efc1987a176d8bf0da26a8043146e611
+
+Current implementation commit:
+07b664f829c73a31edbe3c4f1b54a4b4aa85dcd0
+
+Features included:
+- Isolated NahanRamz hosted payment gateway using MANAGED_CUSTODIAL.
+- IRT/Toman payment-session creation.
+- Signed HMAC webhook verification with timestamp/replay protection.
+- Webhook delivery idempotency via Redis.
+- CONFIRMED-only live fulfillment.
+- Sandbox events never provision real services.
+- Reuse of existing ToonelVPN subscription/renew/change/wallet fulfillment.
+- Admin UI configuration for API Key and Webhook Secret.
+- Admin API connection test.
+- Customer visibility toggle; NahanRamz starts disabled until configured.
+- Alembic migration for credentials and payment method registration.
+
+Deployment note:
+Run the project's normal database migration procedure before restarting the bot. Do not enable the customer payment method until valid NahanRamz credentials have been configured and the API connection test succeeds.
