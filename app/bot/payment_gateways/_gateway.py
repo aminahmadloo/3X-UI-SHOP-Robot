@@ -28,6 +28,7 @@ class PaymentGateway(ABC):
     name: str
     currency: Currency
     callback: str
+    wallet_reference_prefix: str = "payment"
 
     def __init__(self, app: Application, config: Config, session: async_sessionmaker, storage: RedisStorage, bot: Bot, i18n: I18n, services: ServicesContainer) -> None:
         self.app = app
@@ -67,8 +68,8 @@ class PaymentGateway(ABC):
                 user_tg_id=user.tg_id,
                 amount=int(data.price),
                 transaction_type="topup",
-                description="شارژ کیف پول از طریق درگاه بانکی",
-                reference_id=f"zarinpal:{payment_id}",
+                description=f"شارژ کیف پول از طریق {self.name}",
+                reference_id=f"{self.wallet_reference_prefix}:{payment_id}",
             )
             async with self.session() as session:
                 await Transaction.update(session=session, payment_id=payment_id, status=TransactionStatus.COMPLETED)
