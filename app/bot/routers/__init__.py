@@ -27,6 +27,7 @@ from .admin_tools.gift_promocode_handler import router as gift_promocode_router
 from .admin_tools.gift_reports_handler import router as gift_reports_router
 from .admin_tools.multi_card_settings_handler import router as multi_card_settings_router
 from .admin_tools.payment_gateway_settings_handler import router as payment_gateway_settings_router
+from .admin_tools.kpay_settings_handler import router as kpay_settings_router
 from .admin_tools.wallet_amounts_handler import router as wallet_amounts_router
 from .admin_tools.service_purchase_management_menu_handler import router as service_purchase_management_menu_router
 from .admin_tools.dynamic_service_period_handler import router as dynamic_service_period_router
@@ -117,5 +118,6 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         multi_card_settings_router,
         card_settings_router,
         payment_gateway_settings_router,
+        kpay_settings_router,
         wallet_amounts_router,
     )
