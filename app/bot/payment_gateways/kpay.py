@@ -3,14 +3,12 @@ from __future__ import annotations
 import logging
 import uuid
 from decimal import Decimal, InvalidOperation
-from urllib.parse import parse_qs
 
 from aiohttp import ClientSession, ClientTimeout
-from aiohttp.web import Request, Response
+from aiohttp.web import Application, Request, Response
 from aiogram import Bot
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.utils.i18n import I18n
-from aiohttp.web import Application
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import ServicesContainer, SubscriptionData
@@ -37,16 +35,7 @@ class KPay(PaymentGateway):
     API_BASE_URL = "https://kpay.website/api/v1"
     wallet_reference_prefix = "kpay"
 
-    def __init__(
-        self,
-        app: Application,
-        config: Config,
-        session: async_sessionmaker,
-        storage: RedisStorage,
-        bot: Bot,
-        i18n: I18n,
-        services: ServicesContainer,
-    ) -> None:
+    def __init__(self, app: Application, config: Config, session: async_sessionmaker, storage: RedisStorage, bot: Bot, i18n: I18n, services: ServicesContainer) -> None:
         self.app = app
         self.config = config
         self.session = session
@@ -63,32 +52,13 @@ class KPay(PaymentGateway):
             settings = await PaymentGatewaySettings.get(session)
             if settings is None:
                 return None, None, None
-            return (
-                settings.kpay_api_key.strip() or None,
-                settings.kpay_shop_id.strip() or None,
-                settings.kpay_card_id.strip() or None,
-            )
+            return settings.kpay_api_key.strip() or None, settings.kpay_shop_id.strip() or None, settings.kpay_card_id.strip() or None
 
-    async def _request(
-        self,
-        method: str,
-        path: str,
-        api_key: str,
-        payload: dict | None = None,
-    ) -> dict:
+    async def _request(self, method: str, path: str, api_key: str, payload: dict | None = None) -> dict:
         timeout = ClientTimeout(total=20)
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Accept": "application/json"}
         async with ClientSession(timeout=timeout) as client:
-            async with client.request(
-                method,
-                f"{self.API_BASE_URL}{path}",
-                json=payload,
-                headers=headers,
-            ) as response:
+            async with client.request(method, f"{self.API_BASE_URL}{path}", json=payload, headers=headers) as response:
                 body = await response.json(content_type=None)
                 if response.status >= 400:
                     raise RuntimeError(f"KPay HTTP {response.status}: {body}")
@@ -107,22 +77,9 @@ class KPay(PaymentGateway):
         return int(value)
 
     @staticmethod
-    def _extract(payload: dict, *keys: str) -> object | None:
-        for key in keys:
-            if key in payload and payload[key] is not None:
-                return payload[key]
-        return None
-
-    @classmethod
-    def _extract_authority(cls, request: Request) -> str:
-        candidates = [
-            request.query.get("authority"),
-            request.query.get("Authority"),
-            request.query.get("payment_id"),
-            request.query.get("transaction_id"),
-            request.query.get("id"),
-        ]
-        for value in candidates:
+    def _extract_authority(request: Request) -> str:
+        for key in ("authority", "Authority", "payment_id", "transaction_id", "id"):
+            value = request.query.get(key)
             if value and str(value).strip():
                 return str(value).strip()
         return ""
@@ -130,7 +87,6 @@ class KPay(PaymentGateway):
     async def create_payment(self, data: SubscriptionData) -> str:
         if data.payment_kind not in {"subscription", "wallet_topup"}:
             raise RuntimeError(f"KPay is not supported for payment kind: {data.payment_kind}")
-
         api_key, shop_id, card_id = await self._get_credentials()
         if not api_key or not shop_id or not card_id:
             raise RuntimeError("KPay API Key / Shop ID / Card ID are not fully configured")
@@ -139,11 +95,8 @@ class KPay(PaymentGateway):
         amount_rial = amount_toman * 10
         payment_id = f"toonel-kpay-{uuid.uuid4().hex}"
         callback_url = f"{self.config.bot.DOMAIN.rstrip('/')}{self.CALLBACK_PATH}"
-
         response = await self._request(
-            "POST",
-            "/transactions/create",
-            api_key,
+            "POST", "/transactions/create", api_key,
             {
                 "shop_id": shop_id,
                 "card_id": card_id,
@@ -154,16 +107,13 @@ class KPay(PaymentGateway):
                 "fee_side": "customer",
             },
         )
-
         authority = str(response.get("authority") or "").strip()
         payment_url = str(response.get("payment_url") or "").strip()
         remote_amount = response.get("amount")
         if not authority or not payment_url:
             raise RuntimeError(f"KPay response has no authority/payment_url: {response}")
         if remote_amount is not None and int(Decimal(str(remote_amount))) != amount_rial:
-            raise RuntimeError(
-                f"KPay amount mismatch while creating payment: expected={amount_rial} got={remote_amount}"
-            )
+            raise RuntimeError(f"KPay amount mismatch while creating payment: expected={amount_rial} got={remote_amount}")
 
         async with self.session() as session:
             transaction = await Transaction.create(
@@ -175,15 +125,7 @@ class KPay(PaymentGateway):
             )
             if transaction is None:
                 raise RuntimeError(f"Could not create KPay transaction {authority}")
-
-        # Keep the authority as the local payment id. The factor number sent to
-        # KPay remains the unique ToonelVPN invoice reference.
-        logger.info(
-            "KPay payment created: user=%s authority=%s expected_rials=%s",
-            data.user_id,
-            authority,
-            amount_rial,
-        )
+        logger.info("KPay payment created: user=%s authority=%s expected_rials=%s", data.user_id, authority, amount_rial)
         return payment_url
 
     async def _verify_remote_payment(self, authority: str, expected_rials: int) -> bool:
@@ -191,23 +133,15 @@ class KPay(PaymentGateway):
         if not api_key:
             raise RuntimeError("KPay API key is not configured")
 
-        # Verify is the authoritative endpoint. If it still reports pending,
-        # check is used as a lightweight fallback for callback timing races.
-        response = await self._request(
-            "POST",
-            "/transactions/verify",
-            api_key,
-            {"authority": authority},
-        )
+        check = await self._request("GET", f"/transactions/check/{authority}", api_key)
+        check_status = str(check.get("status") or "").lower()
+        check_paid = bool(check.get("is_paid")) or check_status in {"paid", "completed", "success", "successful", "verified", "confirmed"}
+        if not check_paid:
+            return False
+
+        response = await self._request("POST", "/transactions/verify", api_key, {"authority": authority})
         status = str(response.get("status") or "").lower()
-        paid = bool(response.get("is_paid")) or status in {
-            "paid",
-            "completed",
-            "success",
-            "successful",
-            "verified",
-            "confirmed",
-        }
+        paid = bool(response.get("is_paid")) or status in {"paid", "completed", "success", "successful", "verified", "confirmed"}
         amount = response.get("amount")
         if amount is not None:
             try:
@@ -215,32 +149,11 @@ class KPay(PaymentGateway):
             except (InvalidOperation, ValueError):
                 raise RuntimeError(f"KPay returned invalid verified amount: {amount}")
             if verified_rials != expected_rials:
-                raise RuntimeError(
-                    f"KPay amount mismatch: expected={expected_rials} got={verified_rials} authority={authority}"
-                )
-        if paid:
-            return True
-
-        check = await self._request(
-            "GET",
-            f"/transactions/check/{authority}",
-            api_key,
-        )
-        check_status = str(check.get("status") or "").lower()
-        check_paid = bool(check.get("is_paid")) or check_status in {
-            "paid",
-            "completed",
-            "success",
-            "successful",
-            "verified",
-            "confirmed",
-        }
-        return check_paid
+                raise RuntimeError(f"KPay amount mismatch: expected={expected_rials} got={verified_rials} authority={authority}")
+        return paid
 
     async def handle_payment_succeeded(self, payment_id: str) -> None:
-        lock = self.storage.redis.lock(
-            f"payment:kpay:{payment_id}", timeout=300, blocking_timeout=10
-        )
+        lock = self.storage.redis.lock(f"payment:kpay:{payment_id}", timeout=300, blocking_timeout=10)
         async with lock:
             async with self.session() as session:
                 transaction = await Transaction.get_by_id(session=session, payment_id=payment_id)
@@ -253,13 +166,11 @@ class KPay(PaymentGateway):
                     logger.warning("Ignoring success for canceled KPay transaction %s", payment_id)
                     return
                 data = SubscriptionData.deserialize(transaction.subscription)
-
             expected_rials = self._validate_toman(data.price) * 10
             paid = await self._verify_remote_payment(payment_id, expected_rials)
             if not paid:
                 logger.info("KPay callback arrived before payment confirmation: %s", payment_id)
                 return
-
             await self._on_payment_succeeded(payment_id)
 
     async def handle_payment_canceled(self, payment_id: str) -> None:
@@ -275,38 +186,16 @@ class KPay(PaymentGateway):
     async def callback_handler(self, request: Request) -> Response:
         authority = self._extract_authority(request)
         if not authority:
-            return Response(
-                text="پرداخت نامشخص است؛ کد تراکنش دریافت نشد.",
-                status=400,
-                content_type="text/plain",
-                charset="utf-8",
-            )
-
+            return Response(text="پرداخت نامشخص است؛ کد تراکنش دریافت نشد.", status=400, content_type="text/plain", charset="utf-8")
         try:
             await self.handle_payment_succeeded(authority)
         except RuntimeError as exc:
             logger.warning("KPay callback rejected: authority=%s error=%s", authority, exc)
-            return Response(
-                text=f"پرداخت قابل تأیید نیست.\n{str(exc)[:500]}",
-                status=400,
-                content_type="text/plain",
-                charset="utf-8",
-            )
+            return Response(text=f"پرداخت قابل تأیید نیست.\n{str(exc)[:500]}", status=400, content_type="text/plain", charset="utf-8")
         except Exception:
             logger.exception("KPay callback processing failed: authority=%s", authority)
-            return Response(
-                text="خطا در تأیید پرداخت. لطفاً چند لحظه بعد وضعیت سرویس را بررسی کنید.",
-                status=500,
-                content_type="text/plain",
-                charset="utf-8",
-            )
-
-        return Response(
-            text="پرداخت شما با موفقیت تأیید شد. پیام تحویل سرویس در تلگرام برای شما ارسال می‌شود.",
-            status=200,
-            content_type="text/plain",
-            charset="utf-8",
-        )
+            return Response(text="خطا در تأیید پرداخت. لطفاً چند لحظه بعد وضعیت سرویس را بررسی کنید.", status=500, content_type="text/plain", charset="utf-8")
+        return Response(text="پرداخت شما با موفقیت تأیید شد. پیام تحویل سرویس در تلگرام برای شما ارسال می‌شود.", status=200, content_type="text/plain", charset="utf-8")
 
     async def test_connection(self) -> dict:
         api_key, shop_id, card_id = await self._get_credentials()
@@ -316,7 +205,6 @@ class KPay(PaymentGateway):
             raise RuntimeError("Shop ID تنظیم نشده است")
         if not card_id:
             raise RuntimeError("Card ID تنظیم نشده است")
-
         shops = await self._request("GET", "/shops", api_key)
         cards = await self._request("GET", "/cards", api_key)
         shop_items = shops.get("shops") or []
@@ -331,9 +219,4 @@ class KPay(PaymentGateway):
             raise RuntimeError("Shop انتخاب‌شده در KPay غیرفعال است")
         if card.get("is_active") is False:
             raise RuntimeError("Card انتخاب‌شده در KPay غیرفعال است")
-
-        return {
-            "shop": shop,
-            "card": card,
-            "callback_url": f"{self.config.bot.DOMAIN.rstrip('/')}{self.CALLBACK_PATH}",
-        }
+        return {"shop": shop, "card": card, "callback_url": f"{self.config.bot.DOMAIN.rstrip('/')}{self.CALLBACK_PATH}"}
