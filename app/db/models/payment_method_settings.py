@@ -21,32 +21,22 @@ class PaymentMethodSettings(Base):
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=100, index=True)
 
     @classmethod
-    async def get_by_key(
-        cls,
-        session: AsyncSession,
-        method_key: str,
-    ) -> Self | None:
-        result = await session.execute(
-            select(cls).where(cls.method_key == method_key)
-        )
+    async def get_by_key(cls, session: AsyncSession, method_key: str) -> Self | None:
+        result = await session.execute(select(cls).where(cls.method_key == method_key))
         return result.scalar_one_or_none()
 
     @classmethod
-    async def ensure_defaults(
-        cls,
-        session: AsyncSession,
-        gateways: Iterable[object] = (),
-    ) -> list[Self]:
-        """Ensure built-in methods and currently registered gateways exist.
+    async def ensure_defaults(cls, session: AsyncSession, gateways: Iterable[object] = ()) -> list[Self]:
+        """Ensure built-in methods and registered gateways exist.
 
-        Gateway callbacks are used as stable keys, so newly registered gateways
-        automatically become manageable from the admin UI without another
-        schema change.
+        New gateways are automatically manageable from the admin UI. NahanRamz
+        starts disabled because its credentials are intentionally absent on a
+        fresh deployment.
         """
-        defaults: list[tuple[str, str, int]] = [
-            ("pay_zarinpal", "🏦 زرین‌پال", 10),
-            ("mp_card", "💳 کارت به کارت", 20),
-            ("mp_wallet", "💰 کیف پول", 30),
+        defaults: list[tuple[str, str, int, bool]] = [
+            ("pay_zarinpal", "🏦 زرین‌پال", 10, True),
+            ("mp_card", "💳 کارت به کارت", 20, True),
+            ("mp_wallet", "💰 کیف پول", 30, True),
         ]
 
         for gateway in gateways:
@@ -55,25 +45,23 @@ class PaymentMethodSettings(Base):
             callback = str(callback or "").strip()
             if not callback:
                 continue
-
             name = str(getattr(gateway, "name", callback) or callback)
-            if not any(key == callback for key, _, _ in defaults):
-                defaults.append((callback, name, 100 + len(defaults)))
+            if not any(key == callback for key, _, _, _ in defaults):
+                enabled = callback != "pay_nahanramz"
+                defaults.append((callback, name, 100 + len(defaults), enabled))
 
         existing = {
             item.method_key: item
-            for item in (
-                await session.execute(select(cls).order_by(cls.sort_order, cls.id))
-            ).scalars().all()
+            for item in (await session.execute(select(cls).order_by(cls.sort_order, cls.id))).scalars().all()
         }
 
-        for key, name, sort_order in defaults:
+        for key, name, sort_order, default_enabled in defaults:
             item = existing.get(key)
             if item is None:
                 item = cls(
                     method_key=key,
                     display_name=name,
-                    enabled=True,
+                    enabled=default_enabled,
                     sort_order=sort_order,
                 )
                 session.add(item)
@@ -85,21 +73,13 @@ class PaymentMethodSettings(Base):
         return sorted(existing.values(), key=lambda item: (item.sort_order, item.id))
 
     @classmethod
-    async def get_enabled_keys(
-        cls,
-        session: AsyncSession,
-        gateways: Iterable[object] = (),
-    ) -> set[str]:
+    async def get_enabled_keys(cls, session: AsyncSession, gateways: Iterable[object] = ()) -> set[str]:
         items = await cls.ensure_defaults(session, gateways)
         await session.commit()
         return {item.method_key for item in items if item.enabled}
 
     @classmethod
-    async def get_manageable(
-        cls,
-        session: AsyncSession,
-        gateways: Iterable[object] = (),
-    ) -> list[Self]:
+    async def get_manageable(cls, session: AsyncSession, gateways: Iterable[object] = ()) -> list[Self]:
         items = await cls.ensure_defaults(session, gateways)
         await session.commit()
         return items
