@@ -47,8 +47,11 @@ class PaymentMethodSettings(Base):
                 continue
             name = str(getattr(gateway, "name", callback) or callback)
             if not any(key == callback for key, _, _, _ in defaults):
-                enabled = callback != "pay_nahanramz"
-                defaults.append((callback, name, 100 + len(defaults), enabled))
+                if callback == "pay_nahanramz":
+                    sort_order, enabled = 15, False
+                else:
+                    sort_order, enabled = 100 + len(defaults), True
+                defaults.append((callback, name, sort_order, enabled))
 
         existing = {
             item.method_key: item
