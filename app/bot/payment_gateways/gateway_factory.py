@@ -8,6 +8,7 @@ from app.bot.models import ServicesContainer
 from app.config import Config
 
 from ._gateway import PaymentGateway
+from .kpay import KPay
 from .nahanramz import NahanRamz
 from .zarinpal import ZarinPal
 
@@ -50,3 +51,7 @@ class GatewayFactory:
         # can configure it without a code or .env change. The customer payment
         # method remains disabled until the admin enables it.
         self.register_gateway(NahanRamz(*dependencies))
+
+        # KPay is independently configurable from the admin panel. Its payment
+        # method is disabled by default until API key/shop/card are configured.
+        self.register_gateway(KPay(*dependencies))
