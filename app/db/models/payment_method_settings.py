@@ -30,8 +30,8 @@ class PaymentMethodSettings(Base):
         """Ensure built-in methods and registered gateways exist.
 
         New gateways are automatically manageable from the admin UI. NahanRamz
-        starts disabled because its credentials are intentionally absent on a
-        fresh deployment.
+        and KPay start disabled because their credentials are intentionally
+        absent on a fresh deployment.
         """
         defaults: list[tuple[str, str, int, bool]] = [
             ("pay_zarinpal", "🏦 زرین‌پال", 10, True),
@@ -49,6 +49,8 @@ class PaymentMethodSettings(Base):
             if not any(key == callback for key, _, _, _ in defaults):
                 if callback == "pay_nahanramz":
                     sort_order, enabled = 15, False
+                elif callback == "pay_kpay":
+                    sort_order, enabled = 16, False
                 else:
                     sort_order, enabled = 100 + len(defaults), True
                 defaults.append((callback, name, sort_order, enabled))
