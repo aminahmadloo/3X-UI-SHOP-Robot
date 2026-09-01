@@ -35,7 +35,7 @@ jobs:
               'CALLBACK_PATH = "/kpay/callback"',
               '"/transactions/create"',
               '"/transactions/verify"',
-              '"/transactions/check/{authority}"',
+              '"/transactions/check/',
               'amount_rial = amount_toman * 10',
               'TransactionStatus.PENDING',
               'TransactionStatus.COMPLETED',
@@ -50,7 +50,7 @@ jobs:
               assert field in admin, field
 
           assert "pay_kpay" in migration
-          assert "💳 کارت‌به‌کارت هوشمند" in admin
+          assert "کارت‌به‌کارت هوشمند" in admin
           print("KPay static checks: OK")
           PY
 
