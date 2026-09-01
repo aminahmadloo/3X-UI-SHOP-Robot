@@ -25,6 +25,7 @@ def menu_markup(settings: PaymentGatewaySettings | None) -> InlineKeyboardMarkup
     rows = [
         [InlineKeyboardButton(text="✏️ ویرایش مسیر پرداخت زرین‌پال", callback_data="paymentgateway:edit_zarinpal_url")],
         [InlineKeyboardButton(text="🪙 تنظیمات نهان رمز", callback_data="paymentgateway:nahanramz")],
+        [InlineKeyboardButton(text="💳 تنظیمات کارت‌به‌کارت هوشمند", callback_data="paymentgateway:kpay")],
     ]
     if configured:
         rows.append([InlineKeyboardButton(text="🔴 استفاده مستقیم از زرین‌پال", callback_data="paymentgateway:disable_custom_url")])
@@ -255,10 +256,16 @@ async def toggle_payment_method(callback: CallbackQuery, session: AsyncSession, 
         await callback.answer("❌ روش پرداخت پیدا نشد.", show_alert=True)
         return
 
-    if not method.enabled and method.method_key == "pay_nahanramz":
+    if not method.enabled and method.method_key in {"pay_nahanramz", "pay_kpay"}:
         settings = await PaymentGatewaySettings.get(session)
-        if not settings or not settings.nahanramz_configured:
-            await callback.answer("❌ ابتدا API Key و Webhook Secret نهان رمز را تنظیم کنید.", show_alert=True)
+        if method.method_key == "pay_nahanramz":
+            ready = bool(settings and settings.nahanramz_configured)
+            message = "❌ ابتدا API Key و Webhook Secret نهان رمز را تنظیم کنید."
+        else:
+            ready = bool(settings and settings.kpay_configured)
+            message = "❌ ابتدا API Key، Shop ID و Card ID KPay را تنظیم کنید."
+        if not ready:
+            await callback.answer(message, show_alert=True)
             return
 
     if method.enabled:
