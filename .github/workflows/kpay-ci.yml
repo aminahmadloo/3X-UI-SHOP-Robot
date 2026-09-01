@@ -1,0 +1,58 @@
+name: KPay Integration CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Syntax check
+        run: python -m compileall -q app
+
+      - name: Static KPay checks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          kpay = Path("app/bot/payment_gateways/kpay.py").read_text()
+          model = Path("app/db/models/payment_gateway_settings.py").read_text()
+          migration = Path("app/db/migration/versions/20260901_add_kpay_credentials.py").read_text()
+          admin = Path("app/bot/routers/admin_tools/kpay_settings_handler.py").read_text()
+
+          required = [
+              'callback = "pay_kpay"',
+              'CALLBACK_PATH = "/kpay/callback"',
+              '"/transactions/create"',
+              '"/transactions/verify"',
+              '"/transactions/check/{authority}"',
+              'amount_rial = amount_toman * 10',
+              'TransactionStatus.PENDING',
+              'TransactionStatus.COMPLETED',
+              'self._on_payment_succeeded(payment_id)',
+          ]
+          for item in required:
+              assert item in kpay, item
+
+          for field in ("kpay_api_key", "kpay_shop_id", "kpay_card_id"):
+              assert field in model, field
+              assert field in migration, field
+              assert field in admin, field
+
+          assert "pay_kpay" in migration
+          assert "💳 کارت‌به‌کارت هوشمند" in admin
+          print("KPay static checks: OK")
+          PY
+
+      - name: Docker build
+        run: docker build --pull -t toonelvpn-kpay-ci .
