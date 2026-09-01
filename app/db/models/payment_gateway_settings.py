@@ -21,6 +21,12 @@ class PaymentGatewaySettings(Base):
     nahanramz_api_key: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     nahanramz_webhook_secret: Mapped[str] = mapped_column(String(500), nullable=False, default="")
 
+    # KPay credentials identify the shop/card already configured in KPay.
+    # Full card numbers are never stored in ToonelVPN.
+    kpay_api_key: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    kpay_shop_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    kpay_card_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+
     @classmethod
     async def get(cls, session: AsyncSession) -> Self | None:
         result = await session.execute(select(cls).where(cls.id == 1))
@@ -29,3 +35,11 @@ class PaymentGatewaySettings(Base):
     @property
     def nahanramz_configured(self) -> bool:
         return bool(self.nahanramz_api_key.strip() and self.nahanramz_webhook_secret.strip())
+
+    @property
+    def kpay_configured(self) -> bool:
+        return bool(
+            self.kpay_api_key.strip()
+            and self.kpay_shop_id.strip()
+            and self.kpay_card_id.strip()
+        )
