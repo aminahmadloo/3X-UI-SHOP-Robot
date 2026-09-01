@@ -24,12 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class NahanRamz(PaymentGateway):
-    """NahanRamz hosted checkout integration.
-
-    This gateway is intentionally isolated from ZarinPal/card/wallet flows.
-    Secrets are read from persistent admin-managed gateway settings so the
-    integration can be deployed before the merchant has an account.
-    """
+    """NahanRamz hosted checkout integration."""
 
     name = "🪙 نهان رمز"
     currency = Currency.TOMAN
@@ -39,17 +34,9 @@ class NahanRamz(PaymentGateway):
     PAYMENT_SESSIONS_PATH = "/api/v1/payment-sessions"
     RATES_PATH = "/api/v1/rates"
     SIGNATURE_MAX_AGE_SECONDS = 300
+    wallet_reference_prefix = "nahanramz"
 
-    def __init__(
-        self,
-        app: Application,
-        config: Config,
-        session: async_sessionmaker,
-        storage: RedisStorage,
-        bot: Bot,
-        i18n: I18n,
-        services: ServicesContainer,
-    ) -> None:
+    def __init__(self, app: Application, config: Config, session: async_sessionmaker, storage: RedisStorage, bot: Bot, i18n: I18n, services: ServicesContainer) -> None:
         self.app = app
         self.config = config
         self.session = session
@@ -65,24 +52,13 @@ class NahanRamz(PaymentGateway):
             settings = await PaymentGatewaySettings.get(session)
             if settings is None:
                 return None, None
-            return (
-                settings.nahanramz_api_key.strip() or None,
-                settings.nahanramz_webhook_secret.strip() or None,
-            )
+            return settings.nahanramz_api_key.strip() or None, settings.nahanramz_webhook_secret.strip() or None
 
     async def _request(self, method: str, path: str, api_key: str, payload: dict | None = None) -> dict:
         timeout = ClientTimeout(total=20)
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         async with ClientSession(timeout=timeout) as client:
-            async with client.request(
-                method,
-                f"{self.API_BASE_URL}{path}",
-                json=payload,
-                headers=headers,
-            ) as response:
+            async with client.request(method, f"{self.API_BASE_URL}{path}", json=payload, headers=headers) as response:
                 body = await response.json(content_type=None)
                 if response.status >= 400:
                     raise RuntimeError(f"NahanRamz HTTP {response.status}: {body}")
@@ -101,14 +77,12 @@ class NahanRamz(PaymentGateway):
     async def create_payment(self, data: SubscriptionData) -> str:
         if data.payment_kind not in {"subscription", "wallet_topup"}:
             raise RuntimeError(f"NahanRamz is not supported for payment kind: {data.payment_kind}")
-
         api_key, webhook_secret = await self._get_credentials()
         if not api_key:
             raise RuntimeError("NahanRamz API key is not configured")
         if not webhook_secret:
             raise RuntimeError("NahanRamz webhook secret is not configured")
 
-        amount = self._validate_toman(data.price)
         merchant_order_id = f"toonel-{uuid.uuid4().hex}"
         response = await self._request(
             "POST",
@@ -116,7 +90,7 @@ class NahanRamz(PaymentGateway):
             api_key,
             {
                 "merchant_order_id": merchant_order_id,
-                "amount": amount,
+                "amount": self._validate_toman(data.price),
                 "currency": "IRT",
                 "processing_model": "MANAGED_CUSTODIAL",
             },
@@ -135,14 +109,11 @@ class NahanRamz(PaymentGateway):
             )
             if transaction is None:
                 raise RuntimeError(f"Could not create NahanRamz transaction {merchant_order_id}")
-
         logger.info("NahanRamz payment session created: user=%s order=%s", data.user_id, merchant_order_id)
         return checkout_url
 
     async def handle_payment_succeeded(self, payment_id: str) -> None:
-        lock = self.storage.redis.lock(
-            f"payment:nahanramz:{payment_id}", timeout=300, blocking_timeout=10
-        )
+        lock = self.storage.redis.lock(f"payment:nahanramz:{payment_id}", timeout=300, blocking_timeout=10)
         async with lock:
             async with self.session() as session:
                 transaction = await Transaction.get_by_id(session=session, payment_id=payment_id)
@@ -174,9 +145,7 @@ class NahanRamz(PaymentGateway):
             return False
         if abs(int(time.time()) - ts) > cls.SIGNATURE_MAX_AGE_SECONDS:
             return False
-        expected = "sha256=" + hmac.new(
-            secret.encode("utf-8"), raw_body, hashlib.sha256
-        ).hexdigest()
+        expected = "sha256=" + hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
         return hmac.compare_digest(signature.strip(), expected)
 
     async def webhook_handler(self, request: Request) -> Response:
@@ -205,12 +174,17 @@ class NahanRamz(PaymentGateway):
             logger.info("NahanRamz webhook test received: delivery=%s", delivery_id)
             return Response(text="ok", status=200)
 
+        if delivery_id:
+            accepted = await self.storage.redis.set(
+                f"nahanramz:webhook:{delivery_id}", "1", ex=86400, nx=True
+            )
+            if not accepted:
+                logger.info("Ignoring duplicate NahanRamz delivery %s", delivery_id)
+                return Response(text="ok", status=200)
+
         # Sandbox events must never provision a real service.
         if environment != "live" or payload.get("livemode") is not True:
-            logger.info(
-                "Ignoring non-live NahanRamz webhook: event=%s environment=%s delivery=%s",
-                event, environment, delivery_id,
-            )
+            logger.info("Ignoring non-live NahanRamz webhook: event=%s environment=%s delivery=%s", event, environment, delivery_id)
             return Response(text="ok", status=200)
 
         payment = payload.get("payment") or {}
@@ -226,16 +200,10 @@ class NahanRamz(PaymentGateway):
             elif event in {"payment.expired", "payment.failed", "payment.create_failed"}:
                 await self.handle_payment_canceled(merchant_order_id)
             elif event == "payment.review_required":
-                logger.warning(
-                    "NahanRamz payment requires review: order=%s delivery=%s",
-                    merchant_order_id, delivery_id,
-                )
+                logger.warning("NahanRamz payment requires review: order=%s delivery=%s", merchant_order_id, delivery_id)
             return Response(text="ok", status=200)
         except Exception:
-            logger.exception(
-                "NahanRamz webhook processing failed: event=%s order=%s delivery=%s",
-                event, merchant_order_id, delivery_id,
-            )
+            logger.exception("NahanRamz webhook processing failed: event=%s order=%s delivery=%s", event, merchant_order_id, delivery_id)
             return Response(text="retry", status=500)
 
     async def test_connection(self) -> dict:
