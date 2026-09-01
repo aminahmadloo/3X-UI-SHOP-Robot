@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0b1020">
+<title>تونل وی پی ان | ToonelVPN</title>
+<style>
+:root{color-scheme:dark;--bg:#070b16;--panel:rgba(16,23,43,.84);--line:rgba(255,255,255,.09);--text:#f6f8ff;--muted:#9da8c2;--brand:#6d7cff;--brand2:#8f6cff;--good:#31d59b;--warn:#ffbf5b;--bad:#ff647c;--shadow:0 24px 70px rgba(0,0,0,.35);--r:24px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;min-height:100vh;font-family:Tahoma,"Segoe UI",system-ui,sans-serif;color:var(--text);background:radial-gradient(circle at 15% 0%,rgba(109,124,255,.2),transparent 30%),radial-gradient(circle at 85% 10%,rgba(143,108,255,.17),transparent 28%),linear-gradient(160deg,#060914,#0b1020 55%,#080b15)}
+a{color:inherit;text-decoration:none}button{font:inherit}.wrap{width:min(980px,calc(100% - 24px));margin:auto;padding:18px 0 40px}.hero,.card{border:1px solid var(--line);background:var(--panel);box-shadow:var(--shadow);backdrop-filter:blur(18px)}.hero{position:relative;overflow:hidden;border-radius:30px;padding:26px;margin-bottom:14px;background:linear-gradient(145deg,rgba(25,34,64,.96),rgba(10,15,30,.88))}.hero:after{content:"";position:absolute;width:280px;height:280px;border-radius:50%;background:rgba(109,124,255,.13);filter:blur(12px);left:-110px;top:-150px}.brand{display:flex;align-items:center;gap:14px;position:relative;z-index:1}.logo{width:64px;height:64px;border-radius:19px;display:grid;place-items:center;overflow:hidden;background:linear-gradient(135deg,var(--brand),var(--brand2));box-shadow:0 12px 30px rgba(109,124,255,.28);font-weight:900}.logo img{width:100%;height:100%;object-fit:contain;padding:5px}.brand h1{margin:0;font-size:23px}.brand-en{font-weight:700;opacity:.92;direction:ltr;unicode-bidi:isolate}.brand p{margin:5px 0 0;color:var(--muted);font-size:13px}.identity{position:relative;z-index:1;margin-top:24px;padding-top:18px;border-top:1px solid var(--line)}.eyebrow{color:var(--muted);font-size:12px;margin-bottom:7px}.identity strong{font-size:19px;word-break:break-word}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{border-radius:var(--r);padding:20px}.card h2{margin:0 0 16px;font-size:16px}.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stat{padding:14px;border:1px solid var(--line);border-radius:17px;background:rgba(255,255,255,.035)}.stat span{display:block;color:var(--muted);font-size:11px;margin-bottom:7px}.stat strong{display:block;font-size:15px;word-break:break-word}.status{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;font-size:12px;background:rgba(49,213,155,.12);color:var(--good)}.status.warn{background:rgba(255,191,91,.12);color:var(--warn)}.status.bad{background:rgba(255,100,124,.12);color:var(--bad)}.progress{height:11px;border-radius:999px;background:#202941;overflow:hidden;margin:15px 0 8px}.progress i{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--brand),var(--brand2));transition:width .45s}.progress-row{display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:11px}.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.btn{min-height:46px;border:1px solid var(--line);border-radius:15px;color:var(--text);background:rgba(255,255,255,.055);cursor:pointer;padding:9px 12px;transition:.2s}.btn:hover{transform:translateY(-1px);background:rgba(255,255,255,.09)}.btn.primary{border:0;background:linear-gradient(135deg,var(--brand),var(--brand2));font-weight:800}.btn small{display:block;color:var(--muted);font-size:10px;margin-top:2px}.btn.primary small{color:rgba(255,255,255,.78)}.links{display:grid;gap:9px}.sub-link{display:flex;align-items:center;gap:8px;padding:11px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.035)}.sub-link code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;direction:ltr;text-align:left;color:#cbd1ff;font-size:10px}.copy{flex:0 0 auto;min-width:64px;padding:8px 9px;border-radius:11px;border:1px solid var(--line);background:rgba(109,124,255,.12);color:#cbd1ff;cursor:pointer}.copy.done{color:var(--good)}.config-list{display:grid;gap:10px;max-height:520px;overflow:auto}.config{display:flex;align-items:center;gap:12px;border:1px solid var(--line);background:rgba(255,255,255,.035);border-radius:17px;padding:13px}.config-icon{width:40px;height:40px;flex:0 0 40px;border-radius:13px;display:grid;place-items:center;background:rgba(109,124,255,.13);font-size:18px}.config-main{min-width:0;flex:1}.config-name{font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.config-meta{color:var(--muted);font-size:10px;margin-top:5px;line-height:1.7}.config .copy{min-width:72px}
+.config .copy{min-width:72px}
+.config-tools{display:flex;gap:7px;flex:0 0 auto;align-self:center}
+.config-tools button{min-width:58px}
+.qr-btn{padding:8px 9px;border-radius:11px;border:1px solid var(--line);background:rgba(143,108,255,.12);color:#d9d3ff;cursor:pointer}
+.qr-btn:hover{transform:translateY(-1px);background:rgba(143,108,255,.2)}
+.config-icon{position:relative}
+.config-icon::after{content:"";position:absolute;inset:-3px;border-radius:15px;border:1px solid rgba(109,124,255,.16);pointer-events:none}
+.config-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.config-tag{display:inline-flex;align-items:center;padding:3px 7px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.035);color:#b9c3dd;font-size:9px;white-space:nowrap}
+.config-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 10px;margin-top:7px;color:var(--muted);font-size:9px;line-height:1.7}
+.config-detail{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qr-modal{position:fixed;inset:0;background:rgba(2,5,14,.78);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;padding:18px;z-index:100}
+.qr-modal.show{display:flex}
+.qr-dialog{width:min(420px,100%);border:1px solid var(--line);border-radius:26px;background:linear-gradient(145deg,rgba(25,34,64,.98),rgba(10,15,30,.98));box-shadow:0 30px 100px rgba(0,0,0,.55);padding:22px;text-align:center}
+.qr-title{font-size:17px;font-weight:800;margin-bottom:5px}
+.qr-subtitle{font-size:10px;color:var(--muted);margin-bottom:16px}
+.qr-box{width:min(290px,78vw);aspect-ratio:1;margin:0 auto 15px;padding:14px;background:#fff;border-radius:20px;display:grid;place-items:center}
+.qr-box canvas,.qr-box img{max-width:100%;height:auto}
+.qr-url{direction:ltr;text-align:left;font-size:9px;line-height:1.7;color:#aeb8d2;background:rgba(255,255,255,.045);border:1px solid var(--line);border-radius:12px;padding:9px;word-break:break-all;max-height:72px;overflow:auto}
+.qr-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}
+.qr-close{background:rgba(255,255,255,.055)!important}
+@media(max-width:700px){
+.config-tools{flex-direction:column;gap:5px}
+.config-tools button{min-width:56px;padding:7px 8px}
+.config-details{grid-template-columns:1fr}
+.qr-dialog{padding:18px}
+}
+.notice{margin-top:14px;border-radius:18px;padding:15px 17px;border:1px solid rgba(109,124,255,.2);background:rgba(109,124,255,.07);color:#dbe0ff;font-size:12px;line-height:2}.footer{text-align:center;color:var(--muted);font-size:10px;padding:18px 0 0}.toast{position:fixed;left:50%;bottom:20px;transform:translate(-50%,20px);opacity:0;pointer-events:none;padding:11px 15px;border-radius:14px;background:#171f35;border:1px solid var(--line);box-shadow:var(--shadow);transition:.25s;z-index:10;font-size:12px}.toast.show{transform:translate(-50%,0);opacity:1}.empty{color:var(--muted);text-align:center;padding:22px 8px;font-size:12px}@media(max-width:700px){.grid{grid-template-columns:1fr}.hero{padding:21px;border-radius:24px}.wrap{width:min(100% - 14px,980px);padding-top:8px}.actions{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}.brand h1{font-size:20px}.identity strong{font-size:17px}.config{align-items:flex-start}.config .copy{margin-top:2px}}
+</style>
+</head>
+<body data-sub-url="{{ .subUrl }}" data-json-url="{{ .subJsonUrl }}" data-clash-url="{{ .subClashUrl }}" data-expire="{{ .expire }}" data-enabled="{{ .enabled }}" data-used-byte="{{ .downloadByte }}" data-upload-byte="{{ .uploadByte }}" data-total-byte="{{ .totalByte }}">
+
+<div id="qr-modal" class="qr-modal" aria-hidden="true">
+  <div class="qr-dialog" role="dialog" aria-modal="true" aria-labelledby="qr-title">
+    <div id="qr-title" class="qr-title">QR کانفیگ</div>
+    <div id="qr-subtitle" class="qr-subtitle">اسکن کنید تا کانفیگ به کلاینت اضافه شود</div>
+    <div id="qr-box" class="qr-box"></div>
+    <div id="qr-url" class="qr-url"></div>
+    <div class="qr-actions">
+      <button id="qr-copy" class="btn primary" type="button">📋 کپی لینک</button>
+      <button id="qr-close" class="btn qr-close" type="button">بستن</button>
+    </div>
+  </div>
+</div>
+<main class="wrap">
+<section class="hero">
+<div class="brand"><div class="logo"><img src="data:image/png;base64,__TOONELVPN_LOGO_BASE64__" alt="ToonelVPN" onerror="this.style.display='none';this.parentElement.textContent='TV'"></div><div><h1>تونل وی پی ان <span class="brand-en">| ToonelVPN</span></h1><p>مدیریت اشتراک اینترنت شما</p></div></div>
+<div class="identity"><div class="eyebrow">اشتراک فعال</div><strong id="identity">{{ if .subTitle }}{{ .subTitle }}{{ else }}اشتراک شما{{ end }}</strong></div>
+</section>
+<div class="grid">
+<section class="card"><h2>📊 وضعیت سرویس</h2><div id="status" class="status"><b>●</b><span>در حال بررسی...</span></div><div class="stats" style="margin-top:14px"><div class="stat"><span>مصرف‌شده</span><strong>{{ .used }}</strong></div><div class="stat"><span>باقی‌مانده</span><strong>{{ .remained }}</strong></div><div class="stat"><span>حجم کل</span><strong>{{ .total }}</strong></div><div class="stat"><span>آپلود</span><strong>{{ .upload }}</strong></div></div><div class="progress"><i id="bar"></i></div><div class="progress-row"><span id="percent">۰٪ مصرف</span><span>{{ .download }}</span></div></section>
+<section class="card"><h2>⏳ زمان اشتراک</h2><div class="stats"><div class="stat"><span>تاریخ انقضا</span><strong id="expiry">در حال محاسبه...</strong></div><div class="stat"><span>زمان باقی‌مانده</span><strong id="days">در حال محاسبه...</strong></div><div class="stat"><span>شناسه اشتراک</span><strong style="font-size:11px;direction:ltr;text-align:right">{{ .sId }}</strong></div><div class="stat"><span>آخرین اتصال</span><strong>{{ if .lastOnline }}ثبت شده{{ else }}هنوز ثبت نشده{{ end }}</strong></div></div></section>
+</div>
+<div class="grid" style="margin-top:14px">
+<section class="card"><h2>⚡ دسترسی سریع</h2><div class="actions"><button class="btn primary" data-copy="sub">📋 کپی لینک اشتراک<small>V2Ray / Sing-box و کلاینت‌های سازگار</small></button><button class="btn" data-open="v2box">📱 افزودن به V2Box<small>Android / iOS</small></button><button class="btn" data-open="v2rayng">🤖 افزودن به V2RayNG<small>Android</small></button><button class="btn" data-open="happ">🚀 افزودن به Happ<small>Android / iOS</small></button><button class="btn" data-copy="json">🧾 کپی لینک JSON<small>در صورت فعال بودن</small></button><button class="btn" data-copy="clash">☁️ کپی لینک Clash<small>Clash / Mihomo</small></button></div></section>
+<section class="card"><h2>🔗 لینک‌های اشتراک</h2><div class="links"><div class="sub-link"><code data-link="sub"></code><button class="copy" data-copy="sub">کپی</button></div><div class="sub-link" data-optional="json"><code data-link="json"></code><button class="copy" data-copy="json">کپی</button></div><div class="sub-link" data-optional="clash"><code data-link="clash"></code><button class="copy" data-copy="clash">کپی</button></div></div></section>
+</div>
+<section class="card" style="margin-top:14px">
+<h2>🌐 کانفیگ‌های داخل اشتراک <span id="config-count" style="color:var(--muted);font-size:11px;font-weight:normal"></span></h2>
+<div id="configs" class="config-list">
+{{ range $i, $link := .links }}
+<div class="config source-config" data-link="{{ $link }}" data-email="{{ index $.emails $i }}">
+  <div class="config-icon">🌐</div>
+  <div class="config-main">
+    <div class="config-name">در حال شناسایی...</div>
+    <div class="config-meta">در حال خواندن مشخصات اتصال</div>
+    <div class="config-tags"></div>
+    <div class="config-details"></div>
+  </div>
+  <div class="config-tools">
+    <button class="copy" type="button">کپی</button>
+    <button class="qr-btn" type="button" title="نمایش QR">QR</button>
+  </div>
+</div>
+{{ else }}
+<div class="empty">کانفیگی در این اشتراک وجود ندارد.</div>
+{{ end }}
+</div>
+</section>
+{{ if .announce }}<div class="notice">📢 {{ .announce }}</div>{{ end }}
+{{ if .subSupportUrl }}<section class="card" style="margin-top:14px"><h2>🛟 پشتیبانی ToonelVPN</h2><p style="color:var(--muted);font-size:12px;line-height:2;margin:0 0 12px">اگر در اتصال یا استفاده از سرویس مشکلی دارید، از طریق پشتیبانی ToonelVPN با ما در ارتباط باشید.</p><a class="btn primary" href="{{ .subSupportUrl }}" target="_blank" rel="noopener" style="display:block;text-align:center">ارتباط با پشتیبانی</a></section>{{ end }}
+<div class="footer">ToonelVPN · اشتراک امن، سریع و پایدار</div>
+</main><div id="toast" class="toast"></div>
+<script>
+(()=>{const b=document.body,sub=b.dataset.subUrl||'',json=b.dataset.jsonUrl||'',clash=b.dataset.clashUrl||'',exp=Number(b.dataset.expire||0),enabled=b.dataset.enabled==='true',down=Number(b.dataset.usedByte||0),up=Number(b.dataset.uploadByte||0),total=Number(b.dataset.totalByte||0),toast=document.getElementById('toast');
+const show=t=>{toast.textContent=t;toast.classList.add('show');clearTimeout(window.__tt);window.__tt=setTimeout(()=>toast.classList.remove('show'),1800)};
+const copy=async(v,btn)=>{if(!v){show('این لینک فعال نیست');return}try{await navigator.clipboard.writeText(v);if(btn){const old=btn.textContent;btn.textContent='✓ کپی شد';btn.classList.add('done');setTimeout(()=>{btn.textContent=old;btn.classList.remove('done')},1300)}show('لینک با موفقیت کپی شد')}catch(e){show('کپی خودکار انجام نشد')}};
+const vals={sub,json,clash};document.querySelectorAll('.sub-link [data-link]').forEach(e=>{const k=e.dataset.link;e.textContent=vals[k]||'فعال نیست';if(!vals[k])e.closest('[data-optional]')?.remove()});document.querySelectorAll('[data-optional]').forEach(e=>{if(!vals[e.dataset.optional])e.remove()});document.querySelectorAll('[data-copy]').forEach(x=>x.addEventListener('click',()=>copy(vals[x.dataset.copy],x)));
+const openers={v2box:()=>sub&&`v2box://install-sub?url=${encodeURIComponent(sub)}&name=${encodeURIComponent('ToonelVPN')}`,v2rayng:()=>sub&&`v2rayng://install-config?url=${encodeURIComponent(sub)}`,happ:()=>sub&&`happ://add/${sub}`};document.querySelectorAll('[data-open]').forEach(x=>x.addEventListener('click',()=>{const u=openers[x.dataset.open]?.();if(!u){show('لینک اشتراک موجود نیست');return}location.href=u}));
+const status=document.getElementById('status'),st=status.querySelector('span'),used=down+up;if(!enabled){status.className='status bad';st.textContent='غیرفعال'}else if(total>0&&used>=total){status.className='status warn';st.textContent='حجم تمام شده'}else if(exp&&exp*1000<=Date.now()){status.className='status bad';st.textContent='منقضی شده'}else if(exp&&exp*1000-Date.now()<3*864e5){status.className='status warn';st.textContent='نزدیک انقضا'}else{st.textContent='فعال'}
+const pct=total?Math.min(100,Math.max(0,used/total*100)):0;document.getElementById('bar').style.width=pct+'%';document.getElementById('percent').textContent=total?Math.round(pct).toLocaleString('fa-IR')+'٪ مصرف':'حجم نامحدود';
+const ex=document.getElementById('expiry'),dy=document.getElementById('days');if(!exp){ex.textContent='بدون انقضا';dy.textContent='نامحدود'}else{const d=new Date(exp*1000);ex.textContent=new Intl.DateTimeFormat('fa-IR-u-ca-persian',{year:'numeric',month:'long',day:'numeric'}).format(d);const left=Math.max(0,exp*1000-Date.now());const days=Math.floor(left/864e5),hours=Math.floor(left%864e5/36e5);dy.textContent=days?`${days.toLocaleString('fa-IR')} روز`:hours?`${hours.toLocaleString('fa-IR')} ساعت`:'کمتر از یک ساعت'}
+const configs=[...document.querySelectorAll('.source-config')];
+
+const clean=s=>{
+  try{return decodeURIComponent(s)}
+  catch(e){return s}
+};
+
+const shortValue=(v,max=70)=>{
+  v=String(v||'');
+  return v.length>max?v.slice(0,max-1)+'…':v;
+};
+
+const parseConfig=link=>{
+  const out={
+    name:'کانفیگ',
+    protocol:'نامشخص',
+    transport:'TCP',
+    security:'None',
+    host:'',
+    port:'',
+    sni:'',
+    alpn:'',
+    flow:'',
+    path:'',
+    mode:'',
+    headerType:''
+  };
+
+  try{
+    const u=new URL(link);
+    const proto=(u.protocol||'').replace(':','').toLowerCase();
+
+    const protocolMap={
+      vless:'VLESS',
+      vmess:'VMess',
+      trojan:'Trojan',
+      shadowsocks:'Shadowsocks',
+      ss:'Shadowsocks',
+      hysteria:'Hysteria',
+      hysteria2:'Hysteria 2',
+      hy2:'Hysteria 2'
+    };
+
+    out.protocol=protocolMap[proto]||proto.toUpperCase()||'نامشخص';
+
+    out.host=u.hostname||'';
+    out.port=u.port||'';
+
+    const q=u.searchParams;
+
+    const transport=
+      q.get('type') ||
+      q.get('network') ||
+      q.get('transport') ||
+      q.get('net') ||
+      'tcp';
+
+    out.transport=String(transport).toUpperCase();
+
+    const security=
+      q.get('security') ||
+      q.get('tls') ||
+      (q.get('pbk')||q.get('sid')||q.get('publicKey')?'reality':'none');
+
+    out.security=String(security).toUpperCase();
+
+    out.sni=q.get('sni')||q.get('serverName')||'';
+    out.alpn=q.get('alpn')||'';
+    out.flow=q.get('flow')||'';
+    out.path=q.get('path')||'';
+    out.mode=q.get('mode')||'';
+    out.headerType=q.get('headerType')||q.get('header-type')||'';
+
+    const hash=clean((u.hash||'').replace(/^#/,''));
+
+    if(hash){
+      out.name=hash.split('|')[0].trim();
+    }
+
+    if(!out.name){
+      out.name=`${out.protocol} ${out.transport}`;
+    }
+
+  }catch(e){
+    const raw=String(link||'');
+    const m=raw.match(/^([a-z0-9+.-]+):\/\//i);
+    if(m)out.protocol=m[1].toUpperCase();
+  }
+
+  return out;
+};
+
+const stripSubscriptionSuffix=(name,email)=>{
+  let n=String(name||'').trim();
+  const e=String(email||'').trim();
+
+  if(e){
+    const escaped=e.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+
+    n=n
+      .replace(new RegExp(`[|\\-\\s]*${escaped}\\s*$`,'i'),'')
+      .replace(new RegExp(`[|\\-\\s]*${escaped.replace(/-/g,'\\-')}\\s*$`,'i'),'')
+      .trim();
+  }
+
+  n=n
+    .replace(/\|\s*📊.*$/u,'')
+    .replace(/\|\s*⏳.*$/u,'')
+    .replace(/\s*\|\s*$/,'')
+    .trim();
+
+  return n||'کانفیگ';
+};
+
+const escapeHtml=v=>{
+  return String(v??'')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#039;');
+};
+
+const seen=new Map();
+let shown=0;
+
+configs.forEach(c=>{
+  const link=c.dataset.link||'';
+  const email=c.dataset.email||'';
+  const m=parseConfig(link);
+
+  let name=stripSubscriptionSuffix(m.name,email);
+
+  const key=name.toLowerCase();
+
+  if(seen.has(key)){
+    const n=seen.get(key)+1;
+    seen.set(key,n);
+    name=`${name} · ${n}`;
+  }else{
+    seen.set(key,1);
+  }
+
+  c.querySelector('.config-name').textContent=name;
+
+  const metaParts=[
+    m.protocol,
+    m.transport,
+    m.security,
+    m.port?`Port ${m.port}`:''
+  ].filter(Boolean);
+
+  c.querySelector('.config-meta').textContent=metaParts.join('  ·  ');
+
+  const tags=c.querySelector('.config-tags');
+
+  const tagValues=[
+    m.sni?`SNI: ${shortValue(m.sni,32)}`:'',
+    m.alpn?`ALPN: ${m.alpn}`:'',
+    m.flow?`Flow: ${m.flow}`:'',
+    m.mode?`Mode: ${m.mode}`:'',
+    m.headerType?`Header: ${m.headerType}`:''
+  ].filter(Boolean);
+
+  tags.innerHTML=tagValues
+    .map(x=>`<span class="config-tag">${escapeHtml(x)}</span>`)
+    .join('');
+
+  const details=c.querySelector('.config-details');
+
+  const detailsData=[
+    ['سرور',m.host],
+    ['پورت',m.port],
+    ['SNI',m.sni],
+    ['ALPN',m.alpn],
+    ['Path',m.path],
+    ['Flow',m.flow]
+  ].filter(x=>x[1]);
+
+  details.innerHTML=detailsData
+    .map(([k,v])=>`<div class="config-detail"><b>${escapeHtml(k)}:</b> ${escapeHtml(shortValue(v,55))}</div>`)
+    .join('');
+
+  const copyBtn=c.querySelector('.copy');
+  copyBtn.addEventListener('click',()=>copy(link,copyBtn));
+
+  const qrBtn=c.querySelector('.qr-btn');
+
+  qrBtn.addEventListener('click',()=>{
+    openQR(link,name);
+  });
+
+  shown++;
+});
+
+document.getElementById('config-count').textContent=
+  `(${shown.toLocaleString('fa-IR')} کانفیگ)`;
+
+
+const qrModal=document.getElementById('qr-modal');
+const qrBox=document.getElementById('qr-box');
+const qrTitle=document.getElementById('qr-title');
+const qrSubtitle=document.getElementById('qr-subtitle');
+const qrUrl=document.getElementById('qr-url');
+const qrCopy=document.getElementById('qr-copy');
+const qrClose=document.getElementById('qr-close');
+
+let currentQRLink='';
+
+const qrFallbackSvg=(text)=>{
+  const encoded=encodeURIComponent(text);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="280" height="280" viewBox="0 0 280 280">
+    <rect width="280" height="280" fill="white"/>
+    <text x="140" y="130" text-anchor="middle" font-size="14" fill="#111">QR</text>
+    <text x="140" y="155" text-anchor="middle" font-size="9" fill="#555">لطفاً لینک را کپی کنید</text>
+    <text x="140" y="180" text-anchor="middle" font-size="7" fill="#777">${encoded.slice(0,42)}</text>
+  </svg>`;
+};
+
+const openQR=(link,name)=>{
+  if(!link){
+    show('لینک کانفیگ موجود نیست');
+    return;
+  }
+
+  currentQRLink=link;
+  qrTitle.textContent=name||'QR کانفیگ';
+  qrSubtitle.textContent='این QR را با کلاینت VPN اسکن کنید';
+  qrUrl.textContent=link;
+  qrBox.innerHTML='';
+
+  /*
+   * QRCode library is embedded by deploy.sh when available.
+   * This keeps the subscription page independent from runtime CDNs.
+   */
+  if(typeof QRCode!=='undefined'){
+    try{
+      new QRCode(qrBox,{
+        text:link,
+        width:250,
+        height:250,
+        correctLevel:QRCode.CorrectLevel.M
+      });
+    }catch(e){
+      qrBox.innerHTML=qrFallbackSvg(link);
+    }
+  }else{
+    qrBox.innerHTML=qrFallbackSvg(link);
+  }
+
+  qrModal.classList.add('show');
+  qrModal.setAttribute('aria-hidden','false');
+};
+
+const closeQR=()=>{
+  qrModal.classList.remove('show');
+  qrModal.setAttribute('aria-hidden','true');
+  qrBox.innerHTML='';
+  currentQRLink='';
+};
+
+qrClose.addEventListener('click',closeQR);
+
+qrModal.addEventListener('click',e=>{
+  if(e.target===qrModal)closeQR();
+});
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&qrModal.classList.contains('show'))closeQR();
+});
+
+qrCopy.addEventListener('click',()=>{
+  if(currentQRLink)copy(currentQRLink,qrCopy);
+});
+
+const emails=[...document.querySelectorAll('.source-config')].map(x=>x.dataset.email).filter(Boolean);const unique=[...new Set(emails)];document.getElementById('identity').textContent=unique.length===1?unique[0]:'اشتراک شما';
+})();
+</script>
+</body></html>

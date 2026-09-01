@@ -419,61 +419,85 @@ class VPNService:
         self,
         user: User,
     ) -> list[tuple[int, str, str]]:
-        """Return all active subscription connection keys, newest first.
+        """Return the user's CURRENT active connection keys directly from 3X-UI.
 
-        Each tuple contains:
+        3X-UI is the source of truth for this operation.
+
+        The method intentionally does not depend on the local Subscription rows
+        to discover the user's keys. Every configured XUI server is queried,
+        the live clients are inspected, and the current client.id is used to
+        build the subscription key.
+
+        Returned tuples keep the existing profile-handler contract:
+
             (subscription_id, config_name, connection_key)
 
-        Client ID is intentionally not exposed to the user.
+        For a live XUI client that has no local Subscription row,
+        ``subscription_id`` is returned as 0 because the profile UI only uses
+        the name and connection key.
         """
+        user_tg_id = str(user.tg_id).strip()
+        user_vpn_id = str(user.vpn_id or "").strip()
+
         async with self.session() as session:
-            fresh_user = await User.get(session=session, tg_id=user.tg_id)
-
-            if not fresh_user:
-                logger.warning("User %s not found.", user.tg_id)
-                return []
-
-            result = await session.execute(
-                select(Subscription)
-                .where(
-                    Subscription.user_id == fresh_user.id,
-                    Subscription.status == "active",
-                    Subscription.client_id.is_not(None),
-                )
-                .order_by(Subscription.id.desc())
-            )
-
-            subscriptions = result.scalars().all()
-
-            if not subscriptions:
-                logger.info(
-                    "No active subscriptions found for user %s.",
-                    user.tg_id,
-                )
-                return []
-
             settings = await SubscriptionSettings.get_or_create(session)
 
-            keys: list[tuple[int, str, str]] = []
+            server_result = await session.execute(
+                select(Server).order_by(Server.id.asc())
+            )
+            servers = list(server_result.scalars().all())
 
-            for subscription in subscriptions:
+            # Optional local mapping is used only for preserving the familiar
+            # service name / subscription id when a matching DB record exists.
+            local_subscriptions: dict[tuple[int, str], Subscription] = {}
+
+            subscription_result = await session.execute(
+                select(Subscription).where(
+                    Subscription.user_id == user.id,
+                    Subscription.server_id.is_not(None),
+                )
+            )
+
+            for subscription in subscription_result.scalars().all():
+                client_id = str(subscription.client_id or "").strip()
+                if client_id and subscription.server_id is not None:
+                    local_subscriptions[
+                        (subscription.server_id, client_id)
+                    ] = subscription
+
+            keys: list[tuple[int, str, str]] = []
+            seen_clients: set[tuple[int, str]] = set()
+
+            for server in servers:
+                connection = (
+                    await self.server_pool_service.get_connection_for_server(
+                        server
+                    )
+                )
+
+                if connection is None:
+                    logger.warning(
+                        "PROFILE LIVE KEYS | Cannot connect to XUI server %s.",
+                        server.name,
+                    )
+                    continue
+
+                try:
+                    inbounds = await get_inbounds(connection.api)
+                except Exception as exception:
+                    logger.warning(
+                        "PROFILE LIVE KEYS | Failed to read XUI server %s: %s",
+                        server.name,
+                        exception,
+                    )
+                    continue
+
                 server_host = None
 
-                if subscription.server_id is not None:
-                    server_result = await session.execute(
-                        select(Server).where(Server.id == subscription.server_id)
-                    )
-                    target_server = server_result.scalar_one_or_none()
-
-                    if target_server is not None:
-                        server_connection = (
-                            await self.server_pool_service.get_connection_for_server(
-                                target_server
-                            )
-                        )
-
-                        if server_connection is not None:
-                            server_host = server_connection.server.host
+                try:
+                    server_host = connection.server.host
+                except Exception:
+                    server_host = getattr(server, "host", None)
 
                 base_host = (
                     settings.domain
@@ -483,9 +507,8 @@ class VPNService:
 
                 if not base_host:
                     logger.warning(
-                        "No subscription domain/server host available "
-                        "for subscription %s.",
-                        subscription.id,
+                        "PROFILE LIVE KEYS | No host available for server %s.",
+                        server.name,
                     )
                     continue
 
@@ -495,26 +518,106 @@ class VPNService:
                     path=settings.path,
                 )
 
-                connection_key = (
-                    f"{subscription_base}{subscription.client_id}"
-                )
+                for inbound in inbounds:
+                    for client in inbound.settings.clients or []:
+                        client_tg_id = str(
+                            getattr(client, "tg_id", "") or ""
+                        ).strip()
 
-                config_name = (
-                    getattr(subscription, "config_name", None)
-                    or getattr(subscription, "name", None)
-                    or f"Subscription #{subscription.id}"
-                )
+                        client_sub_id = str(
+                            getattr(client, "sub_id", "") or ""
+                        ).strip()
 
-                keys.append(
-                    (
-                        subscription.id,
-                        str(config_name),
-                        connection_key,
-                    )
-                )
+                        client_email = str(
+                            getattr(client, "email", "") or ""
+                        ).strip()
+
+                        is_match = (
+                            client_tg_id == user_tg_id
+                            or (
+                                user_vpn_id
+                                and client_sub_id == user_vpn_id
+                            )
+                            or client_email == user_tg_id
+                        )
+
+                        if not is_match:
+                            continue
+
+                        # Disabled XUI clients must not be presented as active
+                        # connection keys.
+                        if not bool(getattr(client, "enable", False)):
+                            logger.info(
+                                "PROFILE LIVE KEYS | Skipping disabled client "
+                                "%s on server %s.",
+                                client_email or client.id,
+                                server.name,
+                            )
+                            continue
+
+                        client_id = str(
+                            getattr(client, "id", "") or ""
+                        ).strip()
+
+                        if not client_id:
+                            logger.warning(
+                                "PROFILE LIVE KEYS | Matched client without "
+                                "client.id on server %s inbound %s.",
+                                server.name,
+                                inbound.id,
+                            )
+                            continue
+
+                        unique_key = (server.id, client_id)
+
+                        # The same XUI client can exist in multiple inbounds.
+                        if unique_key in seen_clients:
+                            continue
+
+                        seen_clients.add(unique_key)
+
+                        local_subscription = local_subscriptions.get(
+                            unique_key
+                        )
+
+                        if local_subscription is not None:
+                            subscription_id = local_subscription.id
+                        else:
+                            subscription_id = 0
+
+                        config_name = (
+                            client_email
+                            or str(
+                                getattr(client, "name", "") or ""
+                            ).strip()
+                            or client_id
+                        )
+
+                        connection_key = (
+                            f"{subscription_base}{client_id}"
+                        )
+
+                        keys.append(
+                            (
+                                subscription_id,
+                                config_name,
+                                connection_key,
+                            )
+                        )
+
+                        logger.info(
+                            "PROFILE LIVE KEYS | FOUND live client=%s "
+                            "name=%s server=%s inbound=%s user=%s.",
+                            client_id,
+                            config_name,
+                            server.name,
+                            inbound.id,
+                            user.tg_id,
+                        )
 
             logger.info(
-                "Generated %s active subscription keys for user %s.",
+                "PROFILE LIVE KEYS | Generated %s live connection keys "
+                "directly from XUI for user %s.",
                 len(keys),
                 user.tg_id,
             )
