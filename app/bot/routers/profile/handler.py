@@ -11,7 +11,7 @@ from app.bot.utils.constants import PREVIOUS_CALLBACK_KEY, TransactionStatus
 from app.bot.utils.navigation import NavProfile
 from app.db.models import User
 
-from .keyboard import profile_keyboard
+from .keyboard import connection_keys_keyboard, profile_keyboard
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -161,7 +161,11 @@ async def callback_show_key(
     message = await callback.message.answer(
         f"{header}\n\n"
         f"{body}\n\n"
-        f"{seconds_template.format(seconds=seconds)}"
+        f"{seconds_template.format(seconds=seconds)}",
+        reply_markup=connection_keys_keyboard(
+            keys,
+            user.language_code or "fa",
+        ),
     )
 
     for remaining in range(seconds - 1, 0, -1):
@@ -186,4 +190,3 @@ async def callback_show_key(
             "Could not delete connection keys message: %s",
             exception,
         )
-
