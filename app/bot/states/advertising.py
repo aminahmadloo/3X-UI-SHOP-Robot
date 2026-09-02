@@ -7,4 +7,5 @@ class AdvertisingStates(StatesGroup):
     waiting_campaign_body = State()
     waiting_button_title = State()
     waiting_button_url = State()
+    waiting_button_color = State()
     waiting_service_selection = State()
