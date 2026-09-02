@@ -39,6 +39,7 @@ from .admin_tools.test_account_settings_handler import router as test_account_se
 from .admin_tools.advertising_management_extra_handler import router as advertising_management_extra_router
 from .admin_tools.advertising_management_callbacks_fix_handler import router as advertising_management_callbacks_fix_router
 from .admin_tools.advertising_management_handler import router as advertising_management_router
+from .admin_tools.advertising_publication_status_handler import router as advertising_publication_status_router
 from .admin_tools.advertising_builder_handler import router as advertising_admin_router
 from .gift_service_handler import router as gift_service_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
@@ -103,6 +104,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         advertising_management_extra_router,
         advertising_management_callbacks_fix_router,
         advertising_management_router,
+        advertising_publication_status_router,
         advertising_admin_router,
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,
