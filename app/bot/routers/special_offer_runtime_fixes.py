@@ -87,6 +87,24 @@ special_offer._campaign_offers = _safe_campaign_offers
 special_offer._all_manageable_plans = _safe_all_manageable_plans
 
 
+@router.callback_query(F.data == "service_purchase:special_products", IsAdmin())
+async def callback_special_products_back_fix(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    """Handle the campaign-detail back button before other service handlers."""
+    await state.clear()
+    campaigns = await SpecialOfferCampaign.list_all(session)
+    await callback.answer()
+    await callback.message.edit_text(
+        "🎁 <b>مدیریت فروش‌های ویژه</b>\n\n"
+        "فروش‌های ویژه بر اساس کمپین مدیریت می‌شوند.\n"
+        "«فروش ویژه عادی» محصولات ویژه قبلی را نگه می‌دارد و کمپین‌های جدید را می‌توان جداگانه ساخت.",
+        reply_markup=special_offer._admin_campaign_list_keyboard(campaigns),
+    )
+
+
 @router.callback_query(F.data.regexp(r"^special_offer:admin:plan:\d+:\d+$"), IsAdmin())
 async def callback_special_offer_admin_plan_with_remove(callback: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
     """Show the normal price editor plus an explicit remove action."""
