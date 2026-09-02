@@ -24,4 +24,4 @@ from .subscription_settings import SubscriptionSettings
 from .customer_level_settings import CustomerLevelSettings
 from .support_ticket import SupportMessage, SupportTicket
 from .test_account import TestAccount, TestAccountSettings
-from .advertising import AdvertisingCampaign, AdvertisingChannel, AdvertisingEvent
+from .advertising import AdvertisingCampaign, AdvertisingChannel, AdvertisingEvent, AdvertisingPublication
