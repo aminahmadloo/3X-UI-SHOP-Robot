@@ -18,6 +18,8 @@ class ServicePurchasePlan(Base):
     duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
     price_toman: Mapped[int] = mapped_column(Integer, nullable=False)
     is_custom: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0", index=True)
+    is_special_offer: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0", index=True)
+    special_offer_price_toman: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     @classmethod
     async def get(

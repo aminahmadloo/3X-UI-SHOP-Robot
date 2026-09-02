@@ -52,6 +52,7 @@ from .wallet.gateway_payment import router as wallet_gateway_router
 from .wallet.overview import router as wallet_overview_router
 from app.bot.routers.customer_level.handler import router as customer_level_router
 from app.bot.routers.support.training_handler import router as support_training_router
+from .special_offer_handler import router as special_offer_router
 
 from . import payment_method_visibility as _payment_method_visibility
 
@@ -76,6 +77,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         my_services.client_control_handler.router,
         my_services.handler.router,
         main_menu_renewal_router,
+        special_offer_router,
         main_menu.handler.router,
         profile.handler.router,
         referral.handler.router,
