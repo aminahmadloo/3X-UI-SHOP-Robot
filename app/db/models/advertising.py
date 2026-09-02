@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from typing import Self
 
@@ -38,7 +39,34 @@ class AdvertisingCampaign(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     bot_username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1", index=True)
+    custom_buttons_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    selected_offers_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    show_services: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+
+    @property
+    def custom_buttons(self) -> list[dict]:
+        try:
+            value = json.loads(self.custom_buttons_json or "[]")
+            return value if isinstance(value, list) else []
+        except (TypeError, ValueError):
+            return []
+
+    @custom_buttons.setter
+    def custom_buttons(self, value: list[dict]) -> None:
+        self.custom_buttons_json = json.dumps(value, ensure_ascii=False)
+
+    @property
+    def selected_offers(self) -> list[str]:
+        try:
+            value = json.loads(self.selected_offers_json or "[]")
+            return [str(item) for item in value] if isinstance(value, list) else []
+        except (TypeError, ValueError):
+            return []
+
+    @selected_offers.setter
+    def selected_offers(self, value: list[str]) -> None:
+        self.selected_offers_json = json.dumps(value, ensure_ascii=False)
 
 
 class AdvertisingEvent(Base):
