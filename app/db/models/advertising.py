@@ -12,7 +12,6 @@ from . import Base
 
 class AdvertisingChannel(Base):
     __tablename__ = "advertising_channels"
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     chat_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -33,7 +32,6 @@ class AdvertisingChannel(Base):
 
 class AdvertisingCampaign(Base):
     __tablename__ = "advertising_campaigns"
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
@@ -42,6 +40,9 @@ class AdvertisingCampaign(Base):
     custom_buttons_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
     selected_offers_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
     show_services: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
+    content_type: Mapped[str] = mapped_column(String(16), nullable=False, default="text", server_default="text")
+    media_file_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    show_caption_above_media: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     @property
@@ -69,10 +70,20 @@ class AdvertisingCampaign(Base):
         self.selected_offers_json = json.dumps(value, ensure_ascii=False)
 
 
+class AdvertisingPublication(Base):
+    __tablename__ = "advertising_publications"
+    __table_args__ = (UniqueConstraint("campaign_id", "channel_id", "message_id", name="uq_ad_publication_campaign_channel_message"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("advertising_campaigns.id", ondelete="CASCADE"), nullable=False, index=True)
+    channel_id: Mapped[int] = mapped_column(ForeignKey("advertising_channels.id", ondelete="CASCADE"), nullable=False, index=True)
+    message_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+
+
 class AdvertisingEvent(Base):
     __tablename__ = "advertising_events"
     __table_args__ = (UniqueConstraint("campaign_id", "tg_id", "event_type", name="uq_ad_event_campaign_user_type"),)
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     campaign_id: Mapped[int] = mapped_column(ForeignKey("advertising_campaigns.id", ondelete="CASCADE"), nullable=False, index=True)
     tg_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
