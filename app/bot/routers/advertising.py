@@ -1,10 +1,10 @@
 import logging
 
 from aiogram import F, Router
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import SubscriptionData
@@ -30,7 +30,10 @@ async def _show_campaign_purchase(message: Message, session: AsyncSession, user:
     periods = await ServicePeriod.list_active(session)
     period = next((item for item in periods if item.id == period_id), None) if period_id else None
     if period is None:
-        period = next((item for item in periods if await ServicePurchasePlan.list_by_type(session, item.service_type)), None)
+        for item in periods:
+            if await ServicePurchasePlan.list_by_type(session, item.service_type):
+                period = item
+                break
     if period is None:
         await message.answer("❌ در حال حاضر سرویس قابل خریدی وجود ندارد.", reply_markup=_home_keyboard())
         return
@@ -41,24 +44,22 @@ async def _show_campaign_purchase(message: Message, session: AsyncSession, user:
         return
 
     data = SubscriptionData(state=NavSubscription.PLAN, user_id=user.tg_id, devices=settings.max_connected_devices)
-    text = f"{campaign.body}\n\n🛒 <b>انتخاب سرویس</b>\nلطفاً سرویس مورد نظر را انتخاب کنید:"
-    markup = service_purchase_plan_keyboard(plans, data, period.id)
-
-    # Keep the exact advertised plan at the top when it is still available.
+    ordered = plans
     if plan_id and any(plan.id == plan_id for plan in plans):
         selected = next(plan for plan in plans if plan.id == plan_id)
-        rest = [plan for plan in plans if plan.id != plan_id]
-        ordered = [selected, *rest]
-        markup = service_purchase_plan_keyboard(ordered, data, period.id)
+        ordered = [selected, *[plan for plan in plans if plan.id != plan_id]]
 
-    await message.answer(text, reply_markup=markup)
+    await message.answer(
+        f"{campaign.body}\n\n🛒 <b>انتخاب سرویس</b>\nلطفاً سرویس مورد نظر را انتخاب کنید:",
+        reply_markup=service_purchase_plan_keyboard(ordered, data, period.id),
+    )
 
 
 @router.message(Command(NavMain.START))
 async def tracked_ad_start(message: Message, command: CommandObject, user: User, session: AsyncSession, state: FSMContext) -> None:
     args = (command.args or "").strip()
     if not args.startswith("ad_"):
-        return
+        raise SkipHandler
 
     parts = args.split("_")
     try:
@@ -66,7 +67,7 @@ async def tracked_ad_start(message: Message, command: CommandObject, user: User,
         period_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
         plan_id = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else None
     except (ValueError, IndexError):
-        return
+        raise SkipHandler
 
     await state.clear()
     unique = await AdvertisingEvent.record_unique(session, campaign_id, user.tg_id, "start", plan_id=plan_id)
