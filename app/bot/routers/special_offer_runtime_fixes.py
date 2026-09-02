@@ -1,9 +1,7 @@
 """Runtime fixes for the named special-offer campaign UI.
 
 This module keeps compatibility with the existing special-offer handler while
-fixing main-menu markup insertion and adding an explicit remove action for
-campaign plans. It also prevents invalid zero-day plans from appearing in the
-special-offer UI.
+fixing main-menu markup insertion and campaign navigation.
 """
 
 from aiogram import F, Router
@@ -27,7 +25,6 @@ async def _safe_add_special_offer_buttons(
     """Return a new markup with one green direct-purchase button per active offer."""
     campaigns = await special_offer._active_campaigns_with_offers(session)
     rows = [list(row) for row in reply_markup.inline_keyboard]
-
     offer_buttons: list[InlineKeyboardButton] = []
     for campaign in campaigns:
         offers = await special_offer._campaign_offers(session, campaign.id)
@@ -43,10 +40,8 @@ async def _safe_add_special_offer_buttons(
                     style="success",
                 )
             )
-
     for button in reversed(offer_buttons):
         rows.insert(0, [button])
-
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -76,27 +71,16 @@ async def _safe_all_manageable_plans(session: AsyncSession):
     return [plan for plan in plans if plan.duration_days > 0]
 
 
-_original_add_special_offer_buttons = special_offer.add_special_offer_buttons
-_original_campaign_has_active_offers = special_offer._campaign_has_active_offers
 _original_campaign_offers = special_offer._campaign_offers
 _original_all_manageable_plans = special_offer._all_manageable_plans
-
 special_offer.add_special_offer_buttons = _safe_add_special_offer_buttons
 special_offer._campaign_has_active_offers = _safe_campaign_has_active_offers
 special_offer._campaign_offers = _safe_campaign_offers
 special_offer._all_manageable_plans = _safe_all_manageable_plans
 
 
-@router.callback_query(F.data == "service_purchase:special_products", IsAdmin())
-async def callback_special_products_back_fix(
-    callback: CallbackQuery,
-    session: AsyncSession,
-    state: FSMContext,
-) -> None:
-    """Handle the campaign-detail back button before other service handlers."""
-    await state.clear()
+async def _show_campaign_list(callback: CallbackQuery, session: AsyncSession) -> None:
     campaigns = await SpecialOfferCampaign.list_all(session)
-    await callback.answer()
     await callback.message.edit_text(
         "🎁 <b>مدیریت فروش‌های ویژه</b>\n\n"
         "فروش‌های ویژه بر اساس کمپین مدیریت می‌شوند.\n"
@@ -105,25 +89,61 @@ async def callback_special_products_back_fix(
     )
 
 
+@router.callback_query(F.data == "service_purchase:special_products", IsAdmin())
+async def callback_special_products_back_fix(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    """Return from campaign detail to the campaign list."""
+    await state.clear()
+    await callback.answer()
+    await _show_campaign_list(callback, session)
+
+
+@router.callback_query(F.data.regexp(r"^special_offer:admin:campaign:\d+$"), IsAdmin())
+async def callback_campaign_detail_back_fix(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    """Own the campaign-detail navigation callback so it cannot be swallowed by another router."""
+    await state.clear()
+    campaign_id = int(callback.data.rsplit(":", 1)[1])
+    await callback.answer()
+    await special_offer._show_admin_campaign(callback, session, campaign_id)
+
+
+@router.callback_query(F.data == "special_offer:admin:back_to_purchase_management", IsAdmin())
+async def callback_campaign_list_back_fix(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    """Return from the campaign list to service-purchase management."""
+    await state.clear()
+    await callback.answer()
+    await callback.message.edit_text(
+        "🛒 <b>تنظیمات خرید سرویس|حجم سرویس|زمان سرویس</b>",
+        reply_markup=special_offer._service_purchase_management_keyboard(),
+    )
+
+
 @router.callback_query(F.data.regexp(r"^special_offer:admin:plan:\d+:\d+$"), IsAdmin())
 async def callback_special_offer_admin_plan_with_remove(callback: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
-    """Show the normal price editor plus an explicit remove action."""
     _, _, _, campaign_id_raw, plan_id_raw = callback.data.split(":")
     campaign_id = int(campaign_id_raw)
     plan_id = int(plan_id_raw)
-
     campaign = await SpecialOfferCampaign.get(session, campaign_id)
     plan = await ServicePurchasePlan.get(session, plan_id)
     if not campaign or not plan or plan.is_custom or plan.duration_days <= 0:
         await callback.answer("سرویس یا فروش ویژه پیدا نشد.", show_alert=True)
         return
-
     assignment = await SpecialOfferCampaignPlan.get(session, campaign_id, plan_id)
     await state.clear()
     await state.update_data(special_offer_campaign_id=campaign_id, special_offer_plan_id=plan_id)
     await state.set_state(special_offer.SpecialOfferStates.waiting_price)
     await callback.answer()
-
     current = f"{assignment.special_price_toman:,} تومان" if assignment and assignment.special_price_toman > 0 and assignment.is_active else "تنظیم نشده"
     buttons = [
         [InlineKeyboardButton(text="🔴 حذف از این فروش ویژه", callback_data=f"special_offer:admin:remove:{campaign_id}:{plan_id}")],
@@ -137,8 +157,7 @@ async def callback_special_offer_admin_plan_with_remove(callback: CallbackQuery,
         f"💵 قیمت اصلی: <b>{plan.price_toman:,} تومان</b>\n"
         f"🔥 قیمت فعلی کمپین: <b>{current}</b>\n\n"
         "قیمت ویژه را به تومان و فقط به صورت عدد وارد کنید.\n"
-        "مثلاً: <code>95000</code>\n\n"
-        "اگر نمی‌خواهید این سرویس در این فروش ویژه باشد، «حذف از این فروش ویژه» را بزنید.",
+        "مثلاً: <code>95000</code>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
     )
 
@@ -148,14 +167,12 @@ async def callback_special_offer_admin_remove(callback: CallbackQuery, session: 
     _, _, _, campaign_id_raw, plan_id_raw = callback.data.split(":")
     campaign_id = int(campaign_id_raw)
     plan_id = int(plan_id_raw)
-
     assignment = await SpecialOfferCampaignPlan.get(session, campaign_id, plan_id)
     campaign = await SpecialOfferCampaign.get(session, campaign_id)
     if not assignment or not campaign:
         await state.clear()
         await callback.answer("این سرویس در فروش ویژه انتخاب نشده است.", show_alert=True)
         return
-
     assignment.is_active = False
     await session.commit()
     await state.clear()
