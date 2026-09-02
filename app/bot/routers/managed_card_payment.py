@@ -139,7 +139,7 @@ async def _render_managed_card(
 
     if show_swap_notice:
         notice = (
-            "کارت عوض شد\n\n"
+            "🔄 کارت عوض شد\n\n"
             "شماره کارت جدید:\n"
             f"{card.card_number}\n\n"
             f"بانک: {card.bank_name or 'نامشخص'}\n"
