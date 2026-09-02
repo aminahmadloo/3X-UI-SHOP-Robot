@@ -35,7 +35,7 @@ async def _safe_add_special_offer_buttons(
             offer_buttons.append(
                 InlineKeyboardButton(
                     text=(
-                        f"🛍 خرید ویژه {plan.volume_gb} گیگ | "
+                        f"{campaign.title} | {plan.volume_gb} گیگ | "
                         f"{special_offer._duration_title(plan.duration_days)} | "
                         f"{assignment.special_price_toman:,} تومان"
                     ),
