@@ -50,8 +50,10 @@ async def callback_admin_tools(callback: CallbackQuery, user: User) -> None:
             if button.callback_data == NavAdminTools.TEST_ACCOUNT_SETTINGS:
                 button.text = "🎁 مدیریت اکانت تست"
 
-    # The payment and .env buttons are already provided by admin_tools_keyboard().
-    # Keep only controls that are not part of that base keyboard here.
+    markup.inline_keyboard.insert(
+        -1,
+        [InlineKeyboardButton(text="📣 مدیریت تبلیغات", callback_data="advertising:menu")],
+    )
     markup.inline_keyboard.insert(
         -1,
         [InlineKeyboardButton(text="🏆 مدیریت تخفیف سطوح مشتری", callback_data=NavAdminTools.CUSTOMER_LEVEL_SETTINGS)],
