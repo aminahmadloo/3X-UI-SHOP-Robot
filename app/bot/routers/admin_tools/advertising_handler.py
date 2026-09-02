@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
 from app.bot.states.advertising import AdvertisingStates
+from app.bot.utils.constants import TransactionStatus
 from app.bot.utils.navigation import NavAdminTools
-from app.db.models import AdvertisingCampaign, AdvertisingChannel, AdvertisingEvent, ServicePeriod, ServicePurchasePlan
+from app.db.models import AdvertisingCampaign, AdvertisingChannel, AdvertisingEvent, ServicePeriod, ServicePurchasePlan, Transaction
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -31,7 +32,7 @@ async def menu(callback: CallbackQuery) -> None:
     await callback.answer()
     await callback.message.edit_text(
         "📣 <b>مرکز تبلیغات ToonelVPN</b>\n\n"
-        "ساخت کمپین، انتشار همزمان در چند کانال و اندازه‌گیری ورودی یکتا.",
+        "ساخت کمپین، انتشار همزمان در چند کانال و اندازه‌گیری ورودی یکتا و مشتری خریدار.",
         reply_markup=menu_keyboard(),
     )
 
@@ -125,7 +126,7 @@ async def create_title(message: Message, state: FSMContext) -> None:
     await message.answer("✍️ متن تبلیغ را ارسال کنید.\n\nمی‌توانید از HTML پشتیبانی‌شده تلگرام مثل <b>bold</b> استفاده کنید.")
 
 
-async def _build_ad_markup(campaign_id: int, bot_username: str, session: AsyncSession) -> InlineKeyboardMarkup:
+async def _build_ad_markup(campaign_id: int, bot_username: str, channel_id: int, session: AsyncSession) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     periods = await ServicePeriod.list_active(session)
     for period in periods:
@@ -134,12 +135,12 @@ async def _build_ad_markup(campaign_id: int, bot_username: str, session: AsyncSe
             volume = f"{plan.volume_gb:,}".translate(str.maketrans("0123456789,", "۰۱۲۳۴۵۶۷۸۹٬"))
             duration = f"{plan.duration_days:,}".translate(str.maketrans("0123456789,", "۰۱۲۳۴۵۶۷۸۹٬"))
             price = f"{plan.price_toman:,}".translate(str.maketrans("0123456789,", "۰۱۲۳۴۵۶۷۸۹٬"))
-            url = f"https://t.me/{bot_username}?start=ad_{campaign_id}_{period.id}_{plan.id}"
+            url = f"https://t.me/{bot_username}?start=ad_{campaign_id}_{period.id}_{plan.id}_{channel_id}"
             b.row(
                 InlineKeyboardButton(text=f"📦 {volume} گیگ / {duration} روز", url=url),
                 InlineKeyboardButton(text=f"💰 {price} تومان", url=url),
             )
-    b.row(InlineKeyboardButton(text="🎁 مشاهده و خرید سرویس", url=f"https://t.me/{bot_username}?start=ad_{campaign_id}"))
+    b.row(InlineKeyboardButton(text="🎁 مشاهده و خرید سرویس", url=f"https://t.me/{bot_username}?start=ad_{campaign_id}_{channel_id}"))
     return b.as_markup()
 
 
@@ -151,15 +152,18 @@ async def create_and_publish(message: Message, state: FSMContext, session: Async
         return
     data = await state.get_data()
     me = await message.bot.get_me()
+    if not me.username:
+        await message.answer("❌ ربات username ندارد و لینک تبلیغاتی قابل ساخت نیست.")
+        return
     campaign = AdvertisingCampaign(title=data["campaign_title"], body=body, bot_username=me.username)
     session.add(campaign)
     await session.commit()
 
-    markup = await _build_ad_markup(campaign.id, me.username or "", session)
     channels = await AdvertisingChannel.list_active(session)
     published, failed = [], []
     for channel in channels:
         try:
+            markup = await _build_ad_markup(campaign.id, me.username, channel.id, session)
             sent = await message.bot.send_message(chat_id=channel.chat_id, text=body, reply_markup=markup)
             published.append(channel.title)
             logger.info("Advertising campaign %s published to %s as message %s", campaign.id, channel.chat_id, sent.message_id)
@@ -181,8 +185,18 @@ async def stats(callback: CallbackQuery, session: AsyncSession) -> None:
     campaigns = list((await session.execute(select(AdvertisingCampaign).order_by(AdvertisingCampaign.id.desc()).limit(20))).scalars().all())
     lines = ["📊 <b>گزارش کمپین‌های تبلیغاتی</b>", ""]
     for campaign in campaigns:
-        starts = await session.scalar(select(func.count()).select_from(AdvertisingEvent).where(AdvertisingEvent.campaign_id == campaign.id, AdvertisingEvent.event_type == "start")) or 0
-        lines.append(f"#{campaign.id} — <b>{campaign.title}</b> | ورودی یکتا: <b>{starts}</b>")
+        leads = await session.scalar(select(func.count()).select_from(AdvertisingEvent).where(AdvertisingEvent.campaign_id == campaign.id, AdvertisingEvent.event_type == "start")) or 0
+        buyers = await session.scalar(
+            select(func.count(func.distinct(AdvertisingEvent.tg_id)))
+            .select_from(AdvertisingEvent)
+            .join(Transaction, Transaction.tg_id == AdvertisingEvent.tg_id)
+            .where(
+                AdvertisingEvent.campaign_id == campaign.id,
+                AdvertisingEvent.event_type == "start",
+                Transaction.status == TransactionStatus.COMPLETED,
+            )
+        ) or 0
+        lines.append(f"#{campaign.id} — <b>{campaign.title}</b> | ورودی یکتا: <b>{leads}</b> | مشتری خریدار: <b>{buyers}</b>")
     if not campaigns:
         lines.append("هنوز کمپینی ساخته نشده است.")
     await callback.answer()
