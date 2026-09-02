@@ -140,11 +140,11 @@ async def _render_managed_card(
     if show_swap_notice:
         notice = (
             "🔄 کارت عوض شد\n\n"
-            "شماره کارت جدید:\n"
+            "💳 شماره کارت جدید:\n"
             f"{card.card_number}\n\n"
-            f"بانک: {card.bank_name or 'نامشخص'}\n"
-            f"بنام: {card.card_holder_name}\n\n"
-            "مبلغ را به این کارت واریز کنید."
+            f"🏦 بانک: {card.bank_name or 'نامشخص'}\n"
+            f"👤 بنام: {card.card_holder_name}\n\n"
+            "💰 مبلغ را به این کارت واریز کنید."
         )
         await callback.answer(notice, show_alert=True)
     else:
