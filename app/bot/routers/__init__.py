@@ -11,6 +11,7 @@ from . import (
     custom_service_card_payment,
     download,
     main_menu,
+    managed_card_payment,
     misc,
     my_services,
     profile,
