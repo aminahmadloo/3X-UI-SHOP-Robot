@@ -2,7 +2,7 @@ import asyncio
 import logging
 from urllib.parse import urljoin
 
-from aiogram import Dispatcher
+from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
