@@ -2,7 +2,7 @@ import asyncio
 import logging
 from urllib.parse import urljoin
 
-from aiogram import Bot, Dispatcher
+from aiogram import Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
@@ -13,6 +13,7 @@ from redis.asyncio.client import Redis
 
 from app import logger
 from app.bot import filters, middlewares, routers, services, tasks
+from app.bot.utils.custom_emoji import ToonelCustomEmojiBot
 from app.bot.middlewares import MaintenanceMiddleware
 from app.bot.models import ServicesContainer
 from app.bot.payment_gateways import GatewayFactory
@@ -90,7 +91,7 @@ async def main() -> None:
     # storage = MemoryStorage()
 
     # Initialize the bot with the token and default properties
-    bot = Bot(
+    bot = ToonelCustomEmojiBot(
         token=config.bot.TOKEN,
         default=DefaultBotProperties(
             parse_mode=ParseMode.HTML, link_preview_is_disabled=True
