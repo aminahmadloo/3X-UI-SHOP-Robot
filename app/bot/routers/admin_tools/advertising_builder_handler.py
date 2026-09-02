@@ -16,8 +16,8 @@ from app.db.models import AdvertisingCampaign, AdvertisingChannel, AdvertisingEv
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
-COLORS = {"green": "🟢", "red": "🔴", "blue": "🔵"}
-COLOR_NAMES = {"green": "سبز", "red": "قرمز", "blue": "آبی"}
+COLORS = {"green": "🟢", "red": "🔴", "blue": "🔵", "none": ""}
+COLOR_NAMES = {"green": "سبز", "red": "قرمز", "blue": "آبی", "none": "بدون رنگ"}
 
 
 def fmt(value: int) -> str:
@@ -68,12 +68,26 @@ async def build_ad_markup(
     show_services: bool,
 ) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
+
+    # Custom buttons: maximum 2 buttons per row.
+    custom_row = []
     for item in buttons:
         url = str(item.get("url", ""))
         if not url:
             continue
-        color = COLORS.get(str(item.get("color", "blue")), "🔵")
-        b.row(InlineKeyboardButton(text=f"{color} {str(item.get('label', 'دکمه'))[:60]}", url=url))
+
+        color = COLORS.get(str(item.get("color", "none")), "")
+        label = str(item.get("label", "دکمه"))[:60]
+        text = f"{color} {label}" if color else label
+
+        custom_row.append(InlineKeyboardButton(text=text, url=url))
+
+        if len(custom_row) == 2:
+            b.row(*custom_row)
+            custom_row = []
+
+    if custom_row:
+        b.row(*custom_row)
 
     if show_services:
         selected = set(selected_offers)
@@ -94,7 +108,7 @@ async def menu(callback: CallbackQuery) -> None:
     await callback.answer()
     await callback.message.edit_text(
         "📣 <b>مرکز تبلیغات ToonelVPN</b>\n\n"
-        "سازنده تبلیغ حرفه‌ای: متن دلخواه، تا ۳ دکمه سفارشی، رنگ نمایشی، انتخاب دقیق سرویس/دوره، پیش‌نمایش و انتشار چندکاناله.\n\n"
+        "سازنده تبلیغ حرفه‌ای: متن دلخواه، تعداد دلخواه دکمه سفارشی، رنگ نمایشی، انتخاب دقیق سرویس/دوره، پیش‌نمایش و انتشار چندکاناله.\n\n"
         "⚠️ Telegram Bot API رنگ واقعی پس‌زمینه Inline Button را قابل تنظیم نمی‌کند؛ انتخاب رنگ به‌صورت نشانگر رنگی در عنوان ذخیره و نمایش داده می‌شود.",
         reply_markup=menu_keyboard(),
     )
@@ -189,24 +203,21 @@ async def body(message: Message, state: FSMContext) -> None:
     await state.set_state(AdvertisingStates.waiting_button_title)
     await message.answer(
         "🔘 <b>مرحله ۳/۵ — دکمه سفارشی</b>\n\n"
-        "عنوان دکمه را بفرست. حداکثر ۳ دکمه می‌توانی بسازی.\n"
-        "مثال: <code>🔥 خرید ویژه امروز</code>\nبرای پایان: <code>رد کردن</code>",
+        "عنوان دکمه را بفرست. می‌توانی هر تعداد دکمه که لازم داری بسازی.\n"
+        "مثال: <code>🔥 خرید ویژه امروز</code>\nبرای پایان ساخت دکمه‌ها: <code>رد کردن</code>",
         reply_markup=cancel_keyboard(),
     )
 
 
 @router.message(AdvertisingStates.waiting_button_title, IsAdmin())
-async def button_title(message: Message, state: FSMContext) -> None:
+async def button_title(message: Message, state: FSMContext, session: AsyncSession) -> None:
     value = (message.text or "").strip()
+
     if value in {"رد کردن", "رد", "skip", "Skip"}:
         await state.set_state(AdvertisingStates.waiting_service_selection)
-        await message.answer("🛒 مرحله ۴/۵ — انتخاب سرویس‌ها.")
+        await show_services(message, state, session)
         return
-    data = await state.get_data()
-    if len(data.get("custom_buttons", [])) >= 3:
-        await state.set_state(AdvertisingStates.waiting_service_selection)
-        await message.answer("۳ دکمه ساخته شد؛ حالا سرویس‌ها را انتخاب می‌کنیم.")
-        return
+
     if not value or len(value) > 64:
         await message.answer("❌ عنوان دکمه باید حداکثر ۶۴ کاراکتر باشد.")
         return
@@ -223,25 +234,28 @@ async def button_url(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(pending_button_url=value)
     b = InlineKeyboardBuilder()
-    for color in ("green", "red", "blue"):
-        b.row(InlineKeyboardButton(text=f"{COLORS[color]} {COLOR_NAMES[color]}", callback_data=f"advertising:button_color:{color}"))
+    for color in ("green", "red", "blue", "none"):
+        label = COLOR_NAMES[color]
+        icon = COLORS[color]
+        text = f"{icon} {label}" if icon else label
+        b.row(InlineKeyboardButton(text=text, callback_data=f"advertising:button_color:{color}"))
     b.row(InlineKeyboardButton(text="❌ لغو", callback_data="advertising:cancel"))
     await message.answer("🎨 رنگ نمایشی این دکمه را انتخاب کنید.\n(رنگ واقعی پس‌زمینه توسط Telegram قابل تنظیم نیست.)", reply_markup=b.as_markup())
 
 
-@router.callback_query(F.data.regexp(r"^advertising:button_color:(green|red|blue)$"), IsAdmin())
+@router.callback_query(F.data.regexp(r"^advertising:button_color:(green|red|blue|none)$"), IsAdmin())
 async def button_color(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
     data = await state.get_data()
     buttons = list(data.get("custom_buttons", []))
     buttons.append({"label": data.get("pending_button_title", "دکمه"), "url": data.get("pending_button_url", ""), "color": callback.data.rsplit(":", 1)[1]})
     await state.update_data(custom_buttons=buttons, pending_button_title=None, pending_button_url=None)
     await callback.answer(f"دکمه {len(buttons)} ذخیره شد")
-    if len(buttons) >= 3:
-        await state.set_state(AdvertisingStates.waiting_service_selection)
-        await show_services(callback.message, state, session)
-    else:
-        await state.set_state(AdvertisingStates.waiting_button_title)
-        await callback.message.edit_text(f"✅ دکمه {len(buttons)} ذخیره شد.\n\nدکمه بعدی را بساز یا «رد کردن» را بفرست.", reply_markup=cancel_keyboard())
+    await state.set_state(AdvertisingStates.waiting_button_title)
+    await callback.message.edit_text(
+        f"✅ دکمه {len(buttons)} ذخیره شد.\n\n"
+        "دکمه بعدی را بساز یا «رد کردن» را بفرست.",
+        reply_markup=cancel_keyboard(),
+    )
 
 
 async def show_services(message: Message, state: FSMContext, session: AsyncSession) -> None:
