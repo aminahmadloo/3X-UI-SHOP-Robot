@@ -13,7 +13,6 @@ from redis.asyncio.client import Redis
 
 from app import logger
 from app.bot import filters, middlewares, routers, services, tasks
-from app.bot.utils.custom_emoji import ToonelCustomEmojiBot
 from app.bot.middlewares import MaintenanceMiddleware
 from app.bot.models import ServicesContainer
 from app.bot.payment_gateways import GatewayFactory
@@ -90,8 +89,10 @@ async def main() -> None:
     storage = RedisStorage.from_url(url=config.redis.url())
     # storage = MemoryStorage()
 
-    # Initialize the bot with the token and default properties
-    bot = ToonelCustomEmojiBot(
+    # Initialize the bot with the standard aiogram Bot.
+    # Premium/Telegram Custom Emoji transformation is intentionally disabled;
+    # all existing Unicode emoji are sent to Telegram unchanged.
+    bot = Bot(
         token=config.bot.TOKEN,
         default=DefaultBotProperties(
             parse_mode=ParseMode.HTML, link_preview_is_disabled=True
