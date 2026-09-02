@@ -22,7 +22,7 @@ MANAGED_CARD_SUBSCRIPTION_KEY = "managed_card_subscription"
 
 def _subscription_dict(subscription_data: SubscriptionData) -> dict:
     return {
-        "state": NavSubscription.CONFIG_NAME,
+        "state": subscription_data.state.value,
         "is_extend": subscription_data.is_extend,
         "is_change": subscription_data.is_change,
         "user_id": subscription_data.user_id,
@@ -47,7 +47,7 @@ def _deserialize_value(value, user_tg_id: int) -> SubscriptionData | None:
             subscription_data = SubscriptionData.deserialize(value)
         elif isinstance(value, dict):
             subscription_data = SubscriptionData(
-                state=NavSubscription.CONFIG_NAME,
+                state=NavSubscription(value.get("state", NavSubscription.CONFIG_NAME)),
                 is_extend=value.get("is_extend", False),
                 is_change=value.get("is_change", False),
                 user_id=value.get("user_id", user_tg_id),
@@ -60,6 +60,7 @@ def _deserialize_value(value, user_tg_id: int) -> SubscriptionData | None:
                 plan_id=value.get("plan_id", 0),
                 volume_gb=value.get("volume_gb", 0),
                 config_name=value.get("config_name", ""),
+                payment_kind=value.get("payment_kind", "subscription"),
             )
             subscription_data.subscription_id = int(value.get("subscription_id", 0) or 0)
         else:

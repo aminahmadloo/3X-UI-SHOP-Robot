@@ -40,11 +40,40 @@ def _build_subscription_data(data: dict, user_tg_id: int) -> SubscriptionData | 
     stored = data.get("subscription_data") or data.get("custom_service_subscription")
     if stored:
         try:
-            subscription_data = SubscriptionData.deserialize(stored)
+            if isinstance(stored, str):
+                subscription_data = SubscriptionData.deserialize(stored)
+            elif isinstance(stored, dict):
+                subscription_data = SubscriptionData(
+                    state=NavSubscription(stored.get("state", NavSubscription.CONFIG_NAME)),
+                    is_extend=stored.get("is_extend", False),
+                    is_change=stored.get("is_change", False),
+                    user_id=stored.get("user_id", user_tg_id),
+                    devices=stored.get("devices", 0),
+                    duration=stored.get("duration", 0),
+                    price=stored.get("price", 0),
+                    original_price=stored.get("original_price", 0),
+                    discount_percent=stored.get("discount_percent", 0),
+                    discount_level_title=stored.get("discount_level_title", ""),
+                    plan_id=stored.get("plan_id", 0),
+                    volume_gb=stored.get("volume_gb", 0),
+                    config_name=stored.get("config_name", ""),
+                    payment_kind=stored.get("payment_kind", "subscription"),
+                )
+                subscription_data.subscription_id = int(
+                    stored.get("subscription_id", 0) or 0
+                )
+            else:
+                return None
         except Exception:
+            logger.exception("Failed to restore SubscriptionData from payment state")
             return None
+
         if subscription_data.user_id != user_tg_id:
             return None
+
+        if subscription_data.price <= 0:
+            return None
+
         return subscription_data
 
     try:

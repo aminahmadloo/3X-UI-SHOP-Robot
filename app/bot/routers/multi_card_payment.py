@@ -161,18 +161,24 @@ async def swap_card(callback: CallbackQuery, user: User, session: AsyncSession, 
                 subscription_data = SubscriptionData.deserialize(stored_subscription)
             elif isinstance(stored_subscription, dict):
                 subscription_data = SubscriptionData(
-                    state=NavSubscription.CONFIG_NAME,
+                    state=NavSubscription(stored_subscription.get("state", NavSubscription.CONFIG_NAME)),
                     is_extend=stored_subscription.get("is_extend", False),
                     is_change=stored_subscription.get("is_change", False),
                     user_id=stored_subscription.get("user_id", user.tg_id),
                     devices=stored_subscription.get("devices", 0),
                     duration=stored_subscription.get("duration", 0),
                     price=stored_subscription.get("price", 0),
+                    original_price=stored_subscription.get("original_price", 0),
+                    discount_percent=stored_subscription.get("discount_percent", 0),
+                    discount_level_title=stored_subscription.get("discount_level_title", ""),
                     plan_id=stored_subscription.get("plan_id", 0),
                     volume_gb=stored_subscription.get("volume_gb", 0),
                     config_name=stored_subscription.get("config_name", ""),
+                    payment_kind=stored_subscription.get("payment_kind", "subscription"),
                 )
-                subscription_data.subscription_id = stored_subscription.get("subscription_id", 0)
+                subscription_data.subscription_id = int(
+                    stored_subscription.get("subscription_id", 0) or 0
+                )
             else:
                 subscription_data = None
         except Exception:
@@ -266,15 +272,20 @@ async def managed_card_start(callback: CallbackQuery, user: User, session: Async
         try:
             restored = SubscriptionData.deserialize(packed)
             packed = {
+                "state": restored.state.value,
                 "is_extend": restored.is_extend,
                 "is_change": restored.is_change,
                 "user_id": restored.user_id,
                 "devices": restored.devices,
                 "duration": restored.duration,
                 "price": restored.price,
+                "original_price": restored.original_price,
+                "discount_percent": restored.discount_percent,
+                "discount_level_title": restored.discount_level_title,
                 "plan_id": restored.plan_id,
                 "volume_gb": restored.volume_gb,
                 "config_name": restored.config_name,
+                "payment_kind": restored.payment_kind,
                 "subscription_id": restored.subscription_id,
             }
         except Exception:
@@ -286,16 +297,20 @@ async def managed_card_start(callback: CallbackQuery, user: User, session: Async
         return
     try:
         subscription_data = SubscriptionData(
-            state=NavSubscription.CONFIG_NAME,
+            state=NavSubscription(packed.get("state", NavSubscription.CONFIG_NAME)),
             is_extend=packed.get("is_extend", False),
             is_change=packed.get("is_change", False),
             user_id=packed.get("user_id", user.tg_id),
             devices=packed.get("devices", 0),
             duration=packed.get("duration", 0),
             price=packed.get("price", 0),
+            original_price=packed.get("original_price", 0),
+            discount_percent=packed.get("discount_percent", 0),
+            discount_level_title=packed.get("discount_level_title", ""),
             plan_id=packed.get("plan_id", 0),
             volume_gb=packed.get("volume_gb", 0),
             config_name=packed.get("config_name", ""),
+            payment_kind=packed.get("payment_kind", "subscription"),
         )
         subscription_data.subscription_id = int(packed.get("subscription_id", 0))
     except (TypeError, ValueError):
@@ -313,16 +328,20 @@ async def managed_card_start(callback: CallbackQuery, user: User, session: Async
     # card-receipt context remains serialized separately for receipt handling.
     await state.update_data(
         subscription_data={
-            "state": NavSubscription.CONFIG_NAME,
+            "state": subscription_data.state.value,
             "is_extend": subscription_data.is_extend,
             "is_change": subscription_data.is_change,
             "user_id": subscription_data.user_id,
             "devices": subscription_data.devices,
             "duration": subscription_data.duration,
             "price": subscription_data.price,
+            "original_price": subscription_data.original_price,
+            "discount_percent": subscription_data.discount_percent,
+            "discount_level_title": subscription_data.discount_level_title,
             "plan_id": subscription_data.plan_id,
             "volume_gb": subscription_data.volume_gb,
             "config_name": subscription_data.config_name,
+            "payment_kind": subscription_data.payment_kind,
             "subscription_id": subscription_data.subscription_id,
         },
         custom_service_subscription=subscription_data.serialize(),
