@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Self
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, select
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,7 +12,7 @@ class AdvertisingChannel(Base):
     __tablename__ = "advertising_channels"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    chat_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False, index=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1", index=True)
@@ -46,9 +46,9 @@ class AdvertisingEvent(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     campaign_id: Mapped[int] = mapped_column(ForeignKey("advertising_campaigns.id", ondelete="CASCADE"), nullable=False, index=True)
-    tg_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    tg_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     event_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    channel_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    channel_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     plan_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now(), index=True)
 
