@@ -122,17 +122,17 @@ async def callback_show_key(
     if user.language_code == "en":
         header = "🔑 <b>Connection Keys</b>"
         empty_text = "❌ No active connection keys were found."
-        seconds_template = "⏱️ This message will be deleted in {seconds} seconds."
+        security_message = "⏱️ For security reasons, this message will be deleted in 10 seconds."
         subscription_template = "{number}️⃣ <b>{name}</b>"
     elif user.language_code == "ru":
         header = "🔑 <b>Ключи подключения</b>"
         empty_text = "❌ Активные ключи подключения не найдены."
-        seconds_template = "⏱️ Это сообщение будет удалено через {seconds} секунд."
+        security_message = "⏱️ В целях безопасности это сообщение будет удалено через 10 секунд."
         subscription_template = "{number}️⃣ <b>{name}</b>"
     else:
         header = "🔑 <b>کلیدهای اتصال</b>"
         empty_text = "❌ هیچ کلید اتصال فعالی پیدا نشد."
-        seconds_template = "⏱️ این پیام تا {seconds} ثانیه دیگر حذف می‌شود."
+        security_message = "⏱️ به دلایل امنیتی این پیام تا ۱۰ ثانیه دیگر حذف می‌شود."
         subscription_template = "{number}️⃣ <b>{name}</b>"
 
     if not keys:
@@ -156,32 +156,17 @@ async def callback_show_key(
 
         body = "\n\n".join(sections)
 
-    seconds = 20
-
     message = await callback.message.answer(
         f"{header}\n\n"
         f"{body}\n\n"
-        f"{seconds_template.format(seconds=seconds)}",
+        f"{security_message}",
         reply_markup=connection_keys_keyboard(
             keys,
             user.language_code or "fa",
         ),
     )
 
-    for remaining in range(seconds - 1, 0, -1):
-        await asyncio.sleep(1)
-
-        try:
-            await message.edit_text(
-                f"{header}\n\n"
-                f"{body}\n\n"
-                f"{seconds_template.format(seconds=remaining)}"
-            )
-        except Exception as exception:
-            logger.warning(
-                "Could not update connection keys countdown: %s",
-                exception,
-            )
+    await asyncio.sleep(10)
 
     try:
         await message.delete()
