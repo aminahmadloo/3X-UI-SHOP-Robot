@@ -9,11 +9,12 @@ import re
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.routers.multi_card_payment import swap_card as _normal_swap_card
+from app.bot.routers.multi_card_payment import _keyboard, swap_card as _normal_swap_card
 from app.bot.routers.wallet.handler import CardPaymentState, card_text
+from app.bot.utils.navigation import NavMain
 from app.db.models import CardSettings, User
 
 router = Router(name=__name__)
@@ -84,14 +85,11 @@ async def _fallback_wallet_swap(
     )
     await callback.message.edit_text(
         card_text(user.language_code, next_card, amount),
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="📋 کپی شماره کارت", copy_text={"text": next_card.card_number})],
-                [InlineKeyboardButton(text="📋 کپی مبلغ", copy_text={"text": str(amount)})],
-                [InlineKeyboardButton(text="🔄 تعویض کارت", callback_data=f"multicard:swap:{next_card.id}")],
-                [InlineKeyboardButton(text="✅ پرداخت کردم", callback_data="wallet:custom:paid")],
-                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="wallet")],
-            ]
+        reply_markup=_keyboard(
+            next_card,
+            amount,
+            "wallet:custom:paid",
+            NavMain.WALLET,
         ),
     )
 
