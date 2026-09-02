@@ -2,7 +2,6 @@ import logging
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import func, select
@@ -10,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
 from app.bot.states.advertising import AdvertisingStates
-from app.bot.utils.navigation import NavAdminTools, NavMain
-from app.db.models import AdvertisingCampaign, AdvertisingChannel, AdvertisingEvent, ServicePeriod, ServicePurchasePlan, User
+from app.bot.utils.navigation import NavAdminTools
+from app.db.models import AdvertisingCampaign, AdvertisingChannel, AdvertisingEvent, ServicePeriod, ServicePurchasePlan
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -32,7 +31,7 @@ async def menu(callback: CallbackQuery) -> None:
     await callback.answer()
     await callback.message.edit_text(
         "📣 <b>مرکز تبلیغات ToonelVPN</b>\n\n"
-        "ساخت کمپین، انتشار همزمان در چند کانال و اندازه‌گیری کلیک و ورودی یکتا.",
+        "ساخت کمپین، انتشار همزمان در چند کانال و اندازه‌گیری ورودی یکتا.",
         reply_markup=menu_keyboard(),
     )
 
@@ -76,16 +75,15 @@ async def add_channel(message: Message, state: FSMContext, session: AsyncSession
 
 @router.callback_query(F.data == "advertising:channels", IsAdmin())
 async def channels(callback: CallbackQuery, session: AsyncSession) -> None:
-    channels = await session.execute(select(AdvertisingChannel).order_by(AdvertisingChannel.id))
-    rows = list(channels.scalars().all())
+    result = await session.execute(select(AdvertisingChannel).order_by(AdvertisingChannel.id))
+    rows = list(result.scalars().all())
     b = InlineKeyboardBuilder()
     lines = ["📋 <b>کانال‌های تبلیغاتی</b>", ""]
     if not rows:
         lines.append("هنوز کانالی ثبت نشده است.")
     for channel in rows:
         status = "🟢" if channel.is_active else "🔴"
-        label = f"{status} {channel.title}"
-        b.row(InlineKeyboardButton(text=label, callback_data=f"advertising:toggle:{channel.id}"))
+        b.row(InlineKeyboardButton(text=f"{status} {channel.title}", callback_data=f"advertising:toggle:{channel.id}"))
         lines.append(f"{status} {channel.title} — <code>{channel.chat_id}</code>")
     b.row(InlineKeyboardButton(text="➕ افزودن کانال", callback_data="advertising:add_channel"))
     b.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="advertising:menu"))
@@ -108,8 +106,7 @@ async def toggle_channel(callback: CallbackQuery, session: AsyncSession) -> None
 
 @router.callback_query(F.data == "advertising:create", IsAdmin())
 async def create_start(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
-    active_channels = await AdvertisingChannel.list_active(session)
-    if not active_channels:
+    if not await AdvertisingChannel.list_active(session):
         await callback.answer("ابتدا حداقل یک کانال تبلیغاتی اضافه کنید.", show_alert=True)
         return
     await state.set_state(AdvertisingStates.waiting_campaign_title)
@@ -128,7 +125,7 @@ async def create_title(message: Message, state: FSMContext) -> None:
     await message.answer("✍️ متن تبلیغ را ارسال کنید.\n\nمی‌توانید از HTML پشتیبانی‌شده تلگرام مثل <b>bold</b> استفاده کنید.")
 
 
-async def _build_ad_markup(campaign_id: int, session: AsyncSession) -> InlineKeyboardMarkup:
+async def _build_ad_markup(campaign_id: int, bot_username: str, session: AsyncSession) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     periods = await ServicePeriod.list_active(session)
     for period in periods:
@@ -137,12 +134,12 @@ async def _build_ad_markup(campaign_id: int, session: AsyncSession) -> InlineKey
             volume = f"{plan.volume_gb:,}".translate(str.maketrans("0123456789,", "۰۱۲۳۴۵۶۷۸۹٬"))
             duration = f"{plan.duration_days:,}".translate(str.maketrans("0123456789,", "۰۱۲۳۴۵۶۷۸۹٬"))
             price = f"{plan.price_toman:,}".translate(str.maketrans("0123456789,", "۰۱۲۳۴۵۶۷۸۹٬"))
-            callback = f"ad_click:{campaign_id}:{period.id}:{plan.id}"
+            url = f"https://t.me/{bot_username}?start=ad_{campaign_id}_{period.id}_{plan.id}"
             b.row(
-                InlineKeyboardButton(text=f"📦 {volume} گیگ / {duration} روز", callback_data=callback),
-                InlineKeyboardButton(text=f"💰 {price} تومان", callback_data=callback),
+                InlineKeyboardButton(text=f"📦 {volume} گیگ / {duration} روز", url=url),
+                InlineKeyboardButton(text=f"💰 {price} تومان", url=url),
             )
-    b.row(InlineKeyboardButton(text="🎁 مشاهده و خرید سرویس", callback_data=NavSubscription.BUY))
+    b.row(InlineKeyboardButton(text="🎁 مشاهده و خرید سرویس", url=f"https://t.me/{bot_username}?start=ad_{campaign_id}"))
     return b.as_markup()
 
 
@@ -153,20 +150,18 @@ async def create_and_publish(message: Message, state: FSMContext, session: Async
         await message.answer("❌ متن تبلیغ خالی است.")
         return
     data = await state.get_data()
-    campaign = AdvertisingCampaign(title=data["campaign_title"], body=body)
     me = await message.bot.get_me()
-    campaign.bot_username = me.username
+    campaign = AdvertisingCampaign(title=data["campaign_title"], body=body, bot_username=me.username)
     session.add(campaign)
     await session.commit()
 
-    markup = await _build_ad_markup(campaign.id, session)
+    markup = await _build_ad_markup(campaign.id, me.username or "", session)
     channels = await AdvertisingChannel.list_active(session)
     published, failed = [], []
     for channel in channels:
         try:
             sent = await message.bot.send_message(chat_id=channel.chat_id, text=body, reply_markup=markup)
             published.append(channel.title)
-            await AdvertisingEvent.record_unique(session, campaign.id, message.from_user.id, "publish", channel_id=channel.chat_id)
             logger.info("Advertising campaign %s published to %s as message %s", campaign.id, channel.chat_id, sent.message_id)
         except Exception as exc:
             failed.append(f"{channel.title}: {exc}")
@@ -186,9 +181,8 @@ async def stats(callback: CallbackQuery, session: AsyncSession) -> None:
     campaigns = list((await session.execute(select(AdvertisingCampaign).order_by(AdvertisingCampaign.id.desc()).limit(20))).scalars().all())
     lines = ["📊 <b>گزارش کمپین‌های تبلیغاتی</b>", ""]
     for campaign in campaigns:
-        start_count = await session.scalar(select(func.count()).select_from(AdvertisingEvent).where(AdvertisingEvent.campaign_id == campaign.id, AdvertisingEvent.event_type == "start")) or 0
-        button_count = await session.scalar(select(func.count()).select_from(AdvertisingEvent).where(AdvertisingEvent.campaign_id == campaign.id, AdvertisingEvent.event_type == "button")) or 0
-        lines.append(f"#{campaign.id} — <b>{campaign.title}</b> | ورودی یکتا: {start_count} | کلیک دکمه: {button_count}")
+        starts = await session.scalar(select(func.count()).select_from(AdvertisingEvent).where(AdvertisingEvent.campaign_id == campaign.id, AdvertisingEvent.event_type == "start")) or 0
+        lines.append(f"#{campaign.id} — <b>{campaign.title}</b> | ورودی یکتا: <b>{starts}</b>")
     if not campaigns:
         lines.append("هنوز کمپینی ساخته نشده است.")
     await callback.answer()
