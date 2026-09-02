@@ -36,6 +36,8 @@ from .admin_tools.dynamic_traffic_addon_management_handler import router as dyna
 from .admin_tools.server_handler import router as server_router
 from .admin_tools.referral_settings_handler import router as referral_settings_router
 from .admin_tools.test_account_settings_handler import router as test_account_settings_router
+from .admin_tools.advertising_management_extra_handler import router as advertising_management_extra_router
+from .admin_tools.advertising_management_handler import router as advertising_management_router
 from .admin_tools.advertising_builder_handler import router as advertising_admin_router
 from .gift_service_handler import router as gift_service_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
@@ -97,6 +99,8 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         env_settings_enhancer_router,
         env_settings_router,
         test_account_settings_router,
+        advertising_management_extra_router,
+        advertising_management_router,
         advertising_admin_router,
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,
