@@ -1,6 +1,6 @@
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,12 +8,19 @@ from app.bot.filters import IsAdmin
 from app.bot.states.advertising import AdvertisingStates
 from app.bot.routers.admin_tools.advertising_management_handler import (
     _button_edit_screen,
+    _button_menu,
     _campaign_menu,
     _get_campaign,
     _sync_publications,
 )
 
 router = Router(name=__name__)
+
+
+def _cancel_markup() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="❌ لغو", callback_data="advertising:manage:cancel")]]
+    )
 
 
 @router.callback_query(F.data.regexp(r"^advertising:button_edit:\d+:\d+$"), IsAdmin())
@@ -34,12 +41,7 @@ async def button_title_edit_start(callback: CallbackQuery, state: FSMContext) ->
     await state.update_data(edit_campaign_id=int(campaign_raw), edit_button_index=int(index_raw))
     await state.set_state(AdvertisingStates.waiting_edit_button_title)
     await callback.answer()
-    await callback.message.edit_text(
-        "✏️ عنوان جدید دکمه را ارسال کن.",
-        reply_markup=__import__("aiogram").types.InlineKeyboardMarkup(
-            inline_keyboard=[[__import__("aiogram").types.InlineKeyboardButton(text="❌ لغو", callback_data="advertising:manage:cancel")]]
-        ),
-    )
+    await callback.message.edit_text("✏️ عنوان جدید دکمه را ارسال کن.", reply_markup=_cancel_markup())
 
 
 @router.callback_query(F.data.regexp(r"^advertising:button_url_edit:\d+:\d+$"), IsAdmin())
@@ -48,12 +50,7 @@ async def button_url_edit_start(callback: CallbackQuery, state: FSMContext) -> N
     await state.update_data(edit_campaign_id=int(campaign_raw), edit_button_index=int(index_raw))
     await state.set_state(AdvertisingStates.waiting_edit_button_url)
     await callback.answer()
-    await callback.message.edit_text(
-        "🔗 لینک / اکشن جدید دکمه را ارسال کن.",
-        reply_markup=__import__("aiogram").types.InlineKeyboardMarkup(
-            inline_keyboard=[[__import__("aiogram").types.InlineKeyboardButton(text="❌ لغو", callback_data="advertising:manage:cancel")]]
-        ),
-    )
+    await callback.message.edit_text("🔗 لینک / اکشن جدید دکمه را ارسال کن.", reply_markup=_cancel_markup())
 
 
 @router.callback_query(F.data.regexp(r"^advertising:button_color_edit:\d+:\d+$"), IsAdmin())
@@ -66,8 +63,8 @@ async def button_color_edit_start(callback: CallbackQuery, session: AsyncSession
         return
     b = InlineKeyboardBuilder()
     for color, label in (("green", "🟢 سبز"), ("red", "🔴 قرمز"), ("blue", "🔵 آبی"), ("none", "⚪ بدون رنگ")):
-        b.row(InlineKeyboardBuilder().button(text=label, callback_data=f"advertising:button_color_set:{campaign.id}:{index}:{color}").as_markup().inline_keyboard[0][0])
-    b.row(__import__("aiogram").types.InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"advertising:button_edit:{campaign.id}:{index}"))
+        b.row(InlineKeyboardButton(text=label, callback_data=f"advertising:button_color_set:{campaign.id}:{index}:{color}"))
+    b.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"advertising:button_edit:{campaign.id}:{index}"))
     await callback.answer()
     await callback.message.edit_text("🎨 رنگ جدید را انتخاب کن.", reply_markup=b.as_markup())
 
@@ -108,7 +105,7 @@ async def button_delete(callback: CallbackQuery, session: AsyncSession) -> None:
     await callback.answer("دکمه حذف شد")
     await callback.message.edit_text(
         f"✅ دکمه حذف شد.\n📡 موفق: {updated}\n⚠️ ناموفق: {failed}",
-        reply_markup=__import__("app.bot.routers.admin_tools.advertising_management_handler", fromlist=["_button_menu"])._button_menu(campaign),
+        reply_markup=_button_menu(campaign),
     )
 
 
@@ -132,5 +129,5 @@ async def button_move(callback: CallbackQuery, session: AsyncSession) -> None:
     await callback.answer("ترتیب دکمه‌ها تغییر کرد")
     await callback.message.edit_text(
         f"✅ ترتیب دکمه‌ها ذخیره شد.\n📡 موفق: {updated}\n⚠️ ناموفق: {failed}",
-        reply_markup=__import__("app.bot.routers.admin_tools.advertising_management_handler", fromlist=["_button_menu"])._button_menu(campaign),
+        reply_markup=_button_menu(campaign),
     )
