@@ -43,6 +43,7 @@ from .admin_tools.advertising_publication_status_handler import router as advert
 from .admin_tools.advertising_builder_handler import router as advertising_admin_router
 from .gift_service_handler import router as gift_service_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
+from .card_swap_resilience import router as card_swap_resilience_router
 from .multi_card_payment import router as multi_card_payment_router
 from .multi_card_service_receipt import router as multi_card_service_receipt_router
 from .multi_card_wallet_receipt import router as multi_card_wallet_receipt_router
@@ -70,6 +71,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         multi_card_wallet_receipt_router,
         multi_card_service_receipt_router,
         managed_card_payment.router,
+        card_swap_resilience_router,
         multi_card_payment_router,
         custom_service_card_payment.router,
         custom_service.router,
