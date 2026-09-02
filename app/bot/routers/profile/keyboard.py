@@ -1,8 +1,8 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.routers.misc.keyboard import back_to_main_menu_button
-from app.bot.utils.navigation import NavDownload, NavMain, NavProfile, NavReferral
+from app.bot.utils.navigation import NavMain, NavProfile, NavReferral, NavSupport
 
 
 def profile_keyboard(language: str = "fa") -> InlineKeyboardMarkup:
@@ -38,11 +38,40 @@ def profile_keyboard(language: str = "fa") -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=referral_text, callback_data=NavReferral.MAIN),
     )
     builder.row(
-        InlineKeyboardButton(text=connection_text, callback_data=NavDownload.MAIN),
+        InlineKeyboardButton(text=connection_text, callback_data=NavSupport.TRAINING),
         InlineKeyboardButton(text=key_text, callback_data=NavProfile.SHOW_KEY),
     )
     builder.row(
         InlineKeyboardButton(text=language_text, callback_data=NavMain.LANGUAGE),
     )
     builder.row(back_to_main_menu_button())
+    return builder.as_markup()
+
+
+def connection_keys_keyboard(
+    keys: list[tuple[int, str, str]],
+    language: str = "fa",
+) -> InlineKeyboardMarkup | None:
+    if not keys:
+        return None
+
+    builder = InlineKeyboardBuilder()
+
+    if language == "en":
+        copy_button_text = "📋 Copy"
+    elif language == "ru":
+        copy_button_text = "📋 Копировать"
+    else:
+        copy_button_text = "📋 کپی"
+
+    for number, (_subscription_id, config_name, connection_key) in enumerate(keys, start=1):
+        label = f"{number}️⃣ {config_name}" if config_name else f"{number}️⃣ Connection Key"
+        builder.row(
+            InlineKeyboardButton(text=label, url=connection_key),
+            InlineKeyboardButton(
+                text=copy_button_text,
+                copy_text=CopyTextButton(text=connection_key),
+            ),
+        )
+
     return builder.as_markup()
