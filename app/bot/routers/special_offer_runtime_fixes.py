@@ -24,7 +24,7 @@ async def _safe_add_special_offer_buttons(
     reply_markup: InlineKeyboardMarkup,
     session: AsyncSession,
 ) -> InlineKeyboardMarkup:
-    """Return a new markup with one direct-purchase button per active offer."""
+    """Return a new markup with one green direct-purchase button per active offer."""
     campaigns = await special_offer._active_campaigns_with_offers(session)
     rows = [list(row) for row in reply_markup.inline_keyboard]
 
@@ -40,6 +40,7 @@ async def _safe_add_special_offer_buttons(
                         f"{assignment.special_price_toman:,} تومان"
                     ),
                     callback_data=f"special_offer:plan:{campaign.id}:{plan.id}",
+                    style="success",
                 )
             )
 
