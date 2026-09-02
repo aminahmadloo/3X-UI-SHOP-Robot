@@ -35,6 +35,7 @@ def _subscription_dict(subscription_data: SubscriptionData) -> dict:
         "plan_id": subscription_data.plan_id,
         "volume_gb": subscription_data.volume_gb,
         "config_name": subscription_data.config_name,
+        "payment_kind": subscription_data.payment_kind,
         "subscription_id": subscription_data.subscription_id,
     }
 
@@ -138,11 +139,12 @@ async def _render_managed_card(
 
     if show_swap_notice:
         notice = (
-            "🔄 کارت عوض شد\n\n"
-            f"💳 شماره کارت جدید:\n{card.card_number}\n\n"
-            f"🏦 بانک: {card.bank_name or 'نامشخص'}\n"
-            f"👤 بنام: {card.card_holder_name}\n\n"
-            f"💰 مبلغ را به این کارت واریز کنید: {int(subscription_data.price):,} تومان"
+            "کارت عوض شد\n\n"
+            "شماره کارت جدید:\n"
+            f"{card.card_number}\n\n"
+            f"بانک: {card.bank_name or 'نامشخص'}\n"
+            f"بنام: {card.card_holder_name}\n\n"
+            "مبلغ را به این کارت واریز کنید."
         )
         await callback.answer(notice, show_alert=True)
     else:
