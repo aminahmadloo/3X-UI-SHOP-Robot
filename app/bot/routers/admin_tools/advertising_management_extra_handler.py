@@ -18,6 +18,7 @@ def _menu_keyboard() -> InlineKeyboardMarkup:
     b.row(InlineKeyboardButton(text="➕ افزودن کانال", callback_data="advertising:add_channel"))
     b.row(InlineKeyboardButton(text="📣 ساخت تبلیغ", callback_data="advertising:create"))
     b.row(InlineKeyboardButton(text="📢 مدیریت کمپین‌ها", callback_data="advertising:manage"))
+    b.row(InlineKeyboardButton(text="🔍 وضعیت انتشار کمپین‌ها", callback_data="advertising:publication_status"))
     b.row(InlineKeyboardButton(text="📊 گزارش تبلیغات", callback_data="advertising:stats"))
     b.row(InlineKeyboardButton(text="📋 مدیریت کانال‌ها", callback_data="advertising:channels"))
     b.row(InlineKeyboardButton(text="🏠 منوی مدیریت", callback_data=NavAdminTools.MAIN))
