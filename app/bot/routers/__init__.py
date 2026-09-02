@@ -36,7 +36,7 @@ from .admin_tools.dynamic_traffic_addon_management_handler import router as dyna
 from .admin_tools.server_handler import router as server_router
 from .admin_tools.referral_settings_handler import router as referral_settings_router
 from .admin_tools.test_account_settings_handler import router as test_account_settings_router
-from .admin_tools.advertising_handler import router as advertising_admin_router
+from .admin_tools.advertising_builder_handler import router as advertising_admin_router
 from .gift_service_handler import router as gift_service_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
 from .multi_card_payment import router as multi_card_payment_router
@@ -57,8 +57,6 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
     dispatcher.include_routers(
         misc.error_handler.router,
         misc.notification_handler.router,
-        # Advertising deep-links must run before the generic /start handler;
-        # non-ad starts raise SkipHandler and continue normally.
         advertising.router,
         commands.router,
         multi_card_wallet_receipt_router,
