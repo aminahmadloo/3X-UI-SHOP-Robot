@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Self
 
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -58,5 +59,9 @@ class AdvertisingEvent(Base):
         if existing.scalar_one_or_none():
             return False
         session.add(cls(campaign_id=campaign_id, tg_id=tg_id, event_type=event_type, channel_id=channel_id, plan_id=plan_id))
-        await session.commit()
-        return True
+        try:
+            await session.commit()
+            return True
+        except IntegrityError:
+            await session.rollback()
+            return False
