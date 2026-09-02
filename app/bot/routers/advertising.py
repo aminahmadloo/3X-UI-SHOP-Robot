@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.models import SubscriptionData
 from app.bot.routers.subscription.keyboard import service_purchase_plan_keyboard
 from app.bot.utils.navigation import NavMain, NavSubscription
-from app.db.models import AdvertisingCampaign, AdvertisingEvent, ConnectedDeviceSettings, ServicePeriod, ServicePurchasePlan, User
+from app.db.models import AdvertisingCampaign, AdvertisingChannel, AdvertisingEvent, ConnectedDeviceSettings, ServicePeriod, ServicePurchasePlan, User
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -66,12 +66,17 @@ async def tracked_ad_start(message: Message, command: CommandObject, user: User,
         campaign_id = int(parts[1])
         period_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
         plan_id = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else None
+        channel_key = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else None
     except (ValueError, IndexError):
         raise SkipHandler
 
     await state.clear()
-    unique = await AdvertisingEvent.record_unique(session, campaign_id, user.tg_id, "start", plan_id=plan_id)
-    logger.info("Advertising start: campaign=%s user=%s unique=%s", campaign_id, user.tg_id, unique)
+    channel_id = None
+    if channel_key:
+        channel = await session.get(AdvertisingChannel, channel_key)
+        channel_id = channel.chat_id if channel else None
+    unique = await AdvertisingEvent.record_unique(session, campaign_id, user.tg_id, "start", channel_id=channel_id, plan_id=plan_id)
+    logger.info("Advertising start: campaign=%s user=%s channel=%s unique=%s", campaign_id, user.tg_id, channel_id, unique)
     await _show_campaign_purchase(message, session, user, campaign_id, period_id, plan_id)
 
 
