@@ -277,6 +277,7 @@ def install() -> None:
     payment_gateway_admin.show_payment_methods = _show_methods
     renew_service_handler._payment_methods_keyboard = _main_renewal
     subscription_handler.payment_method_keyboard = _payment_keyboard
+    subscription_handler.managed_payment_method_keyboard = lambda p, price, gateways: _managed_keyboard(p, price, gateways, f"subscription_back_plan:{p}")
     subscription_keyboard.payment_method_keyboard = _payment_keyboard
     subscription_keyboard.managed_payment_method_keyboard = lambda p, price, gateways: _managed_keyboard(p, price, gateways, f"subscription_back_plan:{p}")
     subscription_keyboard.managed_payment_method_keyboard_traffic = lambda sid, p, price, gateways: _managed_keyboard(p, price, gateways, f"traffic:add:{sid}")
