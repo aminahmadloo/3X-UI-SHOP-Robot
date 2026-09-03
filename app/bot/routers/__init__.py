@@ -1,6 +1,7 @@
 from aiogram import Dispatcher
 from aiohttp.web import Application
 
+from app.bot.force_join import router as force_join_router
 from app.bot.utils.constants import CONNECTION_WEBHOOK
 
 from . import (
@@ -65,6 +66,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
     dispatcher.include_routers(
         misc.error_handler.router,
         misc.notification_handler.router,
+        force_join_router,
         advertising.router,
         commands.router,
         multi_card_wallet_receipt_router,
