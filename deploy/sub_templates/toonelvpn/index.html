@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ToonelVPN SUB</title>
+<style>
+body{margin:0;background:#f5f7fb;color:#18202a;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.wrap{max-width:900px;margin:28px auto;padding:0 14px}.card{background:#fff;border:1px solid #e5e9f0;border-radius:14px;padding:18px;box-shadow:0 4px 18px #0000000b}.title{font-size:22px;font-weight:800;margin-bottom:6px}.sub{font-size:12px;color:#667085;word-break:break-all;margin-bottom:16px}.url{display:flex;gap:8px;margin-bottom:18px}.url input{min-width:0;flex:1;padding:10px;border:1px solid #d8dee8;border-radius:9px}.btn{border:1px solid #d8dee8;background:#fff;border-radius:9px;padding:9px 12px;cursor:pointer;font-weight:700}.row{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid #edf0f4}.info{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.name{font-weight:750}.meta{font-size:12px;color:#667085;margin-top:3px}.actions{display:flex;gap:6px;flex:none}.qr{display:none;margin-top:8px;text-align:right}.qr img{width:150px;height:150px;border:1px solid #eee;padding:5px;background:#fff}@media(max-width:600px){.row{align-items:flex-start}.info{white-space:normal}.actions{flex-direction:column}.url{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="card">
+<div class="title">SUB</div>
+<div class="sub" id="suburl"></div>
+<div class="url"><input id="copyUrl" readonly><button class="btn" onclick="copyText(document.getElementById('copyUrl').value)">📋 Copy URL</button></div>
+<div id="list"></div>
+</div></div>
+<script>
+const configs=window.SUBSCRIPTION_CONFIGS||[];
+const subUrl=window.SUBSCRIPTION_URL||location.href;
+document.getElementById('suburl').textContent=subUrl;
+document.getElementById('copyUrl').value=subUrl;
+function copyText(v){navigator.clipboard?.writeText(v).then(()=>{});}
+function esc(v){return String(v??'').replace(/[&<>\"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\\"':'&quot;'}[m]));}
+function qr(el,url){el.style.display=el.style.display==='block'?'none':'block';if(!el.dataset.ready){el.innerHTML='<img alt="QR Code" src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data='+encodeURIComponent(url)+'">';el.dataset.ready='1';}}
+function render(){const root=document.getElementById('list');root.innerHTML=configs.map((c,i)=>{const url=c.url||c.link||'';const title=c.name||c.type||'VLESS';const meta=[c.profile||c.label,c.volume||'',c.port?':'+c.port:''].filter(Boolean).join(' | ');return `<div class="row"><div class="info"><div class="name">${esc(title)}</div><div class="meta">${esc(meta)}</div><div class="qr" id="qr-${i}"></div></div><div class="actions"><button class="btn" onclick="copyText(${JSON.stringify(url)})">📋</button><button class="btn" onclick="qr(document.getElementById('qr-${i}'),${JSON.stringify(url)})">QR</button></div></div>`}).join('')}
+render();
+</script>
+</body>
+</html>
