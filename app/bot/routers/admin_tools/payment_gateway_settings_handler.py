@@ -35,6 +35,18 @@ def _read_env_lines() -> list[str]:
     return ENV_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
 
 
+def _read_env_value(name: str) -> str:
+    for line in _read_env_lines():
+        match = ENV_LINE_RE.match(line)
+        if not match or match.group(2) != name:
+            continue
+        value = match.group(4).strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+            value = value[1:-1]
+        return value
+    return os.getenv(name, "").strip()
+
+
 def _write_env_value(name: str, value: str) -> None:
     if not ENV_KEY_RE.fullmatch(name):
         raise ValueError("نام متغیر نامعتبر است.")
@@ -60,7 +72,7 @@ def _write_env_value(name: str, value: str) -> None:
     if not found:
         output.append(f"{name}={value}\n")
 
-    # .env is a Docker bind mount; replace-in-place must not be used here.
+    # .env is a Docker bind mount; write directly so the host .env is updated.
     ENV_FILE.write_text("".join(output), encoding="utf-8")
 
 
@@ -147,8 +159,8 @@ async def show_menu(callback: CallbackQuery, session: AsyncSession, config: Conf
     else:
         payment_method, effective_url, custom_status = "🔵 مستقیم زرین‌پال", config.zarinpal.DIRECT_PAYMENT_BASE_URL, "⚪ استفاده نمی‌شود"
 
-    token = os.getenv("ABAN_GATEWAY_TOKEN", "").strip()
-    secret = os.getenv("ABAN_GATEWAY_WEBHOOK_SECRET", "").strip()
+    token = _read_env_value("ABAN_GATEWAY_TOKEN")
+    secret = _read_env_value("ABAN_GATEWAY_WEBHOOK_SECRET")
     aban_status = "🟢 آماده اتصال" if token and secret else "🔴 نیازمند تنظیمات"
 
     text = (
@@ -175,12 +187,12 @@ async def payment_gateway_settings_menu(callback: CallbackQuery, session: AsyncS
 
 @router.callback_query(F.data == "paymentgateway:aban", IsAdmin())
 async def aban_settings_menu(callback: CallbackQuery, config: Config) -> None:
-    token = os.getenv("ABAN_GATEWAY_TOKEN", "").strip()
-    secret = os.getenv("ABAN_GATEWAY_WEBHOOK_SECRET", "").strip()
+    token = _read_env_value("ABAN_GATEWAY_TOKEN")
+    secret = _read_env_value("ABAN_GATEWAY_WEBHOOK_SECRET")
     token_status = "🟢 تنظیم شده" if token else "🔴 تنظیم نشده"
     secret_status = "🟢 تنظیم شده" if secret else "🔴 تنظیم نشده"
     configured = bool(token and secret)
-    api_url = os.getenv("ABAN_GATEWAY_API_BASE_URL", "https://abangateway.ir/api/v1").strip() or "https://abangateway.ir/api/v1"
+    api_url = _read_env_value("ABAN_GATEWAY_API_BASE_URL") or "https://abangateway.ir/api/v1"
 
     text = (
         "💳 <b>پرداخت خودکار کارت به کارت — AbanGateway</b>\n\n"
