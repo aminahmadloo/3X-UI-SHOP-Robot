@@ -8,6 +8,7 @@ from app.bot.models import ServicesContainer
 from app.config import Config
 
 from ._gateway import PaymentGateway
+from .aban_gateway import AbanGateway
 from .zarinpal import ZarinPal
 
 
@@ -30,17 +31,11 @@ class GatewayFactory:
     def get_gateways(self) -> list[PaymentGateway]:
         return list(self._gateways.values())
 
-    def register_gateways(
-        self,
-        app: Application,
-        config: Config,
-        session: async_sessionmaker,
-        storage: RedisStorage,
-        bot: Bot,
-        i18n: I18n,
-        services: ServicesContainer,
-    ) -> None:
+    def register_gateways(self, app: Application, config: Config,
+                          session: async_sessionmaker, storage: RedisStorage,
+                          bot: Bot, i18n: I18n, services: ServicesContainer) -> None:
         dependencies = [app, config, session, storage, bot, i18n, services]
-
         if config.shop.PAYMENT_ZARINPAL_ENABLED:
             self.register_gateway(ZarinPal(*dependencies))
+        if AbanGateway.is_configured():
+            self.register_gateway(AbanGateway(*dependencies))
