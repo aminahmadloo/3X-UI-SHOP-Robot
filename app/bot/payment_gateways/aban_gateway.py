@@ -13,6 +13,7 @@ from aiohttp.web import Application, Request, Response
 from aiogram import Bot
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.utils.i18n import I18n
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import ServicesContainer, SubscriptionData
@@ -63,7 +64,11 @@ class AbanGateway(PaymentGateway):
     def _headers(self) -> dict[str, str]:
         if not self.token:
             raise RuntimeError("ABAN_GATEWAY_TOKEN is not configured")
-        return {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json", "Accept": "application/json"}
+        return {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> tuple[int, dict[str, Any]]:
         async with ClientSession(timeout=ClientTimeout(total=20)) as client:
@@ -76,33 +81,137 @@ class AbanGateway(PaymentGateway):
         error = body.get("error")
         return str(error.get("code", "")) if isinstance(error, dict) else ""
 
+    @staticmethod
+    def _service_order_key(data: SubscriptionData) -> str:
+        """Return the canonical identity of this purchase/service request.
+
+        The complete persisted subscription snapshot is used intentionally:
+        user_id alone is never sufficient because one user may have multiple
+        independent services/orders. The price and purchase parameters are
+        included so a changed order cannot accidentally reuse an old invoice.
+        """
+        serialized = data.serialize()
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    async def _find_pending_transaction(self, data: SubscriptionData) -> Transaction | None:
+        serialized = data.serialize()
+        async with self.session() as db:
+            result = await db.execute(
+                select(Transaction)
+                .where(
+                    Transaction.tg_id == data.user_id,
+                    Transaction.status == TransactionStatus.PENDING,
+                    Transaction.subscription == serialized,
+                )
+                .order_by(Transaction.created_at.desc())
+            )
+            return result.scalars().first()
+
+    @staticmethod
+    def _payment_url(invoice_id: str, body: dict[str, Any] | None = None) -> str:
+        payment_url = str((body or {}).get("payment_url") or "").strip()
+        return payment_url or f"https://abangateway.ir/pay/{invoice_id}"
+
+    async def _get_invoice(self, invoice_id: str) -> dict[str, Any]:
+        status, body = await self._request("GET", f"/invoices/{invoice_id}")
+        if status != 200:
+            raise RuntimeError(
+                f"AbanGateway invoice lookup failed: HTTP {status}, code={self._error_code(body)}"
+            )
+        return body
+
+    async def _reconcile_existing_invoice(self, transaction: Transaction) -> str | None:
+        invoice_id = transaction.payment_id
+        invoice = await self._get_invoice(invoice_id)
+        remote_status = str(invoice.get("status") or "").strip().lower()
+
+        if remote_status == "paid":
+            await self.handle_payment_succeeded(invoice_id)
+            return self._payment_url(invoice_id, invoice)
+
+        if remote_status in {"expired", "cancelled"}:
+            async with self.session() as db:
+                await Transaction.update(
+                    session=db,
+                    payment_id=invoice_id,
+                    status=TransactionStatus.CANCELED,
+                )
+            return None
+
+        if remote_status in {"pending", "partially_paid"}:
+            return self._payment_url(invoice_id, invoice)
+
+        raise RuntimeError(
+            f"Unknown AbanGateway invoice status for {invoice_id}: {remote_status or 'missing'}"
+        )
+
     async def create_payment(self, data: SubscriptionData) -> str:
         if not self.is_configured():
             raise RuntimeError("AbanGateway is not configured")
+
         amount_rial = self._to_rial(data.price)
-        order_id = f"toonel-{uuid.uuid4().hex}"
-        payload = {
-            "amount_rial": amount_rial,
-            "order_id": order_id,
-            "callback_url": self.webhook_url,
-            "description": "پرداخت سفارش ToonelVPN",
-            "metadata": {"user_id": data.user_id, "payment_kind": data.payment_kind, "plan_id": data.plan_id},
-        }
-        status, response = await self._request("POST", "/invoices", json=payload)
-        if status != 201:
-            raise RuntimeError(f"AbanGateway invoice creation failed: HTTP {status}, code={self._error_code(response)}")
-        invoice_id = str(response.get("invoice_id") or "").strip()
-        payment_url = str(response.get("payment_url") or "").strip()
-        if not invoice_id or not payment_url:
-            raise RuntimeError("AbanGateway returned an incomplete invoice")
-        async with self.session() as db:
-            transaction = await Transaction.create(session=db, tg_id=data.user_id, subscription=data.serialize(),
-                                                    payment_id=invoice_id, status=TransactionStatus.PENDING)
-            if transaction is None:
-                await self._cancel_invoice(invoice_id)
-                raise RuntimeError(f"Could not create ToonelVPN transaction for {invoice_id}")
-        logger.info("AbanGateway invoice created: %s payable_rial=%s", invoice_id, response.get("payable_rial"))
-        return payment_url
+        service_order_key = self._service_order_key(data)
+        lock = self.storage.redis.lock(
+            f"payment:aban:create:{service_order_key}",
+            timeout=180,
+            blocking_timeout=10,
+        )
+
+        async with lock:
+            existing = await self._find_pending_transaction(data)
+            if existing is not None:
+                reused_url = await self._reconcile_existing_invoice(existing)
+                if reused_url is not None:
+                    logger.info(
+                        "Reusing AbanGateway invoice %s for service order %s",
+                        existing.payment_id,
+                        service_order_key,
+                    )
+                    return reused_url
+
+            order_id = f"toonel-{uuid.uuid4().hex}"
+            payload = {
+                "amount_rial": amount_rial,
+                "order_id": order_id,
+                "callback_url": self.webhook_url,
+                "description": "پرداخت سفارش ToonelVPN",
+                "metadata": {
+                    "user_id": data.user_id,
+                    "payment_kind": data.payment_kind,
+                    "plan_id": data.plan_id,
+                    "service_order_key": service_order_key,
+                },
+            }
+            status, response = await self._request("POST", "/invoices", json=payload)
+            if status != 201:
+                raise RuntimeError(
+                    f"AbanGateway invoice creation failed: HTTP {status}, code={self._error_code(response)}"
+                )
+
+            invoice_id = str(response.get("invoice_id") or "").strip()
+            payment_url = self._payment_url(invoice_id, response)
+            if not invoice_id or not payment_url:
+                raise RuntimeError("AbanGateway returned an incomplete invoice")
+
+            async with self.session() as db:
+                transaction = await Transaction.create(
+                    session=db,
+                    tg_id=data.user_id,
+                    subscription=data.serialize(),
+                    payment_id=invoice_id,
+                    status=TransactionStatus.PENDING,
+                )
+                if transaction is None:
+                    await self._cancel_invoice(invoice_id)
+                    raise RuntimeError(f"Could not create ToonelVPN transaction for {invoice_id}")
+
+            logger.info(
+                "AbanGateway invoice created: %s service_order=%s payable_rial=%s",
+                invoice_id,
+                service_order_key,
+                response.get("payable_rial"),
+            )
+            return payment_url
 
     async def _cancel_invoice(self, invoice_id: str) -> None:
         try:
@@ -118,7 +227,9 @@ class AbanGateway(PaymentGateway):
             return True
         if status == 409 and self._error_code(body) == "already_verified":
             return False
-        raise RuntimeError(f"AbanGateway verification failed: HTTP {status}, code={self._error_code(body)}")
+        raise RuntimeError(
+            f"AbanGateway verification failed: HTTP {status}, code={self._error_code(body)}"
+        )
 
     async def handle_payment_succeeded(self, payment_id: str) -> None:
         lock = self.storage.redis.lock(f"payment:aban:{payment_id}", timeout=180, blocking_timeout=10)
@@ -132,6 +243,7 @@ class AbanGateway(PaymentGateway):
                 if transaction.status == TransactionStatus.CANCELED:
                     logger.warning("Ignoring success for canceled AbanGateway transaction %s", payment_id)
                     return
+
             if not await self._verify_invoice(payment_id):
                 logger.info("AbanGateway invoice %s was already verified; no duplicate delivery.", payment_id)
                 return
