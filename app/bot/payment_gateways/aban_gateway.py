@@ -30,7 +30,6 @@ class AbanGateway(PaymentGateway):
     callback = "pay_aban"
     WEBHOOK_PATH = "/webhooks/aban-gateway"
     DEFAULT_API_BASE_URL = "https://abangateway.ir/api/v1"
-    EXPIRY_MINUTES = 10
 
     def __init__(self, app: Application, config: Config, session: async_sessionmaker,
                  storage: RedisStorage, bot: Bot, i18n: I18n,
@@ -88,7 +87,6 @@ class AbanGateway(PaymentGateway):
             "callback_url": self.webhook_url,
             "description": "پرداخت سفارش ToonelVPN",
             "metadata": {"user_id": data.user_id, "payment_kind": data.payment_kind, "plan_id": data.plan_id},
-            "expiry_minutes": self.EXPIRY_MINUTES,
         }
         status, response = await self._request("POST", "/invoices", json=payload)
         if status != 201:
