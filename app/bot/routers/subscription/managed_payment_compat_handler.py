@@ -100,21 +100,38 @@ async def callback_managed_payment_compat(
             if not invoice_id or not order_id or payable_toman is None:
                 raise RuntimeError("AbanGateway returned incomplete invoice details")
 
-            text = (
-                "💳 <b>فاکتور کارت به کارت هوشمند آبان گیت</b>\n"
-                "━━━━━━━━━━━━━━━\n"
-                f"کد پیگیری: <code>{order_id}</code>\n"
-                f"شماره فاکتور آبان گیت: <code>{invoice_id}</code>\n"
-                f"نام کانفیگ: <code>{subscription_data.config_name}</code>\n"
-                f"حجم: <code>{subscription_data.volume_gb} گیگ</code>\n"
-                f"مدت: <code>{subscription_data.duration} روز</code>\n"
-                f"مبلغ سفارش: <code>{subscription_data.price:,.0f}</code> تومان\n"
-                f"مبلغ قابل پرداخت: <code>{float(payable_toman):,.0f}</code> تومان\n"
-                "مهلت پرداخت: <b>طبق زمان اعلام‌شده در صفحه آبان گیت</b>\n"
-                "━━━━━━━━━━━━━━━\n\n"
-                "برای پرداخت، روی دکمه <b>«💳 پرداخت»</b> بزنید.\n"
-                "پس از تأیید آبان گیت، شارژ یا سفارش شما به‌صورت خودکار انجام می‌شود."
-            )
+            if subscription_data.is_extend:
+                text = (
+                    "💳 <b>فاکتور کارت به کارت هوشمند آبان گیت</b>\n"
+                    "━━━━━━━━━━━━━━━\n"
+                    f"کد پیگیری: <code>{order_id}</code>\n"
+                    f"شماره فاکتور آبان گیت: <code>{invoice_id}</code>\n"
+                    f"نام کانفیگ: <code>{subscription_data.config_name}</code>\n"
+                    f"حجم افزوده: <code>{plan.volume_gb} گیگ</code>\n"
+                    f"زمان افزوده: <code>{plan.duration_days} روز</code>\n"
+                    f"مبلغ سفارش: <code>{subscription_data.price:,.0f}</code> تومان\n"
+                    f"مبلغ قابل پرداخت: <code>{float(payable_toman):,.0f}</code> تومان\n"
+                    "مهلت پرداخت: <b>طبق زمان اعلام‌شده در صفحه آبان گیت</b>\n"
+                    "━━━━━━━━━━━━━━━\n\n"
+                    "برای پرداخت، روی دکمه <b>«💳 پرداخت»</b> بزنید.\n"
+                    "پس از تأیید آبان گیت، تمدید سرویس به‌صورت خودکار انجام می‌شود."
+                )
+            else:
+                text = (
+                    "💳 <b>فاکتور کارت به کارت هوشمند آبان گیت</b>\n"
+                    "━━━━━━━━━━━━━━━\n"
+                    f"کد پیگیری: <code>{order_id}</code>\n"
+                    f"شماره فاکتور آبان گیت: <code>{invoice_id}</code>\n"
+                    f"نام کانفیگ: <code>{subscription_data.config_name}</code>\n"
+                    f"حجم: <code>{subscription_data.volume_gb} گیگ</code>\n"
+                    f"مدت: <code>{subscription_data.duration} روز</code>\n"
+                    f"مبلغ سفارش: <code>{subscription_data.price:,.0f}</code> تومان\n"
+                    f"مبلغ قابل پرداخت: <code>{float(payable_toman):,.0f}</code> تومان\n"
+                    "مهلت پرداخت: <b>طبق زمان اعلام‌شده در صفحه آبان گیت</b>\n"
+                    "━━━━━━━━━━━━━━━\n\n"
+                    "برای پرداخت، روی دکمه <b>«💳 پرداخت»</b> بزنید.\n"
+                    "پس از تأیید آبان گیت، شارژ یا سفارش شما به‌صورت خودکار انجام می‌شود."
+                )
         else:
             text = (
                 "🧾 <b>سفارش شما</b>\n\n"
