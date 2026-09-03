@@ -1,4 +1,7 @@
+import html
 import os
+import re
+from pathlib import Path
 from urllib.parse import urlparse
 
 from aiogram import F, Router
@@ -15,9 +18,58 @@ from app.db.models import PaymentGatewaySettings, PaymentMethodSettings
 
 router = Router(name=__name__)
 
+ENV_FILE = Path("/app/.env")
+ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+ENV_LINE_RE = re.compile(r"^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.*?)(\r?\n)?$")
+
 
 class PaymentGatewaySettingsState(StatesGroup):
     waiting_zarinpal_payment_base_url = State()
+    waiting_aban_token = State()
+    waiting_aban_webhook_secret = State()
+
+
+def _read_env_lines() -> list[str]:
+    if not ENV_FILE.exists():
+        return []
+    return ENV_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
+
+
+def _write_env_value(name: str, value: str) -> None:
+    if not ENV_KEY_RE.fullmatch(name):
+        raise ValueError("نام متغیر نامعتبر است.")
+    if "\n" in value or "\r" in value:
+        raise ValueError("مقدار نمی‌تواند شامل خط جدید باشد.")
+    if not ENV_FILE.exists():
+        raise FileNotFoundError(str(ENV_FILE))
+
+    output: list[str] = []
+    found = False
+    for line in _read_env_lines():
+        match = ENV_LINE_RE.match(line)
+        if not match:
+            output.append(line)
+            continue
+        indent, key, separator, _, newline = match.groups()
+        if key == name:
+            output.append(f"{indent}{key}{separator}{value}{newline or chr(10)}")
+            found = True
+        else:
+            output.append(line)
+
+    if not found:
+        output.append(f"{name}={value}\n")
+
+    # .env is a Docker bind mount; replace-in-place must not be used here.
+    ENV_FILE.write_text("".join(output), encoding="utf-8")
+
+
+def _mask_secret(value: str) -> str:
+    if not value:
+        return "<i>تنظیم نشده</i>"
+    if len(value) <= 8:
+        return "••••••••"
+    return f"{html.escape(value[:4])}••••••••{html.escape(value[-4:])}"
 
 
 def menu_markup(settings: PaymentGatewaySettings | None) -> InlineKeyboardMarkup:
@@ -41,8 +93,21 @@ def menu_markup(settings: PaymentGatewaySettings | None) -> InlineKeyboardMarkup
 def payment_methods_markup(methods: list[PaymentMethodSettings]) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     for method in methods:
-        action = "🔴 مخفی کردن" if method.enabled else "🟢 نمایش دادن"
-        rows.append([InlineKeyboardButton(text=f"{action} | {method.display_name}", callback_data=f"paymentmethod:toggle:{method.id}")])
+        status = "🟢 نمایش" if method.enabled else "🔴 مخفی"
+        action = "مخفی کردن" if method.enabled else "نمایش دادن"
+        rows.append([
+            InlineKeyboardButton(
+                text=f"{status} | {method.display_name}",
+                callback_data=f"paymentmethod:toggle:{method.id}",
+            )
+        ])
+        rows.append([
+            InlineKeyboardButton(
+                text=f"⚙️ {action}",
+                callback_data=f"paymentmethod:toggle:{method.id}",
+            )
+        ])
+    rows.append([InlineKeyboardButton(text="🔄 تازه‌سازی", callback_data="paymentgateway:methods")])
     rows.append([InlineKeyboardButton(text="🔙 تنظیمات درگاه‌ها", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)])
     rows.append([InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavAdminTools.MAIN)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -50,11 +115,21 @@ def payment_methods_markup(methods: list[PaymentMethodSettings]) -> InlineKeyboa
 
 async def show_payment_methods(callback: CallbackQuery, session: AsyncSession, gateway_factory: GatewayFactory) -> None:
     methods = await PaymentMethodSettings.get_manageable(session, gateway_factory.get_gateways())
-    lines = ["👁️ <b>نمایش روش‌های پرداخت برای مشتری</b>", "", "روش‌های فعال در این بخش در مرحله «انتخاب روش پرداخت» مشتری نمایش داده می‌شوند.", ""]
-    for method in methods:
+    lines = [
+        "👁️ <b>مدیریت نمایش روش‌های پرداخت</b>",
+        "",
+        "از این بخش تعیین می‌کنید کدام روش‌ها در مرحله انتخاب پرداخت مشتری دیده شوند.",
+        "",
+    ]
+    for index, method in enumerate(methods, start=1):
         status = "🟢 نمایش داده می‌شود" if method.enabled else "🔴 مخفی است"
-        lines.append(f"{method.display_name}: <b>{status}</b>")
-    lines.extend(["", "ترتیب فعلی مشتری:", "1️⃣ زرین‌پال", "2️⃣ کارت به کارت", "3️⃣ کیف پول", "4️⃣ پرداخت خودکار کارت به کارت", "", "درگاه‌های جدیدی که در آینده اضافه شوند نیز به‌صورت خودکار قابل مدیریت خواهند بود."])
+        lines.append(f"{index}️⃣ {method.display_name} — <b>{status}</b>")
+
+    lines.extend([
+        "",
+        "💡 درگاه‌های ثبت‌شده جدید به‌صورت خودکار به این فهرست اضافه می‌شوند.",
+        "💡 درگاهِ تنظیم‌نشده برای مشتری نمایش داده نمی‌شود، حتی اگر وضعیت نمایش آن فعال باشد.",
+    ])
     await callback.message.edit_text("\n".join(lines), reply_markup=payment_methods_markup(methods))
 
 
@@ -72,20 +147,21 @@ async def show_menu(callback: CallbackQuery, session: AsyncSession, config: Conf
     else:
         payment_method, effective_url, custom_status = "🔵 مستقیم زرین‌پال", config.zarinpal.DIRECT_PAYMENT_BASE_URL, "⚪ استفاده نمی‌شود"
 
-    aban_enabled = bool(os.getenv("ABAN_GATEWAY_TOKEN", "").strip() and os.getenv("ABAN_GATEWAY_WEBHOOK_SECRET", "").strip())
-    aban_status = "🟢 آماده اتصال" if aban_enabled else "🔴 نیازمند تنظیمات"
+    token = os.getenv("ABAN_GATEWAY_TOKEN", "").strip()
+    secret = os.getenv("ABAN_GATEWAY_WEBHOOK_SECRET", "").strip()
+    aban_status = "🟢 آماده اتصال" if token and secret else "🔴 نیازمند تنظیمات"
+
     text = (
         "💳 <b>تنظیمات درگاه‌های پرداخت</b>\n\n"
         "🏦 <b>زرین‌پال</b>\n"
         "وضعیت درگاه: <b>🟢 فعال</b>\n"
         f"روش نمایش پرداخت: <b>{payment_method}</b>\n"
-        f"مسیر پرداخت مؤثر: <code>{effective_url}</code>\n"
-        f"مسیر سفارشی: <code>{env_url}</code>\n"
+        f"مسیر پرداخت مؤثر: <code>{html.escape(effective_url)}</code>\n"
+        f"مسیر .env: <code>{html.escape(env_url)}</code>\n"
         f"وضعیت مسیر سفارشی: <b>{custom_status}</b>\n\n"
         "💳 <b>پرداخت خودکار کارت به کارت — AbanGateway</b>\n"
-        f"وضعیت: <b>{aban_status}</b>\n"
-        "مهلت فاکتور: <b>۱۰ دقیقه</b>\n"
-        "تنظیمات لازم: <code>ABAN_GATEWAY_TOKEN</code> و <code>ABAN_GATEWAY_WEBHOOK_SECRET</code>\n"
+        f"وضعیت اتصال: <b>{aban_status}</b>\n"
+        "مهلت فاکتور: <b>طبق تنظیمات حساب AbanGateway</b>\n"
         "Webhook: <code>/webhooks/aban-gateway</code>"
     )
     await callback.message.edit_text(text, reply_markup=menu_markup(settings))
@@ -103,23 +179,108 @@ async def aban_settings_menu(callback: CallbackQuery, config: Config) -> None:
     secret = os.getenv("ABAN_GATEWAY_WEBHOOK_SECRET", "").strip()
     token_status = "🟢 تنظیم شده" if token else "🔴 تنظیم نشده"
     secret_status = "🟢 تنظیم شده" if secret else "🔴 تنظیم نشده"
+    configured = bool(token and secret)
+    api_url = os.getenv("ABAN_GATEWAY_API_BASE_URL", "https://abangateway.ir/api/v1").strip() or "https://abangateway.ir/api/v1"
+
     text = (
         "💳 <b>پرداخت خودکار کارت به کارت — AbanGateway</b>\n\n"
-        f"وضعیت توکن: <b>{token_status}</b>\n"
-        f"وضعیت Webhook Secret: <b>{secret_status}</b>\n"
-        "مهلت هر فاکتور: <b>۱۰ دقیقه</b>\n"
-        "API: <code>https://abangateway.ir/api/v1</code>\n"
-        f"Webhook: <code>{config.bot.DOMAIN.rstrip('/')}/webhooks/aban-gateway</code>\n\n"
-        "برای فعال‌سازی، فقط این دو مقدار را در تنظیمات <b>.env</b> وارد کنید:\n"
-        "<code>ABAN_GATEWAY_TOKEN</code>\n"
-        "<code>ABAN_GATEWAY_WEBHOOK_SECRET</code>\n\n"
-        "توکن واقعی با <code>live_</code> و محیط آزمایش با <code>test_</code> شروع می‌شود."
+        f"🔑 توکن: <b>{token_status}</b>\n"
+        f"🔐 Webhook Secret: <b>{secret_status}</b>\n"
+        f"📡 وضعیت سرویس: <b>{'🟢 آماده استفاده' if configured else '🔴 ناقص'}</b>\n\n"
+        "⏱️ مهلت فاکتور: <b>طبق تنظیمات حساب AbanGateway</b>\n"
+        f"🌐 API: <code>{html.escape(api_url)}</code>\n"
+        f"🔗 Webhook: <code>{html.escape(config.bot.DOMAIN.rstrip('/') + '/webhooks/aban-gateway')}</code>\n\n"
+        "برای فعال‌سازی، Token و Webhook Secret را از همین صفحه تنظیم کنید.\n"
+        "مقدارهای حساس هرگز در این صفحه نمایش داده نمی‌شوند."
     )
+
     await callback.answer()
     await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⚙️ رفتن به تنظیمات .env", callback_data=NavAdminTools.ENV_SETTINGS)],
+        [InlineKeyboardButton(text="🔑 تنظیم / تغییر Token", callback_data="paymentgateway:aban_token")],
+        [InlineKeyboardButton(text="🔐 تنظیم / تغییر Webhook Secret", callback_data="paymentgateway:aban_secret")],
+        [InlineKeyboardButton(text="⚙️ مدیریت سایر متغیرهای .env", callback_data=NavAdminTools.ENV_SETTINGS)],
+        [InlineKeyboardButton(text="🔄 تازه‌سازی وضعیت", callback_data="paymentgateway:aban")],
         [InlineKeyboardButton(text="🔙 تنظیمات درگاه‌ها", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
     ]))
+
+
+@router.callback_query(F.data == "paymentgateway:aban_token", IsAdmin())
+async def aban_token_start(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(PaymentGatewaySettingsState.waiting_aban_token)
+    await callback.answer()
+    await callback.message.edit_text(
+        "🔑 <b>تنظیم Token آبان گیت‌وی</b>\n\n"
+        "Token جدید را در یک پیام ارسال کنید.\n\n"
+        "فرمت معتبر باید با <code>live_</code> یا <code>test_</code> شروع شود.\n"
+        "مقدار پس از ذخیره هرگز در پنل نمایش داده نمی‌شود.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 انصراف", callback_data="paymentgateway:aban")],
+        ]),
+    )
+
+
+@router.message(PaymentGatewaySettingsState.waiting_aban_token, IsAdmin())
+async def aban_token_save(message: Message, state: FSMContext) -> None:
+    value = (message.text or "").strip()
+    if not value.startswith(("live_", "test_")) or len(value) <= 5:
+        await message.answer("❌ Token معتبر نیست. باید با <code>live_</code> یا <code>test_</code> شروع شود.")
+        return
+    try:
+        _write_env_value("ABAN_GATEWAY_TOKEN", value)
+    except Exception as exc:
+        await state.clear()
+        await message.answer(f"❌ ذخیره Token انجام نشد.\n<code>{html.escape(str(exc))}</code>")
+        return
+    await state.clear()
+    await message.answer(
+        "✅ <b>Token با موفقیت ذخیره شد.</b>\n\n"
+        "🔐 مقدار Token در پنل نمایش داده نمی‌شود.\n"
+        "⚠️ برای اعمال آن در محیط اجرای Bot، کانتینر باید دوباره ایجاد/راه‌اندازی شود.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 تنظیمات AbanGateway", callback_data="paymentgateway:aban")],
+            [InlineKeyboardButton(text="🔙 تنظیمات درگاه‌ها", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
+        ]),
+    )
+
+
+@router.callback_query(F.data == "paymentgateway:aban_secret", IsAdmin())
+async def aban_secret_start(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(PaymentGatewaySettingsState.waiting_aban_webhook_secret)
+    await callback.answer()
+    await callback.message.edit_text(
+        "🔐 <b>تنظیم Webhook Secret آبان گیت‌وی</b>\n\n"
+        "Webhook Secret جدید را در یک پیام ارسال کنید.\n\n"
+        "مقدار پس از ذخیره هرگز در پنل نمایش داده نمی‌شود.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 انصراف", callback_data="paymentgateway:aban")],
+        ]),
+    )
+
+
+@router.message(PaymentGatewaySettingsState.waiting_aban_webhook_secret, IsAdmin())
+async def aban_secret_save(message: Message, state: FSMContext) -> None:
+    value = (message.text or "").strip()
+    if not value:
+        await message.answer("❌ Webhook Secret نمی‌تواند خالی باشد.")
+        return
+    try:
+        _write_env_value("ABAN_GATEWAY_WEBHOOK_SECRET", value)
+    except Exception as exc:
+        await state.clear()
+        await message.answer(f"❌ ذخیره Webhook Secret انجام نشد.\n<code>{html.escape(str(exc))}</code>")
+        return
+    await state.clear()
+    await message.answer(
+        "✅ <b>Webhook Secret با موفقیت ذخیره شد.</b>\n\n"
+        "🔐 مقدار Secret در پنل نمایش داده نمی‌شود.\n"
+        "⚠️ برای اعمال آن در محیط اجرای Bot، کانتینر باید دوباره ایجاد/راه‌اندازی شود.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 تنظیمات AbanGateway", callback_data="paymentgateway:aban")],
+            [InlineKeyboardButton(text="🔙 تنظیمات درگاه‌ها", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
+        ]),
+    )
 
 
 @router.callback_query(F.data == "paymentgateway:methods", IsAdmin())
@@ -154,10 +315,15 @@ async def toggle_payment_method(callback: CallbackQuery, session: AsyncSession, 
 async def edit_zarinpal_url_start(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await state.set_state(PaymentGatewaySettingsState.waiting_zarinpal_payment_base_url)
-    await callback.message.edit_text("✏️ <b>مسیر پرداخت اختصاصی زرین‌پال</b>\n\nآدرس پایه را وارد کنید. مثال:\n<code>https://payment.example.com</code>\n\nیا برای نمایش مستقیم صفحه پرداخت زرین‌پال، گزینه زیر را انتخاب کنید.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔴 استفاده مستقیم از زرین‌پال", callback_data="paymentgateway:set_direct")],
-        [InlineKeyboardButton(text="🔙 انصراف", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
-    ]))
+    await callback.message.edit_text(
+        "✏️ <b>مسیر پرداخت اختصاصی زرین‌پال</b>\n\n"
+        "آدرس پایه را وارد کنید. مثال:\n<code>https://payment.example.com</code>\n\n"
+        "یا برای نمایش مستقیم صفحه پرداخت زرین‌پال، گزینه زیر را انتخاب کنید.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔴 استفاده مستقیم از زرین‌پال", callback_data="paymentgateway:set_direct")],
+            [InlineKeyboardButton(text="🔙 انصراف", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
+        ]),
+    )
 
 
 @router.callback_query(F.data == "paymentgateway:set_direct", IsAdmin())
