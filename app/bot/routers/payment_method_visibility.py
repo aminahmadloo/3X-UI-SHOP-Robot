@@ -212,6 +212,20 @@ def _main_renewal(subscription_id: int, plan_id: int, price: int, factory: Gatew
     return builder.as_markup()
 
 
+def _renewal_payment_link_keyboard(pay_url: str, subscription_id: int, plan_id: int) -> InlineKeyboardMarkup:
+    if "abangateway.ir" in (pay_url or "").lower():
+        label = "💳 ادامه پرداخت خودکار کارت به کارت"
+    else:
+        label = "💳 پرداخت در زرین‌پال"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=label, url=pay_url)],
+            [InlineKeyboardButton(text="🔙 تغییر روش پرداخت", callback_data=f"{renew_service_handler.PAYMENT_METHODS_PREFIX}{subscription_id}:{plan_id}")],
+            [renew_service_handler._home_button()],
+        ]
+    )
+
+
 def _wallet_gateway_keys() -> list[str]:
     keys = _ordered_keys([], enabled_only=True)
     zarinpal_enabled = os.getenv("SHOP_PAYMENT_ZARINPAL_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
@@ -276,6 +290,7 @@ def install() -> None:
     payment_gateway_admin.payment_methods_markup = _admin_markup
     payment_gateway_admin.show_payment_methods = _show_methods
     renew_service_handler._payment_methods_keyboard = _main_renewal
+    renew_service_handler._payment_link_keyboard = _renewal_payment_link_keyboard
     subscription_handler.payment_method_keyboard = _payment_keyboard
     subscription_handler.managed_payment_method_keyboard = lambda p, price, gateways: _managed_keyboard(p, price, gateways, f"subscription_back_plan:{p}")
     subscription_keyboard.payment_method_keyboard = _payment_keyboard
