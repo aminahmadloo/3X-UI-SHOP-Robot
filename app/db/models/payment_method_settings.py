@@ -26,9 +26,7 @@ class PaymentMethodSettings(Base):
         session: AsyncSession,
         method_key: str,
     ) -> Self | None:
-        result = await session.execute(
-            select(cls).where(cls.method_key == method_key)
-        )
+        result = await session.execute(select(cls).where(cls.method_key == method_key))
         return result.scalar_one_or_none()
 
     @classmethod
@@ -37,16 +35,18 @@ class PaymentMethodSettings(Base):
         session: AsyncSession,
         gateways: Iterable[object] = (),
     ) -> list[Self]:
-        """Ensure built-in methods and currently registered gateways exist.
+        """Ensure built-in methods and registered gateways are manageable.
 
-        Gateway callbacks are used as stable keys, so newly registered gateways
-        automatically become manageable from the admin UI without another
-        schema change.
+        AbanGateway is seeded even before its credentials are configured so the
+        admin can prepare its visibility setting in advance. Unconfigured
+        gateways are never rendered to customers because the customer keyboard
+        only renders registered gateway instances.
         """
         defaults: list[tuple[str, str, int]] = [
             ("pay_zarinpal", "🏦 زرین‌پال", 10),
             ("mp_card", "💳 کارت به کارت", 20),
             ("mp_wallet", "💰 کیف پول", 30),
+            ("pay_aban", "💳 پرداخت خودکار کارت به کارت", 40),
         ]
 
         for gateway in gateways:
@@ -78,7 +78,7 @@ class PaymentMethodSettings(Base):
                 )
                 session.add(item)
                 existing[key] = item
-            elif key.startswith("pay_") and name and item.display_name != name:
+            elif key in {"pay_zarinpal", "pay_aban"} and name and item.display_name != name:
                 item.display_name = name
 
         await session.flush()
