@@ -64,7 +64,28 @@ async def callback_payment_method_selected(
 
         pay_url = await gateway.create_payment(callback_data)
 
-        if callback_data.is_extend:
+        if method == "pay_aban":
+            invoice_id = pay_url.rstrip("/").rsplit("/", 1)[-1]
+            invoice = await gateway._get_invoice(invoice_id)  # type: ignore[attr-defined]
+            order_id = str(invoice.get("order_id") or "").strip()
+            payable_toman = invoice.get("payable_toman")
+
+            if not invoice_id or not order_id or payable_toman is None:
+                raise RuntimeError("AbanGateway returned incomplete invoice details")
+
+            text = (
+                "💳 <b>فاکتور کارت به کارت هوشمند آبان گیت</b>\n"
+                "━━━━━━━━━━━━━━━\n"
+                f"کد پیگیری: <code>{order_id}</code>\n"
+                f"شماره فاکتور آبان گیت: <code>{invoice_id}</code>\n"
+                f"مبلغ سفارش: <code>{price:,.0f}</code> تومان\n"
+                f"مبلغ قابل پرداخت: <code>{float(payable_toman):,.0f}</code> تومان\n"
+                "مهلت پرداخت: <b>طبق زمان اعلام‌شده در صفحه آبان گیت</b>\n"
+                "━━━━━━━━━━━━━━━\n\n"
+                "برای پرداخت، روی دکمه <b>«💳 پرداخت»</b> بزنید.\n"
+                "پس از تأیید آبان گیت، شارژ یا سفارش شما به‌صورت خودکار انجام می‌شود."
+            )
+        elif callback_data.is_extend:
             text = _("payment:message:order_extend")
         elif callback_data.is_change:
             text = _("payment:message:order_change")
