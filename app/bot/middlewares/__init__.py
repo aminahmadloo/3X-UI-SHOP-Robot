@@ -3,7 +3,7 @@ from aiogram.utils.i18n import I18n
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from .database import DBSessionMiddleware
-from .force_join import ForceJoinMiddleware
+from app.bot.force_join import ForceJoinMiddleware
 from .garbage import GarbageMiddleware
 from .maintenance import MaintenanceMiddleware
 from .throttling import ThrottlingMiddleware
