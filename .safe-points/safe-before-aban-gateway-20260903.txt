@@ -1,0 +1,4 @@
+Safe point before AbanGateway integration
+Base commit: 81279c191192422d71141e93db8d7cac9632946f
+Date: 2026-09-03
+Purpose: isolated smart card-to-card AbanGateway integration; existing payment gateways must remain unchanged.
