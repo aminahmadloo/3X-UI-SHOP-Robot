@@ -20,7 +20,7 @@ from app.bot.routers.wallet import gateway_payment as wallet_gateway_payment
 from app.bot.routers.wallet import handler as wallet_handler
 from app.bot.routers.wallet.handler import has_pending_payment
 from app.bot.utils.constants import Currency
-from app.bot.utils.navigation import NavMain, NavSubscription
+from app.bot.utils.navigation import NavAdminTools, NavMain, NavSubscription
 from app.db.models import PaymentMethodSettings, User
 
 
@@ -64,7 +64,6 @@ def _ordered_keys(gateways: list[PaymentGateway], enabled_only: bool = True) -> 
     for key, enabled, _ in rows:
         if key in known and (not enabled_only or enabled) and key not in result:
             result.append(key)
-    # A gateway registered after the settings row was created remains available.
     for key in gateway_keys:
         if key not in result and not any(row_key == key for row_key, _, _ in rows):
             result.append(key)
@@ -108,7 +107,8 @@ async def _show_methods(callback: CallbackQuery, session: AsyncSession, factory:
         "",
     ]
     for i, method in enumerate(methods, 1):
-        lines.append(f"{i}️⃣ {method.display_name} — <b>{'🟢 نمایش داده می‌شود' if method.enabled else '🔴 مخفی است'}</b>")
+        status = "🟢 نمایش داده می‌شود" if method.enabled else "🔴 مخفی است"
+        lines.append(f"{i}️⃣ {method.display_name} — <b>{status}</b>")
     lines += [
         "",
         "💡 درگاه‌های ثبت‌شده جدید به‌صورت خودکار به این فهرست اضافه می‌شوند.",
@@ -164,7 +164,7 @@ def _managed_keyboard(plan_id: int, price: int, gateways: list[PaymentGateway], 
         elif (gateway := gateway_map.get(key)) is not None:
             builder.row(InlineKeyboardButton(text=f"{gateway.name} | {price:,} تومان", callback_data=f"mp:{key}:{plan_id}"))
     builder.row(InlineKeyboardButton(text="🔙", callback_data=back_callback))
-    builder.row(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN))
+    builder.row(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU))
     return builder.as_markup()
 
 
@@ -172,7 +172,7 @@ def _payment_keyboard(plan, callback_data, gateways, price_override=None) -> Inl
     builder = InlineKeyboardBuilder()
     gateway_map = {_gateway_key(g): g for g in gateways}
     for key in _ordered_keys(gateways):
-        if key == "mp_card" or key == "mp_wallet":
+        if key in {"mp_card", "mp_wallet"}:
             price = price_override
             if price is None and plan is not None:
                 price = plan.get_price(currency=Currency.TOMAN, duration=callback_data.duration)
@@ -192,14 +192,15 @@ def _payment_keyboard(plan, callback_data, gateways, price_override=None) -> Inl
         builder.row(InlineKeyboardButton(text=f"{gateway.name} | {price} {gateway.currency.symbol}", callback_data=callback_data.pack()))
     callback_data.state = NavSubscription.DEVICES
     builder.row(InlineKeyboardButton(text="🔙 تغییر مدت", callback_data=callback_data.pack()))
-    builder.row(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN))
+    builder.row(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU))
     return builder.as_markup()
 
 
 def _main_renewal(subscription_id: int, plan_id: int, price: int, factory: GatewayFactory) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    gateway_map = {_gateway_key(g): g for g in factory.get_gateways()}
-    for key in _ordered_keys(factory.get_gateways()):
+    gateways = factory.get_gateways()
+    gateway_map = {_gateway_key(g): g for g in gateways}
+    for key in _ordered_keys(gateways):
         if key == "mp_card":
             builder.row(InlineKeyboardButton(text=f"💳 کارت به کارت | {price:,} تومان", callback_data=f"{renew_service_handler.CARD_PREFIX}{subscription_id}:{plan_id}"))
         elif key == "mp_wallet":
@@ -213,9 +214,11 @@ def _main_renewal(subscription_id: int, plan_id: int, price: int, factory: Gatew
 
 def _wallet_gateway_keys() -> list[str]:
     keys = _ordered_keys([], enabled_only=True)
-    if os.getenv("SHOP_PAYMENT_ZARINPAL_ENABLED", "").strip().lower() not in {"1", "true", "yes", "on"}:
+    zarinpal_enabled = os.getenv("SHOP_PAYMENT_ZARINPAL_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+    aban_configured = bool(os.getenv("ABAN_GATEWAY_TOKEN", "").strip() and os.getenv("ABAN_GATEWAY_WEBHOOK_SECRET", "").strip())
+    if not zarinpal_enabled:
         keys = [k for k in keys if k != "pay_zarinpal"]
-    if not (os.getenv("ABAN_GATEWAY_TOKEN", "").strip() and os.getenv("ABAN_GATEWAY_WEBHOOK_SECRET", "").strip()):
+    if not aban_configured:
         keys = [k for k in keys if k != "pay_aban"]
     return keys
 
@@ -239,9 +242,7 @@ def _wallet_keyboard(language: str, amount: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def _wallet_gateway(
-    callback: CallbackQuery, user: User, session: AsyncSession, state, gateway_factory: GatewayFactory
-) -> None:
+async def _wallet_gateway(callback: CallbackQuery, user: User, session: AsyncSession, state, gateway_factory: GatewayFactory) -> None:
     parts = (callback.data or "").split(":")
     if len(parts) != 5:
         await callback.answer("❌ درخواست پرداخت نامعتبر است.", show_alert=True); return
