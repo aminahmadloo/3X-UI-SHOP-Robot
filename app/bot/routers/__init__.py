@@ -44,6 +44,7 @@ from .admin_tools.advertising_publication_status_handler import router as advert
 from .admin_tools.advertising_builder_handler import router as advertising_admin_router
 from .gift_service_handler import router as gift_service_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
+from .main_menu.renewal_aban_payment_fix import router as main_menu_renewal_aban_payment_fix_router
 from .multi_card_payment import router as multi_card_payment_router
 from .multi_card_service_receipt import router as multi_card_service_receipt_router
 from .multi_card_wallet_receipt import router as multi_card_wallet_receipt_router
@@ -81,11 +82,11 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         gift_service_router,
         my_services.client_control_handler.router,
         my_services.handler.router,
+        main_menu_renewal_aban_payment_fix_router,
         main_menu_renewal_router,
         special_offer_input_guard_router,
         special_offer_runtime_fixes_router,
         special_offer_router,
-        special_offer_campaign_rename_router,
         main_menu.handler.router,
         profile.handler.router,
         referral.handler.router,
