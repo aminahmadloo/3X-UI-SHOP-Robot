@@ -120,7 +120,16 @@ async def callback_payment_method_selected(
                     "پس از تأیید آبان گیت، شارژ یا سفارش شما به‌صورت خودکار انجام می‌شود."
                 )
         elif callback_data.is_extend:
-            text = _("payment:message:order_extend")
+            # Do not use the legacy i18n renewal message here. Some deployed
+            # locale catalogs still contain the old short payment text.
+            # Renewal must always expose the full order details.
+            text = (
+                "🏦 <b>پرداخت تمدید سرویس</b>\n\n"
+                f"📦 <b>حجم افزوده:</b> {volume_gb} GB\n"
+                f"📅 <b>زمان افزوده:</b> {duration} روز\n"
+                f"💰 <b>مبلغ:</b> {price:,.0f} تومان\n\n"
+                "برای تکمیل پرداخت، روی دکمه <b>«💳 پرداخت»</b> بزنید."
+            )
         elif callback_data.is_change:
             text = _("payment:message:order_change")
         else:
