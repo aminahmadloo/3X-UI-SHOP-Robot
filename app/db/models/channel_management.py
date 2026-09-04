@@ -48,7 +48,21 @@ class ChannelContentTemplate(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
+    variable_definitions_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+
+    @property
+    def variable_definitions(self) -> list[dict]:
+        try:
+            value = json.loads(self.variable_definitions_json or "[]")
+            return value if isinstance(value, list) else []
+        except (TypeError, ValueError):
+            return []
+
+    @variable_definitions.setter
+    def variable_definitions(self, value: list[dict]) -> None:
+        self.variable_definitions_json = json.dumps(value or [], ensure_ascii=False)
 
 
 class ChannelContentEvent(Base):

@@ -33,6 +33,8 @@ class ChannelStates(StatesGroup):
     waiting_schedule = State()
     waiting_edit_content = State()
     waiting_template_values = State()
+    waiting_template_value = State()
+    waiting_template_body = State()
 
 
 def _menu() -> InlineKeyboardMarkup:
@@ -62,6 +64,7 @@ def _content_menu(content: ChannelContent) -> InlineKeyboardMarkup:
         if content.status == "scheduled":
             b.row(InlineKeyboardButton(text="🚀 انتشار فوری", callback_data=f"channel:publish:{content.id}"))
     if content.status == "draft":
+        b.row(InlineKeyboardButton(text="✅ ذخیره پیش‌نویس", callback_data=f"channel:save_draft:{content.id}"))
         b.row(InlineKeyboardButton(text="🚀 انتشار", callback_data=f"channel:publish:{content.id}"), InlineKeyboardButton(text="📅 زمان‌بندی", callback_data=f"channel:schedule:{content.id}"))
     b.row(InlineKeyboardButton(text="📋 کپی پست", callback_data=f"channel:copy:{content.id}"), InlineKeyboardButton(text="📜 تاریخچه", callback_data=f"channel:history:{content.id}"))
     b.row(InlineKeyboardButton(text="📊 جزئیات", callback_data=f"channel:details:{content.id}"))
