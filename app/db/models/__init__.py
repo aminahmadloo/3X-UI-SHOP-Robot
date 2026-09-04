@@ -29,3 +29,4 @@ from .advertising import AdvertisingCampaign, AdvertisingChannel, AdvertisingEve
 from .channel_content import ChannelContent
 
 from .channel_management import ChannelContentEvent, ChannelContentTemplate, ChannelSettings
+from .channel_campaign import ChannelCampaign, ChannelCampaignMember, ChannelMemberSnapshot, CampaignEvent

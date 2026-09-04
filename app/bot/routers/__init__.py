@@ -42,6 +42,8 @@ from .admin_tools.advertising_management_callbacks_fix_handler import router as 
 from .admin_tools.advertising_management_handler import router as advertising_management_router
 from .admin_tools.advertising_publication_status_handler import router as advertising_publication_status_router
 from .admin_tools.advertising_builder_handler import router as advertising_admin_router
+from .admin_tools.channel_campaign_handler import router as channel_campaign_router
+from .admin_tools.channel_menu_campaigns import router as channel_menu_campaigns_router
 from .admin_tools.channel_management_handler import router as channel_management_router
 from .admin_tools.channel_management_extras import router as channel_management_extras_router
 from .admin_tools.channel_management_v2 import router as channel_management_v2_router
@@ -122,6 +124,8 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         advertising_management_router,
         advertising_publication_status_router,
         advertising_admin_router,
+        channel_menu_campaigns_router,
+        channel_campaign_router,
         channel_management_router,
         channel_management_extras_router,
         channel_management_v2_router,

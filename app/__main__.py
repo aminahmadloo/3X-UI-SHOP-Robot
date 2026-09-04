@@ -70,6 +70,7 @@ async def on_startup(
     )
     await tasks.test_account_cleanup.start_scheduler(services.test_account)
     tasks.channel_content.start_scheduler(session_factory=db.session, bot=bot)
+    tasks.channel_analytics.start_scheduler(session_factory=db.session, bot=bot)
 
 
 async def main() -> None:

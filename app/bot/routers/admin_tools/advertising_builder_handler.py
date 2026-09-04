@@ -157,7 +157,7 @@ async def toggle_channel(callback: CallbackQuery, session: AsyncSession):
 @router.callback_query(F.data == "advertising:create", IsAdmin())
 async def create_start(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     if not await AdvertisingChannel.list_active(session): await callback.answer("ابتدا حداقل یک کانال فعال اضافه کنید.", show_alert=True); return
-    await state.clear(); await state.update_data(custom_buttons=[], selected_offers=[], show_services=True, content_type="text", media_file_id=None, show_caption_above_media=True); await state.set_state(AdvertisingStates.waiting_campaign_title); await callback.answer()
+    await state.clear(); await state.update_data(custom_buttons=[], selected_offers=[], show_services=True, content_type="text", media_file_id=None, show_caption_above_media=False); await state.set_state(AdvertisingStates.waiting_campaign_title); await callback.answer()
     msg = await callback.message.edit_text("🧩 <b>سازنده تبلیغ</b>\n\n<b>مرحله ۱/۵</b> — عنوان داخلی کمپین را ارسال کنید.", reply_markup=cancel_keyboard()); await set_prompt(state,msg)
 
 
@@ -173,7 +173,7 @@ async def title(message: Message, state: FSMContext):
 async def content_type(callback: CallbackQuery, state: FSMContext):
     kind=callback.data.rsplit(":",1)[1]; await state.update_data(content_type=kind); await callback.answer(); await state.set_state(AdvertisingStates.waiting_campaign_body)
     if kind=="text": prompt=await callback.message.edit_text("📝 <b>متن تبلیغ</b>\n\nمتن کامل تبلیغ را ارسال کن.", reply_markup=cancel_keyboard())
-    else: prompt=await callback.message.edit_text(("🖼 <b>عکس تبلیغ</b>" if kind=="photo" else "🎬 <b>ویدئوی تبلیغ</b>")+"\n\nرسانه را ارسال کن. اگر کپشن داشته باشد، همان متن بالای رسانه نمایش داده می‌شود.", reply_markup=cancel_keyboard())
+    else: prompt=await callback.message.edit_text(("🖼 <b>عکس تبلیغ</b>" if kind=="photo" else "🎬 <b>ویدئوی تبلیغ</b>")+"\n\nرسانه را ارسال کن. اگر کپشن داشته باشد، همان متن زیر رسانه نمایش داده می‌شود.", reply_markup=cancel_keyboard())
     await set_prompt(state,prompt)
 
 
@@ -242,7 +242,7 @@ async def services_off(callback:CallbackQuery,state:FSMContext):
 
 
 async def save_draft(session:AsyncSession,data:dict,username:str)->AdvertisingCampaign:
-    c=AdvertisingCampaign(title=data["campaign_title"],body=data.get("campaign_body", ""),bot_username=username,show_services=bool(data.get("show_services",True)),content_type=data.get("content_type","text"),media_file_id=data.get("media_file_id"),show_caption_above_media=bool(data.get("show_caption_above_media",True))); c.custom_buttons=list(data.get("custom_buttons",[])); c.selected_offers=list(data.get("selected_offers",[])); session.add(c); await session.flush(); return c
+    c=AdvertisingCampaign(title=data["campaign_title"],body=data.get("campaign_body", ""),bot_username=username,show_services=bool(data.get("show_services",True)),content_type=data.get("content_type","text"),media_file_id=data.get("media_file_id"),show_caption_above_media=bool(data.get("show_caption_above_media",False))); c.custom_buttons=list(data.get("custom_buttons",[])); c.selected_offers=list(data.get("selected_offers",[])); session.add(c); await session.flush(); return c
 
 
 @router.callback_query(F.data == "advertising:preview", IsAdmin())
