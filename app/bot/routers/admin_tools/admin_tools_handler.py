@@ -56,6 +56,10 @@ async def callback_admin_tools(callback: CallbackQuery, user: User) -> None:
     )
     markup.inline_keyboard.insert(
         -1,
+        [InlineKeyboardButton(text="📢 مدیریت کانال", callback_data="channel:menu")],
+    )
+    markup.inline_keyboard.insert(
+        -1,
         [InlineKeyboardButton(text="🏆 مدیریت تخفیف سطوح مشتری", callback_data=NavAdminTools.CUSTOMER_LEVEL_SETTINGS)],
     )
     markup.inline_keyboard.insert(

@@ -5,6 +5,7 @@ __all__ = [
     "subscription_expiry",
     "test_account_cleanup",
     "transactions",
+    "channel_content",
 ]
 
 
