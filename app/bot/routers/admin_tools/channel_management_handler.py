@@ -13,9 +13,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
-from app.db.models import AdvertisingCampaign, AdvertisingChannel, AdvertisingPublication, ChannelContent
+from app.db.models import AdvertisingCampaign, AdvertisingChannel, AdvertisingPublication, ChannelContent, ChannelContentEvent
 
 logger = logging.getLogger(__name__)
+
+
+async def _record_event(session: AsyncSession, content_id: int, event_type: str) -> None:
+    session.add(ChannelContentEvent(content_id=content_id, event_type=event_type))
 router = Router(name=__name__)
 
 
@@ -28,6 +32,7 @@ class ChannelStates(StatesGroup):
     waiting_poll_options = State()
     waiting_schedule = State()
     waiting_edit_content = State()
+    waiting_template_values = State()
 
 
 def _menu() -> InlineKeyboardMarkup:
@@ -36,8 +41,8 @@ def _menu() -> InlineKeyboardMarkup:
     b.row(InlineKeyboardButton(text="📅 زمان‌بندی", callback_data="channel:content:scheduled"), InlineKeyboardButton(text="📂 پیش‌نویس‌ها", callback_data="channel:content:drafts"))
     b.row(InlineKeyboardButton(text="📤 منتشرشده‌ها", callback_data="channel:content:published"))
     b.row(InlineKeyboardButton(text="🔥 فروش ویژه", callback_data="channel:special"), InlineKeyboardButton(text="⚡ اطلاعیه سرور", callback_data="channel:server_notice"))
-    b.row(InlineKeyboardButton(text="📊 نظرسنجی", callback_data="channel:poll:create"))
-    b.row(InlineKeyboardButton(text="📈 آمار کانال", callback_data="channel:stats"))
+    b.row(InlineKeyboardButton(text="📊 نظرسنجی", callback_data="channel:poll:create"), InlineKeyboardButton(text="🧩 قالب‌ها", callback_data="channel:templates"))
+    b.row(InlineKeyboardButton(text="📈 آمار کانال", callback_data="channel:stats"), InlineKeyboardButton(text="📊 تحلیل محتوا", callback_data="channel:analytics"))
     b.row(InlineKeyboardButton(text="⚙️ تنظیمات کانال", callback_data="channel:settings"))
     b.row(InlineKeyboardButton(text="🔙 مرکز تبلیغات", callback_data="advertising:menu"))
     return b.as_markup()
@@ -58,6 +63,7 @@ def _content_menu(content: ChannelContent) -> InlineKeyboardMarkup:
             b.row(InlineKeyboardButton(text="🚀 انتشار فوری", callback_data=f"channel:publish:{content.id}"))
     if content.status == "draft":
         b.row(InlineKeyboardButton(text="🚀 انتشار", callback_data=f"channel:publish:{content.id}"), InlineKeyboardButton(text="📅 زمان‌بندی", callback_data=f"channel:schedule:{content.id}"))
+    b.row(InlineKeyboardButton(text="📋 کپی پست", callback_data=f"channel:copy:{content.id}"), InlineKeyboardButton(text="📜 تاریخچه", callback_data=f"channel:history:{content.id}"))
     b.row(InlineKeyboardButton(text="📊 جزئیات", callback_data=f"channel:details:{content.id}"))
     b.row(InlineKeyboardButton(text="🗑 حذف از مدیریت", callback_data=f"channel:delete:{content.id}"))
     b.row(InlineKeyboardButton(text="🔙 مدیریت کانال", callback_data="channel:menu"))
@@ -299,6 +305,7 @@ async def publish_content(callback: CallbackQuery, session: AsyncSession):
         content.status = "published"
         content.published_at = datetime.utcnow()
         content.scheduled_at = None
+        await _record_event(session, content.id, "published")
         await session.commit()
         await callback.answer("✅ در کانال منتشر شد")
         await callback.message.edit_text(f"✅ <b>پست #{content.id} منتشر شد</b>\n\n🆔 پیام کانال: <code>{sent.message_id}</code>", reply_markup=_content_menu(content))
@@ -334,6 +341,7 @@ async def schedule_save(message: Message, state: FSMContext, session: AsyncSessi
         return
     content.status = "scheduled"
     content.scheduled_at = when
+    await _record_event(session, content.id, "scheduled")
     await session.commit()
     await state.clear()
     await message.answer(f"✅ پست #{content.id} برای <b>{when:%Y-%m-%d %H:%M}</b> زمان‌بندی شد.", reply_markup=_content_menu(content))
@@ -432,6 +440,7 @@ async def edit_content(message: Message, state: FSMContext, session: AsyncSessio
                 await message.bot.edit_message_media(channel.chat_id, content.telegram_message_id, media=InputMediaVideo(media=content.media_file_id, caption=content.body or None))
         else:
             raise ValueError("نوع محتوا با پست اصلی مطابقت ندارد")
+        await _record_event(session, content.id, "edited")
         await session.commit()
         await state.clear()
         await message.answer(f"✅ پست #{content.id} ویرایش شد.", reply_markup=_content_menu(content))
@@ -453,6 +462,8 @@ async def repost_content(callback: CallbackQuery, session: AsyncSession):
             sent = await _publish_content(callback.message.bot, session, content, channel)
         clone = ChannelContent(channel_id=channel.id, title=f"بازنشر: {content.title}"[:255], content_type=content.content_type, body=content.body, media_file_id=content.media_file_id, buttons_json=content.buttons_json, poll_question=content.poll_question, poll_options_json=content.poll_options_json, poll_is_anonymous=content.poll_is_anonymous, poll_allows_multiple=content.poll_allows_multiple, status="published", published_at=datetime.utcnow(), telegram_message_id=sent.message_id)
         session.add(clone)
+        await session.flush()
+        await _record_event(session, clone.id, "reposted")
         await session.commit()
         await callback.answer("✅ بازنشر شد")
         await callback.message.edit_text(f"🔁 <b>بازنشر انجام شد</b>\n\nپست جدید: #{clone.id}\n🆔 پیام: <code>{sent.message_id}</code>", reply_markup=_content_menu(clone))

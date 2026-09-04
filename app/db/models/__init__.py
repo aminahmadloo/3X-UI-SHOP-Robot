@@ -27,3 +27,5 @@ from .support_ticket import SupportMessage, SupportTicket
 from .test_account import TestAccount, TestAccountSettings
 from .advertising import AdvertisingCampaign, AdvertisingChannel, AdvertisingEvent, AdvertisingPublication
 from .channel_content import ChannelContent
+
+from .channel_management import ChannelContentEvent, ChannelContentTemplate, ChannelSettings
