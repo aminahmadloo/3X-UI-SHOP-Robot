@@ -1,14 +1,14 @@
 """add channel campaign manager and analytics
 
 Revision ID: 20260905_channel_campaigns
-Revises: 20260904_template_vars, 20260904_channel_content
+Revises: 20260904_template_vars
 Create Date: 2026-09-05
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "20260905_channel_campaigns"
-down_revision = ("20260904_template_vars", "20260904_channel_content")
+down_revision = "20260904_template_vars"
 branch_labels = None
 depends_on = None
 
