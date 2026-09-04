@@ -180,13 +180,6 @@ async def command_main_menu(
             is_referred_trial_available=await services.referral.is_referred_trial_available(user),
             show_custom_service_button=pricing.show_custom_service_button,
         )
-        await message.answer(
-            "v2ray 🔐: <b>توجه هرگز کلیک نکنید👇❗️❗️❗️❗️</b>\n\n"
-            "❕❕❕❕❕❕❕❕❕\n"
-            "تبلیغات نمایش داده شده در بالای پیوی ربات هیچگونه ارتباطی با تیم تونل وی پی ان ندارد و توسط تلگرام بدون هیچ نظارتی گذاشته می‌شود که تونل وی پی ان هیچگونه دسترسی جهت حذف آن ندارد.\n\n"
-            "با توجه به این که هیچ نظارتی توسط تلگرام بر روی این تبلیغات وجود ندارد اکثرا کلاه برداری میباشد و ممکن است به جز عدم تحویل محصول به شما اطلاعات کارت شما به سرقت برود خواهشمندیم به هیچ وجه روی این تبلیغات کلیک نکنید عواقب آن بر عهده خود شما میباشد.\n\n"
-            "<b>تاکنون تعدادی از مشتریان کلیک و خریداری کردند و از آنها کلاه برداری شده.</b>"
-        )
         main_menu = await send_main_menu(
             bot=message.bot,
             user=user,
