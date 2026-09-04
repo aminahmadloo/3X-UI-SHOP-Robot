@@ -173,7 +173,7 @@ async def title(message: Message, state: FSMContext):
 async def content_type(callback: CallbackQuery, state: FSMContext):
     kind=callback.data.rsplit(":",1)[1]; await state.update_data(content_type=kind); await callback.answer(); await state.set_state(AdvertisingStates.waiting_campaign_body)
     if kind=="text": prompt=await callback.message.edit_text("📝 <b>متن تبلیغ</b>\n\nمتن کامل تبلیغ را ارسال کن.", reply_markup=cancel_keyboard())
-    else: prompt=await callback.message.edit_text(("🖼 <b>عکس تبلیغ</b>" if kind=="photo" else "🎬 <b>ویدئوی تبلیغ</b>")+"\n\nرسانه را ارسال کن. اگر کپشن داشته باشد، همان متن بالای رسانه نمایش داده می‌شود.", reply_markup=cancel_keyboard())
+    else: prompt=await callback.message.edit_text(("🖼 <b>عکس تبلیغ</b>" if kind=="photo" else "🎬 <b>ویدئوی تبلیغ</b>")+"\n\nرسانه را ارسال کن. اگر کپشن داشته باشد، همان متن زیر رسانه نمایش داده می‌شود.", reply_markup=cancel_keyboard())
     await set_prompt(state,prompt)
 
 
