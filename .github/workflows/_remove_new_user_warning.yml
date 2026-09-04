@@ -1,0 +1,47 @@
+name: Remove extra new-user warning
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  remove-warning:
+    if: "!contains(github.event.head_commit.message, 'fix: remove extra new-user warning')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Remove only the extra new-user warning
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/bot/routers/main_menu/handler.py')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''        await message.answer(\n            "v2ray 🔐: <b>توجه هرگز کلیک نکنید👇❗️❗️❗️❗️</b>\\n\\n"\n            "❕❕❕❕❕❕❕❕❕\\n"\n            "تبلیغات نمایش داده شده در بالای پیوی ربات هیچگونه ارتباطی با تیم تونل وی پی ان ندارد و توسط تلگرام بدون هیچ نظارتی گذاشته می‌شود که تونل وی پی ان هیچگونه دسترسی جهت حذف آن ندارد.\\n\\n"\n            "با توجه به این که هیچ نظارتی توسط تلگرام بر روی این تبلیغات وجود ندارد اکثرا کلاه برداری میباشد و ممکن است به جز عدم تحویل محصول به شما اطلاعات کارت شما به سرقت برود خواهشمندیم به هیچ وجه روی این تبلیغات کلیک نکنید عواقب آن بر عهده خود شما میباشد.\\n\\n"\n            "<b>تاکنون تعدادی از مشتریان کلیک و خریداری کردند و از آنها کلاه برداری شده.</b>"\n        )\n'''
+
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one warning block, found {count}')
+
+          path.write_text(text.replace(old, ''), encoding='utf-8')
+          PY
+
+      - name: Verify removal
+        run: |
+          ! grep -Fq 'توجه هرگز کلیک نکنید' app/bot/routers/main_menu/handler.py
+          ! grep -Fq 'تاکنون تعدادی از مشتریان کلیک' app/bot/routers/main_menu/handler.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/bot/routers/main_menu/handler.py
+          git rm .github/workflows/_remove_new_user_warning.yml
+          git commit -m "fix: remove extra new-user warning [skip ci]"
+          git push
