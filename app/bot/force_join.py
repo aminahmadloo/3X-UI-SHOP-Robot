@@ -102,7 +102,13 @@ class ForceJoinMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        user = getattr(event, "from_user", None)
+        # Dispatcher update middleware receives an aiogram Update wrapper.
+        # The actual Message/CallbackQuery is available as Update.event.
+        # Using the wrapper directly makes event.chat/from_user unavailable and
+        # silently bypasses force-join, which is especially visible on /start.
+        telegram_event = getattr(event, "event", None) or event
+
+        user = getattr(telegram_event, "from_user", None)
         if user is None:
             return await handler(event, data)
 
@@ -112,13 +118,14 @@ class ForceJoinMiddleware(BaseMiddleware):
         except Exception:
             logger.exception("Unable to determine admin status for force-join middleware")
 
-        chat = getattr(event, "chat", None)
+        chat = getattr(telegram_event, "chat", None)
         if chat is None or getattr(chat, "type", None) != "private":
             return await handler(event, data)
 
         session: AsyncSession | None = data.get("session")
         bot = data.get("bot")
         if session is None or bot is None:
+            logger.warning("Force-join skipped: session or bot is unavailable")
             return await handler(event, data)
 
         channels = await get_active_channels(session)
@@ -127,14 +134,14 @@ class ForceJoinMiddleware(BaseMiddleware):
 
         # The dedicated verification callback must reach its handler so it can
         # re-check membership and open the normal main menu on success.
-        if getattr(event, "data", None) == "forcejoin:check":
+        if getattr(telegram_event, "data", None) == "forcejoin:check":
             return await handler(event, data)
 
         missing = await check_membership(bot, user.id, channels)
         if not missing:
             return await handler(event, data)
 
-        await show_join_message(event, missing)
+        await show_join_message(telegram_event, missing)
         return None
 
 
@@ -329,10 +336,14 @@ async def force_join_toggle(callback: CallbackQuery, session: AsyncSession) -> N
     if not await IsAdmin()(user_id=callback.from_user.id):
         return
     channel_id = int(callback.data.rsplit(":", 1)[1])
-    await session.execute(text("UPDATE force_join_channels SET is_active = CASE WHEN is_active=1 THEN 0 ELSE 1 END WHERE id=:id"), {"id": channel_id})
+    await ensure_table(session)
+    await session.execute(
+        text("UPDATE force_join_channels SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE id=:id"),
+        {"id": channel_id},
+    )
     await session.commit()
-    await callback.answer("وضعیت کانال تغییر کرد.")
-    await force_join_view(callback, session)
+    await callback.answer("✅ وضعیت کانال تغییر کرد.")
+    await force_join_menu(callback, session)
 
 
 @router.callback_query(F.data.regexp(r"^forcejoin:delete:\d+$"))
@@ -340,26 +351,8 @@ async def force_join_delete(callback: CallbackQuery, session: AsyncSession) -> N
     if not await IsAdmin()(user_id=callback.from_user.id):
         return
     channel_id = int(callback.data.rsplit(":", 1)[1])
+    await ensure_table(session)
     await session.execute(text("DELETE FROM force_join_channels WHERE id=:id"), {"id": channel_id})
     await session.commit()
-    await callback.answer("کانال حذف شد.")
+    await callback.answer("✅ کانال حذف شد.")
     await force_join_menu(callback, session)
-
-
-# Keep the existing, large admin keyboard untouched: inject one management entry
-# at import time into the handler's already-imported keyboard function.
-try:
-    from app.bot.routers.admin_tools import admin_tools_handler as _admin_handler
-    _original_admin_tools_keyboard = _admin_handler.admin_tools_keyboard
-
-    def _admin_tools_keyboard_with_force_join(is_dev: bool):
-        markup = _original_admin_tools_keyboard(is_dev)
-        markup.inline_keyboard.insert(
-            -1,
-            [InlineKeyboardButton(text="📢 عضویت اجباری کانال‌ها", callback_data="forcejoin:menu")],
-        )
-        return markup
-
-    _admin_handler.admin_tools_keyboard = _admin_tools_keyboard_with_force_join
-except Exception:
-    logger.exception("Unable to patch admin tools keyboard for force-join")
