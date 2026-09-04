@@ -6,6 +6,7 @@ __all__ = [
     "test_account_cleanup",
     "transactions",
     "channel_content",
+    "channel_analytics",
 ]
 
 

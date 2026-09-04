@@ -100,6 +100,14 @@ class Transaction(Base):
             await session.execute(update(Transaction).where(*filter).values(**kwargs))
             await session.commit()
             logger.info(f"Transaction {payment_id} updated.")
+
+            new_status = kwargs.get("status")
+            if new_status == TransactionStatus.COMPLETED or new_status == TransactionStatus.COMPLETED.value:
+                try:
+                    from app.bot.services.channel_campaign import ChannelCampaignService
+                    await ChannelCampaignService.mark_converted(session, transaction.tg_id)
+                except Exception:
+                    logger.exception("Campaign conversion tracking failed for user %s", transaction.tg_id)
             return transaction
 
         logger.warning(f"Transaction {payment_id} not found for update.")
