@@ -6,7 +6,7 @@ from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.db.models import AdvertisingChannel, ChannelContent
+from app.db.models import AdvertisingChannel, ChannelContent, ChannelContentEvent
 
 logger = logging.getLogger(__name__)
 _scheduler: AsyncIOScheduler | None = None
@@ -36,6 +36,7 @@ async def publish_due(session_factory, bot) -> None:
                     content.status = "published"
                     content.published_at = datetime.utcnow()
                     content.scheduled_at = None
+                    session.add(ChannelContentEvent(content_id=content.id, event_type="published"))
                     await session.commit()
                 except Exception:
                     logger.exception("Scheduled channel post failed content=%s channel=%s", content.id, channel.chat_id)

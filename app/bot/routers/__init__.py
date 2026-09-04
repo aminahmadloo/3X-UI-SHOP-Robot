@@ -44,6 +44,7 @@ from .admin_tools.advertising_publication_status_handler import router as advert
 from .admin_tools.advertising_builder_handler import router as advertising_admin_router
 from .admin_tools.channel_management_handler import router as channel_management_router
 from .admin_tools.channel_management_extras import router as channel_management_extras_router
+from .admin_tools.channel_management_v2 import router as channel_management_v2_router
 from .gift_service_handler import router as gift_service_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
 from .main_menu.renewal_aban_payment_fix import router as main_menu_renewal_aban_payment_fix_router
@@ -123,6 +124,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         advertising_admin_router,
         channel_management_router,
         channel_management_extras_router,
+        channel_management_v2_router,
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,
         admin_tools.inbound_management_handler.router,
