@@ -18,7 +18,7 @@ def upgrade() -> None:
     op.create_table(
         "channel_contents",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("channel_id", sa.BigInteger(), nullable=False),
+        sa.Column("channel_id", sa.Integer(), nullable=False),
         sa.Column("title", sa.String(length=255), nullable=False, server_default="پست کانال"),
         sa.Column("content_type", sa.String(length=16), nullable=False, server_default="text"),
         sa.Column("body", sa.Text(), nullable=True),
