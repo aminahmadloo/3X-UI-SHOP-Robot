@@ -45,6 +45,13 @@ SMART_CATEGORIES: dict[str, tuple[str, str]] = {
 
 DEFAULT_SMART_RULES = {key: decision for key, (_, decision) in SMART_CATEGORIES.items()}
 RISK_LEVELS = {"conservative", "balanced", "free"}
+HARD_APPROVAL_CATEGORIES = {
+    "heavy_discount",
+    "important_campaign",
+    "sensitive",
+    "pricing",
+    "legal",
+}
 
 
 class AIContentError(RuntimeError):
@@ -164,17 +171,15 @@ class AIContentService:
         if mode == "auto":
             return "scheduled"
         category = category if category in SMART_CATEGORIES else "sensitive"
+        if category in HARD_APPROVAL_CATEGORIES:
+            return "draft"
         rules = AIContentService.smart_rules(settings) if settings else DEFAULT_SMART_RULES
         decision = rules.get(category, "mandatory")
-
-        # Mandatory-risk signals always require approval, regardless of the editable category rule.
         if sensitivity == "high" or cta_risk == "high":
             return "draft"
         if numeric_claim and category == "statistics":
             return "draft"
-        if decision == "mandatory":
-            return "draft"
-        if decision == "approval":
+        if decision in {"mandatory", "approval"}:
             return "draft"
         return "scheduled"
 
@@ -189,10 +194,11 @@ class AIContentService:
             for key in ("news", "ai_image", "announcement"):
                 rules[key] = "approval"
         elif risk == "free":
-            # Free mode still protects hard-risk categories.
             for key, decision in rules.items():
-                if decision != "mandatory" and key not in {"sensitive", "pricing", "legal", "heavy_discount", "important_campaign"}:
+                if decision != "mandatory" and key not in HARD_APPROVAL_CATEGORIES:
                     rules[key] = "auto"
+        for key in HARD_APPROVAL_CATEGORIES:
+            rules[key] = "mandatory"
         return rules
 
     async def create_content(self, session: AsyncSession, channel_id: int, settings: AIContentSettings, topic: str | None = None) -> ChannelContent:
