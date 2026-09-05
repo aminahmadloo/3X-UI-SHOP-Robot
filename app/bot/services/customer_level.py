@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import SubscriptionData
@@ -73,12 +74,12 @@ async def successful_service_purchase_count(session: AsyncSession, tg_id: int) -
 
 async def successful_referral_count(session: AsyncSession, tg_id: int) -> int:
     """Count referred users who have completed at least one successful service purchase."""
-    referrals = await session.execute(
-        Referral.__table__.select().where(Referral.referrer_tg_id == tg_id)
+    result = await session.execute(
+        select(Referral.referred_tg_id).where(Referral.referrer_tg_id == tg_id)
     )
-    referred_ids = [row.referred_tg_id for row in referrals]
+    referred_ids = set(result.scalars().all())
     count = 0
-    for referred_tg_id in set(referred_ids):
+    for referred_tg_id in referred_ids:
         if await successful_service_purchase_count(session, referred_tg_id) > 0:
             count += 1
     return count
