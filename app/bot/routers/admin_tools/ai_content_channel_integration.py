@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardButton
+import os
 
 from app.bot.services.channel_campaign import ChannelCampaignService
 from app.bot.utils.navigation import NavDownload, NavMain, NavProfile, NavReferral, NavSubscription, NavSupport
@@ -18,6 +18,22 @@ CTA_CALLBACKS = {
     "DOWNLOAD": NavDownload.MAIN.value,
 }
 AI_ACTION_PREFIX = "ai-action://"
+
+
+def _patch_ai_settings() -> None:
+    from app.bot.routers.admin_tools import ai_content_handler
+
+    original_settings = ai_content_handler._settings
+    if getattr(original_settings, "_ai_api_key", False):
+        return
+
+    async def settings(session):
+        service, stored_settings = await original_settings(session)
+        service.api_key = os.getenv("OPENAI_API_KEY")
+        return service, stored_settings
+
+    settings._ai_api_key = True
+    ai_content_handler._settings = settings
 
 
 def _patch_publisher() -> None:
@@ -82,9 +98,6 @@ def _patch_publisher() -> None:
             content.buttons = old_buttons
             channel_management.InlineKeyboardButton = patched_button
 
-    publish_content._ai_semantic_cta = True
-    channel_management._publish_content = publish_content
-
 
 def _patch_campaign_start() -> None:
     from app.bot.routers.main_menu import handler as main_menu
@@ -105,8 +118,9 @@ def _patch_campaign_start() -> None:
             user = kwargs.get("user")
             if command and command.args and session and user:
                 payload = command.args.strip()
-                if payload.startswith(ChannelCampaignService.start_payload("")):
-                    slug = payload[len(ChannelCampaignService.start_payload("")) :].strip()
+                prefix = ChannelCampaignService.start_payload("")
+                if payload.startswith(prefix):
+                    slug = payload[len(prefix) :].strip()
                     campaign = await ChannelCampaignService.get_by_slug(session, slug)
                     if campaign and campaign.is_active_now():
                         await ChannelCampaignService.register_start(
@@ -117,9 +131,6 @@ def _patch_campaign_start() -> None:
                             joined_channel=False,
                             source="campaign",
                         )
-                        # Let the existing /start flow render the normal main
-                        # menu, but prevent it from treating campaign_<slug>
-                        # as an invite hash.
                         command.args = None
             return await original(*args, **kwargs)
 
@@ -140,6 +151,7 @@ def _remove_duplicate_channel_menu() -> None:
 
 
 def install() -> None:
+    _patch_ai_settings()
     _remove_duplicate_channel_menu()
     _patch_publisher()
     _patch_campaign_start()
