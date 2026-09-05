@@ -194,19 +194,24 @@ CTA را هرگز به‌صورت URL خام تولید نکن. فقط از acti
 
     @staticmethod
     def decide_status(mode: str, category: str, settings: AIContentSettings | None = None, *, sensitivity: str = "low", numeric_claim: bool = False, cta_risk: str = "low") -> str:
-        if mode == "approval":
-            return "draft"
-        if mode == "auto":
-            return "scheduled"
         category = category if category in SMART_CATEGORIES else "sensitive"
+
+        # Safety gates always win over the selected publication mode. This
+        # prevents a global "auto" mode from bypassing hard-risk categories.
         if category in HARD_APPROVAL_CATEGORIES:
             return "draft"
-        rules = AIContentService.smart_rules(settings) if settings else DEFAULT_SMART_RULES
-        decision = rules.get(category, "mandatory")
         if sensitivity == "high" or cta_risk == "high":
             return "draft"
         if numeric_claim and category == "statistics":
             return "draft"
+
+        if mode == "approval":
+            return "draft"
+        if mode == "auto":
+            return "scheduled"
+
+        rules = AIContentService.smart_rules(settings) if settings else DEFAULT_SMART_RULES
+        decision = rules.get(category, "mandatory")
         if decision in {"mandatory", "approval"}:
             return "draft"
         return "scheduled"
@@ -245,7 +250,14 @@ CTA را هرگز به‌صورت URL خام تولید نکن. فقط از acti
             )
             settings.smart_rules = original_rules
         else:
-            status = self.decide_status(settings.mode, "education", settings)
+            status = self.decide_status(
+                settings.mode,
+                str(result.get("content_category") or "education"),
+                settings,
+                sensitivity=str(result.get("sensitivity") or "low"),
+                numeric_claim=bool(result.get("numeric_claim")),
+                cta_risk=str(result.get("cta_risk") or "low"),
+            )
 
         content = ChannelContent(
             channel_id=channel_id,
