@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 import logging
 from decimal import Decimal
 
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -62,10 +63,10 @@ class ReferralService:
         for transaction in result.scalars().all():
             try:
                 data = SubscriptionData.deserialize(transaction.subscription)
-                if data.payment_kind == "wallet_topup":
+                if data.payment_kind == "wallet_topup" or data.duration <= 0:
                     continue
             except Exception:
-                pass
+                continue
             purchase_count += 1
         return purchase_count
 
@@ -73,14 +74,21 @@ class ReferralService:
         try:
             level, points = await get_customer_level(session, referrer_tg_id)
             discount = f"{level.discount_percent}%" if level.discount_percent > 0 else f"ندارید ({level.title})"
-            await self.notification_service.notify_by_id(chat_id=referrer_tg_id, text=(
-                "🎉 <b>یک امتیاز جدید گرفتی!</b>\n\n"
-                "💳 یکی از دوستان دعوت‌شده‌ات یک خرید موفق انجام داد.\n"
-                "⭐️ امتیاز شما: <b>+1</b>\n"
-                f"⭐️ مجموع امتیازات شما: <b>{points}</b>\n"
-                f"⚡️ سطح فعلی: <b>{level.title}</b>\n"
-                f"💰 تخفیف خرید شما: <b>{discount}</b>"
-            ))
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🏠 ورود به صفحه شروع ربات", callback_data="main_menu")]
+            ])
+            await self.notification_service.notify_by_id(
+                chat_id=referrer_tg_id,
+                text=(
+                    "🎉 <b>یک امتیاز جدید گرفتی!</b>\n\n"
+                    "💳 یکی از دوستان دعوت‌شده‌ات یک خرید موفق انجام داد.\n"
+                    "⭐️ امتیاز شما: <b>+1</b>\n"
+                    f"⭐️ مجموع امتیازات شما: <b>{points}</b>\n"
+                    f"⚡️ سطح فعلی: <b>{level.title}</b>\n"
+                    f"💰 تخفیف خرید شما: <b>{discount}</b>"
+                ),
+                reply_markup=keyboard,
+            )
         except Exception:
             logger.exception("Failed to notify referrer %s about purchase point", referrer_tg_id)
 
@@ -119,8 +127,6 @@ class ReferralService:
                 if reward:
                     rewards_created.append(reward)
 
-            # A referral earns exactly one level point per referred user, on that user's first successful purchase only.
-            # The purchase itself is the event that makes the referral successful.
             if referrer_tg_id:
                 prior_purchases = await self._completed_purchase_count(session, referred_tg_id, payment_id)
                 if prior_purchases == 0:
