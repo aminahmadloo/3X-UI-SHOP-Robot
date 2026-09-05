@@ -71,55 +71,30 @@ async def on_startup(
     await tasks.test_account_cleanup.start_scheduler(services.test_account)
     tasks.channel_content.start_scheduler(session_factory=db.session, bot=bot)
     tasks.channel_analytics.start_scheduler(session_factory=db.session, bot=bot)
+    tasks.ai_content.start_scheduler(session_factory=db.session)
 
 
 async def main() -> None:
-    # Create web application
     app = Application()
-
-    # Load configuration
     config = load_config()
-
-    # Set up logging
     logger.setup_logging(config.logging)
-
-    # Initialize database
     db = Database(config.database)
     await db.initialize()
-
-    # Set up storage for FSM (Finite State Machine)
     storage = RedisStorage.from_url(url=config.redis.url())
-    # storage = MemoryStorage()
-
-    # Initialize the bot with the standard aiogram Bot.
-    # Premium/Telegram Custom Emoji transformation is intentionally disabled;
-    # all existing Unicode emoji are sent to Telegram unchanged.
     bot = Bot(
         token=config.bot.TOKEN,
         default=DefaultBotProperties(
             parse_mode=ParseMode.HTML, link_preview_is_disabled=True
         ),
     )
-
-    # Set up internationalization (i18n)
     i18n = I18n(
         path=DEFAULT_LOCALES_DIR,
         default_locale=DEFAULT_LANGUAGE,
         domain=I18N_DOMAIN,
     )
     I18n.set_current(i18n)
-
-    # Initialize services
-    services_container = await services.initialize(
-        config=config,
-        session=db.session,
-        bot=bot,
-    )
-
-    # Sync servers
+    services_container = await services.initialize(config=config, session=db.session, bot=bot)
     await services_container.server_pool.sync_servers()
-
-    # Register payment gateways
     gateway_factory = GatewayFactory()
     gateway_factory.register_gateways(
         app=app,
@@ -130,8 +105,6 @@ async def main() -> None:
         i18n=i18n,
         services=services_container,
     )
-
-    # Create the dispatcher
     dispatcher = Dispatcher(
         db=db,
         storage=storage,
@@ -142,34 +115,15 @@ async def main() -> None:
         redis=storage.redis,
         i18n=i18n,
     )
-
-    # Register event handlers
     dispatcher.startup.register(on_startup)
     dispatcher.shutdown.register(on_shutdown)
-
     await MaintenanceMiddleware.load_from_database(db.session)
-
-    # Register middlewares
     middlewares.register(dispatcher=dispatcher, i18n=i18n, session=db.session)
-
-    # Register filters
-    filters.register(
-        dispatcher=dispatcher,
-        developer_id=config.bot.DEV_ID,
-        admins_ids=config.bot.ADMINS,
-    )
-
-    # Include bot routers
+    filters.register(dispatcher=dispatcher, developer_id=config.bot.DEV_ID, admins_ids=config.bot.ADMINS)
     routers.include(app=app, dispatcher=dispatcher)
-
-    # Set up bot commands
     await commands.setup(bot)
-
-    # Set up webhook request handler
     webhook_requests_handler = SimpleRequestHandler(dispatcher=dispatcher, bot=bot)
     webhook_requests_handler.register(app, path=TELEGRAM_WEBHOOK)
-
-    # Set up application and run
     setup_application(app, dispatcher, bot=bot)
     await _run_app(app, host=DEFAULT_BOT_HOST, port=config.bot.PORT)
 
