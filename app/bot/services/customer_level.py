@@ -27,16 +27,11 @@ LEVEL_DEFINITIONS = (
 )
 
 
-def _default_level(key: str, title: str, minimum: int, maximum: int | None, discount: int) -> CustomerLevel:
-    return CustomerLevel(key, title, minimum, maximum, discount)
-
-
-# Fallback values used only by pure helpers/tests when no DB settings are supplied.
 LEVELS = (
-    _default_level("base", "سطح پایه", 0, 4, 0),
-    _default_level("bronze", "سطح برنزی", 5, 10, 10),
-    _default_level("silver", "سطح نقره‌ای", 11, 20, 15),
-    _default_level("gold", "سطح طلایی", 21, None, 20),
+    CustomerLevel("base", "سطح پایه", 0, 4, 0),
+    CustomerLevel("bronze", "سطح برنزی", 5, 10, 10),
+    CustomerLevel("silver", "سطح نقره‌ای", 11, 20, 15),
+    CustomerLevel("gold", "سطح طلایی", 21, None, 20),
 )
 
 
@@ -99,8 +94,6 @@ def level_for_points(points: int, levels: tuple[CustomerLevel, ...] = LEVELS) ->
         if level.max_points is None or points <= level.max_points:
             return level
 
-    # Defensive fallback for an invalid/gapped configuration: use the highest
-    # level whose lower bound has been reached.
     eligible = [level for level in levels if points >= level.min_points]
     return eligible[-1] if eligible else levels[0]
 
