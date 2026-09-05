@@ -21,6 +21,8 @@ def upgrade() -> None:
         sa.Column("mode", sa.String(16), nullable=False, server_default="approval"),
         sa.Column("model", sa.String(64), nullable=False, server_default="gpt-5.6-luna"),
         sa.Column("topics", sa.Text(), nullable=False, server_default="آموزشی,خبری,تعامل,معرفی قابلیت,فروش ویژه"),
+        sa.Column("smart_rules", sa.Text(), nullable=False, server_default="{}"),
+        sa.Column("smart_risk_level", sa.String(16), nullable=False, server_default="balanced"),
         sa.Column("posts_per_day", sa.Integer(), nullable=False, server_default="2"),
         sa.Column("auto_schedule", sa.Boolean(), nullable=False, server_default="0"),
         sa.Column("next_run_at", sa.DateTime(), nullable=True),
