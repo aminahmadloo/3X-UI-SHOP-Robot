@@ -8,13 +8,15 @@ if TYPE_CHECKING:
 import logging
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.bot.utils.constants import ReferrerRewardLevel, ReferrerRewardType
+from app.bot.models import SubscriptionData
+from app.bot.utils.constants import ReferrerRewardLevel, ReferrerRewardType, TransactionStatus
 from app.bot.utils.formatting import to_decimal
 from app.bot.services.wallet import WalletService
 from app.config import Config
-from app.db.models import Referral, ReferrerReward, ReferralSettings, User
+from app.db.models import Referral, ReferrerReward, ReferralSettings, Transaction, User
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +95,34 @@ class ReferralService:
 
             return False
 
+    @staticmethod
+    async def _completed_purchase_count(
+        session, referred_tg_id: int, current_payment_id: str
+    ) -> int:
+        """Count completed purchases made before the current payment by the referred user."""
+        result = await session.execute(
+            select(Transaction).where(
+                Transaction.tg_id == referred_tg_id,
+                Transaction.status == TransactionStatus.COMPLETED,
+                Transaction.payment_id != current_payment_id,
+            )
+        )
+
+        purchase_count = 0
+        for transaction in result.scalars().all():
+            try:
+                data = SubscriptionData.deserialize(transaction.subscription)
+                if data.payment_kind == "wallet_topup":
+                    continue
+            except Exception:
+                # Preserve the existing behavior for legacy/non-deserializable
+                # transaction payloads: they count as purchases unless they are
+                # explicitly identified as wallet top-ups.
+                pass
+            purchase_count += 1
+
+        return purchase_count
+
     async def add_referrers_rewards_on_payment(
         self, referred_tg_id: int, payment_amount: float, payment_id: str
     ) -> bool:
@@ -116,13 +146,30 @@ class ReferralService:
                 first_level_reward_amount = self.config.shop.REFERRER_LEVEL_ONE_PERIOD
                 second_level_reward_amount = self.config.shop.REFERRER_LEVEL_TWO_PERIOD
             elif mode == ReferrerRewardType.MONEY.value:
-                # TODO: add currency check before usage
                 payment_amount = to_decimal(payment_amount)
-                first_level_rate = Decimal(settings.reward_percent) / Decimal(100)
+                purchase_count = await self._completed_purchase_count(
+                    session=session,
+                    referred_tg_id=referred_tg_id,
+                    current_payment_id=payment_id,
+                )
+                reward_percent = (
+                    settings.reward_percent
+                    if purchase_count == 0
+                    else settings.repeat_reward_percent
+                )
+                reward_rate = Decimal(reward_percent) / Decimal(100)
+                first_level_reward_amount = to_decimal(payment_amount * reward_rate)
                 second_level_rate = Decimal(self.config.shop.REFERRER_LEVEL_TWO_RATE) / Decimal(100)
-
-                first_level_reward_amount = to_decimal(payment_amount * first_level_rate)
                 second_level_reward_amount = to_decimal(payment_amount * second_level_rate)
+                logger.info(
+                    "Referral reward rate for referred user %s: %s%% (%s completed prior purchases)",
+                    referred_tg_id,
+                    reward_percent,
+                    purchase_count,
+                )
+            else:
+                first_level_reward_amount = Decimal(0)
+                second_level_reward_amount = Decimal(0)
 
             rewards_created = []
 
@@ -135,7 +182,8 @@ class ReferralService:
                     reward_level=ReferrerRewardLevel.FIRST_LEVEL,
                     payment_id=payment_id,
                 )
-                rewards_created.append(reward)
+                if reward:
+                    rewards_created.append(reward)
 
             second_level_referral = await Referral.get_referral(session, referrer_tg_id)
             if (
@@ -151,7 +199,8 @@ class ReferralService:
                     reward_level=ReferrerRewardLevel.SECOND_LEVEL,
                     payment_id=payment_id,
                 )
-                rewards_created.append(reward)
+                if reward:
+                    rewards_created.append(reward)
 
             return bool(rewards_created)
 
@@ -189,7 +238,10 @@ class ReferralService:
                     user_tg_id=reward.user_tg_id,
                     amount=amount,
                     transaction_type="referral_reward",
-                    description=f"پاداش معرفی به دوستان ({settings.reward_percent}% خرید موفق)",
+                    description=(
+                        f"پاداش معرفی به دوستان ({settings.reward_percent}% خرید اول / "
+                        f"{settings.repeat_reward_percent}% خریدهای بعدی)"
+                    ),
                     reference_id=f"referral_reward:{reward.id}",
                 )
                 logger.info("Credited %s toman referral reward to user %s", amount, reward.user_tg_id)
