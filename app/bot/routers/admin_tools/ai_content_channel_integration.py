@@ -59,7 +59,7 @@ def _patch_publisher() -> None:
                 slug = action[len("CAMPAIGN:") :].strip()
                 if slug:
                     campaign = await ChannelCampaignService.get_by_slug(session, slug)
-                    if campaign and campaign.channel_id == channel.id and campaign.is_active_now():
+                    if campaign and campaign.channel_id == channel.chat_id and campaign.is_active_now():
                         if bot_username is None:
                             bot_username = (await bot.get_me()).username
                         if bot_username:
@@ -86,6 +86,48 @@ def _patch_publisher() -> None:
     channel_management._publish_content = publish_content
 
 
+def _patch_campaign_start() -> None:
+    from app.bot.routers.main_menu import handler as main_menu
+
+    observer = main_menu.router.message
+    for handler in observer.handlers:
+        callback = getattr(handler, "callback", None)
+        if getattr(callback, "__name__", "") != "command_main_menu":
+            continue
+        if getattr(callback, "_ai_campaign_start", False):
+            return
+
+        original = callback
+
+        async def wrapped(*args, **kwargs):
+            command = kwargs.get("command")
+            session = kwargs.get("session")
+            user = kwargs.get("user")
+            if command and command.args and session and user:
+                payload = command.args.strip()
+                if payload.startswith(ChannelCampaignService.start_payload("")):
+                    slug = payload[len(ChannelCampaignService.start_payload("")) :].strip()
+                    campaign = await ChannelCampaignService.get_by_slug(session, slug)
+                    if campaign and campaign.is_active_now():
+                        await ChannelCampaignService.register_start(
+                            session,
+                            campaign,
+                            user.tg_id,
+                            referrer_id=None,
+                            joined_channel=False,
+                            source="campaign",
+                        )
+                        # Let the existing /start flow render the normal main
+                        # menu, but prevent it from treating campaign_<slug>
+                        # as an invite hash.
+                        command.args = None
+            return await original(*args, **kwargs)
+
+        wrapped._ai_campaign_start = True
+        handler.callback = wrapped
+        return
+
+
 def _remove_duplicate_channel_menu() -> None:
     from app.bot.routers.admin_tools import ai_content_handler
 
@@ -97,13 +139,10 @@ def _remove_duplicate_channel_menu() -> None:
     ]
 
 
-# Importing this module from admin_tools.__init__ deliberately happens after
-# ai_content_handler is imported by this module, so we can remove its duplicate
-# channel:menu handler and patch the single canonical publisher used by both
-# manual and scheduled channel publication.
 def install() -> None:
     _remove_duplicate_channel_menu()
     _patch_publisher()
+    _patch_campaign_start()
 
 
 install()
