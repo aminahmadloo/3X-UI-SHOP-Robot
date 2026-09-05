@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from aiogram import F
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -49,7 +51,7 @@ def _posts_menu(current: int) -> InlineKeyboardMarkup:
 
 
 async def _show_posts(callback: CallbackQuery, session: AsyncSession) -> None:
-    service = AIContentService()
+    service = AIContentService(os.getenv("OPENAI_API_KEY"))
     settings = await service.get_settings(session)
     await callback.answer()
     await callback.message.edit_text(
@@ -68,7 +70,7 @@ async def daily_posts_menu(callback: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(F.data.regexp(r"^ai_content:posts:(inc|dec)$"), IsAdmin())
 async def change_daily_posts(callback: CallbackQuery, session: AsyncSession):
-    service = AIContentService()
+    service = AIContentService(os.getenv("OPENAI_API_KEY"))
     settings = await service.get_settings(session)
     direction = callback.data.rsplit(":", 1)[1]
     current = max(MIN_POSTS_PER_DAY, min(settings.posts_per_day, MAX_POSTS_PER_DAY))
