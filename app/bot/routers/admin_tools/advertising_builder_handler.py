@@ -144,7 +144,7 @@ async def channels(callback: CallbackQuery, session: AsyncSession):
     for channel in rows:
         status = "🟢" if channel.is_active else "🔴"; lines.append(f"{status} {channel.title} — <code>{channel.chat_id}</code>"); b.row(InlineKeyboardButton(text=f"{status} {channel.title}", callback_data=f"advertising:toggle:{channel.id}"))
     if not rows: lines.append("هنوز کانالی ثبت نشده است.")
-    b.row(InlineKeyboardButton(text="➕ افزودن کانال", callback_data="advertising:add_channel")); b.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="advertising:menu")); await callback.answer(); await callback.message.edit_text("\n".join(lines),reply_markup=b.as_markup())
+    b.row(InlineKeyboardButton(text="➕ افزودن کانال", callback_data="advertising:add_channel")); b.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="advertising:menu")); await callback.answer(); await callback.message.edit_text("\n".join(lines), reply_markup=b.as_markup())
 
 
 @router.callback_query(F.data.regexp(r"^advertising:toggle:\d+$"), IsAdmin())
@@ -213,7 +213,7 @@ async def button_url(message: Message, state: FSMContext):
 
 
 @router.callback_query(F.data.regexp(r"^advertising:button_color:(green|red|blue|none)$"), IsAdmin())
-async def button_color(callback:CallbackQuery,state:FSMContext):
+async def button_color(callback: CallbackQuery,state:FSMContext):
     data=await state.get_data(); buttons=list(data.get("custom_buttons",[])); buttons.append({"label":data.get("pending_button_title","دکمه"),"url":data.get("pending_button_url", ""),"color":callback.data.rsplit(":",1)[1]}); await state.update_data(custom_buttons=buttons,pending_button_title=None,pending_button_url=None); await callback.answer(f"دکمه {len(buttons)} ذخیره شد"); await state.set_state(AdvertisingStates.waiting_button_title); await callback.message.edit_text(f"✅ دکمه {len(buttons)} ذخیره شد.\n\nدکمه بعدی را بساز یا «رد کردن» را بفرست.",reply_markup=cancel_keyboard()); await set_prompt(state,callback.message); asyncio.create_task(delete_later(callback.message))
 
 
