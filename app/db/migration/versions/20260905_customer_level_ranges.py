@@ -1,14 +1,14 @@
 """add dynamic customer level point ranges
 
 Revision ID: 20260905_customer_level_ranges
-Revises: 20260905_referral_dual_rates
+Revises: 20260905_referral_dual_rates, 20260905_ai_content_manager
 Create Date: 2026-09-05
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "20260905_customer_level_ranges"
-down_revision = "20260905_referral_dual_rates"
+down_revision = ("20260905_referral_dual_rates", "20260905_ai_content_manager")
 branch_labels = None
 depends_on = None
 
