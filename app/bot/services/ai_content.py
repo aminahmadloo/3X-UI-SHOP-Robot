@@ -15,6 +15,38 @@ from app.db.models import AIContentSettings, ChannelContent
 logger = logging.getLogger(__name__)
 
 
+SMART_CATEGORIES: dict[str, tuple[str, str]] = {
+    "education": ("📚 آموزشی", "auto"),
+    "tips": ("💡 نکته و ترفند", "auto"),
+    "technology": ("🌐 فناوری و اینترنت", "auto"),
+    "news": ("📰 اخبار و ترند", "auto"),
+    "interaction": ("❓ پرسش و تعامل", "auto"),
+    "poll": ("📊 نظرسنجی", "auto"),
+    "viral": ("😂 سرگرمی / محتوای وایرال", "auto"),
+    "community": ("💬 ارتباط با اعضا", "auto"),
+    "feature": ("🔐 معرفی قابلیت ToonelVPN", "auto"),
+    "announcement": ("📢 اطلاعیه معمولی", "auto"),
+    "sales": ("💰 معرفی سرویس / فروش معمولی", "approval"),
+    "special_sale": ("🔥 فروش ویژه", "approval"),
+    "discount": ("🎁 تخفیف", "approval"),
+    "heavy_discount": ("🚨 تخفیف سنگین", "mandatory"),
+    "campaign": ("📣 کمپین تبلیغاتی", "approval"),
+    "important_campaign": ("🏆 کمپین مهم", "mandatory"),
+    "ai_video": ("🎬 ویدئوی تولیدشده توسط AI", "approval"),
+    "ai_image": ("🖼 تصویر تولیدشده توسط AI", "auto"),
+    "sensitive": ("⚠️ موضوع حساس / بحث‌برانگیز", "mandatory"),
+    "pricing": ("💳 قیمت، شرایط پرداخت یا تغییر تعرفه", "mandatory"),
+    "legal": ("📜 متن حقوقی/قوانین/شرایط", "mandatory"),
+    "outage": ("🛠 اطلاعیه قطعی/اختلال سرویس", "approval"),
+    "experimental": ("🧪 محتوای آزمایشی", "approval"),
+    "statistics": ("📈 محتوای مبتنی بر آمار", "approval"),
+    "sensitive_cta": ("🔗 CTA حساس یا لینک کمپین مهم", "approval"),
+}
+
+DEFAULT_SMART_RULES = {key: decision for key, (_, decision) in SMART_CATEGORIES.items()}
+RISK_LEVELS = {"conservative", "balanced", "free"}
+
+
 class AIContentError(RuntimeError):
     pass
 
@@ -33,8 +65,10 @@ class AIContentService:
 هدف: تولید محتوای فارسی جذاب، کوتاه و طبیعی که ابتدا برای عضو ارزش ایجاد کند و سپس در صورت مناسب بودن او را به ربات هدایت کند.
 از کلیشه، اغراق، وعده غیرواقعی و تبلیغ مستقیم افراطی پرهیز کن.
 یک hook قوی در ابتدای متن، بدنه خوانا با فاصله‌گذاری مناسب و CTA متناسب با هدف بساز.
-دکمه‌ها باید فقط وقتی لازم هستند پیشنهاد شوند و هر URL باید واقعی و قابل استفاده باشد.
-برای محتوای آموزشی CTA آموزشی/تعامل، برای فروش CTA خرید، و برای جذب عضو CTA ورود به ربات/اکانت هدیه پیشنهاد کن.
+برای هر محتوا یک content_category دقیق از فهرست زیر انتخاب کن:
+{", ".join(SMART_CATEGORIES.keys())}
+اگر محتوا درباره قیمت/پرداخت/تعرفه، قانون، موضوع حساس، تخفیف سنگین، کمپین مهم یا ادعای عددی است، همان دسته را انتخاب کن.
+اگر CTA یا لینک یک کمپین مهم/حساس است، cta_risk را high قرار بده.
 
 موضوع درخواستی: {requested_topic}
 
@@ -43,17 +77,18 @@ class AIContentService:
   "title": "عنوان داخلی",
   "body": "متن نهایی پست با HTML ساده Telegram",
   "content_type": "text",
+  "content_category": "education|tips|technology|news|interaction|poll|viral|community|feature|announcement|sales|special_sale|discount|heavy_discount|campaign|important_campaign|ai_video|ai_image|sensitive|pricing|legal|outage|experimental|statistics|sensitive_cta",
   "goal": "education|engagement|sales|acquisition|announcement",
+  "sensitivity": "low|medium|high",
+  "numeric_claim": false,
+  "cta_risk": "low|medium|high",
   "cta_reason": "دلیل کوتاه انتخاب CTA",
   "buttons": [{{"label":"متن دکمه","url":"https://example.com"}}],
   "image_prompt": "اگر تصویر مناسب است، prompt انگلیسی تولید تصویر؛ در غیر این صورت خالی",
   "video_prompt": "اگر ویدئو مناسب است، prompt انگلیسی؛ در غیر این صورت خالی"
 }}
 """
-        payload = {
-            "model": model or self.default_model,
-            "input": prompt,
-        }
+        payload = {"model": model or self.default_model, "input": prompt}
 
         def request() -> dict:
             req = urllib.request.Request(
@@ -84,9 +119,19 @@ class AIContentService:
             raise AIContentError("پاسخ AI JSON معتبر نبود.") from exc
         if not isinstance(result, dict) or not str(result.get("body") or "").strip():
             raise AIContentError("AI محتوای قابل انتشار تولید نکرد.")
+
+        category = str(result.get("content_category") or "education").strip().lower()
+        if category not in SMART_CATEGORIES:
+            category = "sensitive"
+        result["content_category"] = category
+        result["sensitivity"] = str(result.get("sensitivity") or "low").lower()
+        result["numeric_claim"] = bool(result.get("numeric_claim"))
+        result["cta_risk"] = str(result.get("cta_risk") or "low").lower()
         result["buttons"] = [
             item for item in (result.get("buttons") or [])
-            if isinstance(item, dict) and str(item.get("label") or "").strip() and str(item.get("url") or "").startswith(("https://", "http://"))
+            if isinstance(item, dict)
+            and str(item.get("label") or "").strip()
+            and str(item.get("url") or "").startswith(("https://", "http://"))
         ][:8]
         result["content_type"] = "text"
         return result
@@ -95,23 +140,79 @@ class AIContentService:
         settings = (await session.execute(select(AIContentSettings).order_by(AIContentSettings.id).limit(1))).scalar_one_or_none()
         if settings:
             return settings
-        settings = AIContentSettings()
+        settings = AIContentSettings(smart_rules=json.dumps(DEFAULT_SMART_RULES, ensure_ascii=False))
         session.add(settings)
         await session.flush()
         return settings
 
     @staticmethod
-    def decide_status(mode: str, goal: str) -> str:
-        if mode == "auto":
-            return "scheduled"
+    def smart_rules(settings: AIContentSettings) -> dict[str, str]:
+        try:
+            rules = json.loads(settings.smart_rules or "{}")
+        except (TypeError, json.JSONDecodeError):
+            rules = {}
+        normalized = dict(DEFAULT_SMART_RULES)
+        for key, value in rules.items():
+            if key in SMART_CATEGORIES and value in {"auto", "approval", "mandatory"}:
+                normalized[key] = value
+        return normalized
+
+    @staticmethod
+    def decide_status(mode: str, category: str, settings: AIContentSettings | None = None, *, sensitivity: str = "low", numeric_claim: bool = False, cta_risk: str = "low") -> str:
         if mode == "approval":
             return "draft"
-        # Smart mode: routine value content can be automated; sales/announcements stay for review.
-        return "scheduled" if goal in {"education", "engagement"} else "draft"
+        if mode == "auto":
+            return "scheduled"
+        category = category if category in SMART_CATEGORIES else "sensitive"
+        rules = AIContentService.smart_rules(settings) if settings else DEFAULT_SMART_RULES
+        decision = rules.get(category, "mandatory")
+
+        # Mandatory-risk signals always require approval, regardless of the editable category rule.
+        if sensitivity == "high" or cta_risk == "high":
+            return "draft"
+        if numeric_claim and category == "statistics":
+            return "draft"
+        if decision == "mandatory":
+            return "draft"
+        if decision == "approval":
+            return "draft"
+        return "scheduled"
+
+    @staticmethod
+    def risk_adjusted_rules(settings: AIContentSettings) -> dict[str, str]:
+        rules = AIContentService.smart_rules(settings)
+        risk = settings.smart_risk_level if settings.smart_risk_level in RISK_LEVELS else "balanced"
+        if risk == "conservative":
+            for key, (_, default) in SMART_CATEGORIES.items():
+                if default != "auto":
+                    rules[key] = "approval"
+            for key in ("news", "ai_image", "announcement"):
+                rules[key] = "approval"
+        elif risk == "free":
+            # Free mode still protects hard-risk categories.
+            for key, decision in rules.items():
+                if decision != "mandatory" and key not in {"sensitive", "pricing", "legal", "heavy_discount", "important_campaign"}:
+                    rules[key] = "auto"
+        return rules
 
     async def create_content(self, session: AsyncSession, channel_id: int, settings: AIContentSettings, topic: str | None = None) -> ChannelContent:
         result = await self.generate(topic=topic, model=settings.model)
-        status = self.decide_status(settings.mode, str(result.get("goal") or "education"))
+        if settings.mode == "smart":
+            effective_rules = self.risk_adjusted_rules(settings)
+            original_rules = settings.smart_rules
+            settings.smart_rules = json.dumps(effective_rules, ensure_ascii=False)
+            status = self.decide_status(
+                settings.mode,
+                str(result.get("content_category") or "education"),
+                settings,
+                sensitivity=str(result.get("sensitivity") or "low"),
+                numeric_claim=bool(result.get("numeric_claim")),
+                cta_risk=str(result.get("cta_risk") or "low"),
+            )
+            settings.smart_rules = original_rules
+        else:
+            status = self.decide_status(settings.mode, "education", settings)
+
         content = ChannelContent(
             channel_id=channel_id,
             title=str(result.get("title") or "محتوای AI"),
