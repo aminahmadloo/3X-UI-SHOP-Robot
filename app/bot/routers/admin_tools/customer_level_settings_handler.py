@@ -30,13 +30,14 @@ RANGE_FIELDS = {
     "gold": ("gold_min_points", "gold_max_points"),
 }
 
+ICONS = {"base": "⚪️", "bronze": "🔩", "silver": "⚙️", "gold": "👑"}
+
 
 def _keyboard() -> InlineKeyboardMarkup:
     rows = []
     for key, (title, _) in FIELDS.items():
-        icon = {"base": "⚪️", "bronze": "🔩", "silver": "⚙️", "gold": "👑"}[key]
         rows.append([
-            InlineKeyboardButton(text=f"{icon} {title} | ✏️ بازه", callback_data=f"customer_level_settings:edit:{key}"),
+            InlineKeyboardButton(text=f"{ICONS[key]} {title} | ✏️ بازه", callback_data=f"customer_level_settings:edit:{key}"),
             InlineKeyboardButton(text="💰 تخفیف", callback_data=f"customer_level_settings:edit_discount:{key}"),
         ])
     rows.extend([
