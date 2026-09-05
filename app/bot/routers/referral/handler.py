@@ -71,16 +71,19 @@ async def generate_referral_summary_text(
         )
     ) or 0
 
-    reward_rate = int(settings.reward_percent)
+    first_rate = int(settings.reward_percent)
+    repeat_rate = int(settings.repeat_reward_percent)
 
     return (
         "🎁 <b>معرفی به دوستان</b>\n\n"
-        f"🔗 لینک دعوت اختصاصی شما:\n<code>{referral_link}</code>\n\n"
-        "🎁 با هر نفر که با لینک تو ثبت‌نام کنه:\n"
-        f"• <b>{reward_rate}%</b> از مبلغ هر خرید موفقش به کیف پولت واریز می‌شود (مادام‌العمر).\n\n"
+        f"🔗 لینک دعوت اختصاصی شما:{referral_link}\n"
+        "➡️ با هر نفر که با لینکت ثبت‌نام کنه:\n"
+        f"- <b>{first_rate}%</b> از اولین خریدش به کیف پولت\n"
+        f"- <b>{repeat_rate}%</b> از هر خرید بعدیش، مادام‌العمر\n\n"
+        "➕ هر دعوت موفق یه امتیاز هم داره؛ امتیازهات که جمع بشه، سطحت بالا می‌ره و تخفیف دائمی می‌گیری.\n\n"
         "📊 <b>آمار دعوت شما</b>\n"
-        f"├ 👥 افراد دعوت شده: <b>{referrals_count}</b>\n"
-        f"├ 🛒 تعداد خریدها: <b>{purchase_count}</b>\n"
+        f"├ 👤 افراد دعوت‌شده: <b>{referrals_count}</b>\n"
+        f"├ 💳 تعداد خریدها: <b>{purchase_count}</b>\n"
         f"└ 💰 درآمد ۳۰ روز اخیر: <b>{int(income_30d):,}</b> تومان"
     )
 
