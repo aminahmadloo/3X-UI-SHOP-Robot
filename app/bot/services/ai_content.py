@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
+import html
 import json
 import logging
+import re
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
@@ -45,28 +48,34 @@ SMART_CATEGORIES: dict[str, tuple[str, str]] = {
 
 DEFAULT_SMART_RULES = {key: decision for key, (_, decision) in SMART_CATEGORIES.items()}
 RISK_LEVELS = {"conservative", "balanced", "free"}
-HARD_APPROVAL_CATEGORIES = {
-    "heavy_discount",
-    "important_campaign",
-    "sensitive",
-    "pricing",
-    "legal",
+HARD_APPROVAL_CATEGORIES = {"heavy_discount", "important_campaign", "sensitive", "pricing", "legal"}
+
+CTA_ACTIONS = {
+    "BUY", "MY_SERVICES", "RENEW", "WALLET", "ACCOUNT", "LEVEL", "REFERRAL", "SUPPORT", "GIFT", "DOWNLOAD",
 }
 
-# AI is never allowed to invent destination URLs. It may only request one of
-# these semantic actions; the publisher is responsible for resolving them.
-CTA_ACTIONS = {
-    "BUY",
-    "MY_SERVICES",
-    "RENEW",
-    "WALLET",
-    "ACCOUNT",
-    "LEVEL",
-    "REFERRAL",
-    "SUPPORT",
-    "GIFT",
-    "DOWNLOAD",
-}
+# Content diversity is intentionally local and inexpensive: no second AI call is
+# needed just to detect repetition. Recent channel posts are compared using a
+# normalized text ratio plus token Jaccard similarity.
+RECENT_CONTENT_LIMIT = 30
+MAX_REGENERATION_ATTEMPTS = 3
+SIMILARITY_DRAFT_THRESHOLD = 0.72
+SIMILARITY_REJECT_THRESHOLD = 0.82
+
+EDUCATIONAL_FORMATS = (
+    "مفهوم و آموزش پایه",
+    "نکته سریع",
+    "اشتباهات رایج",
+    "Myth vs Fact",
+    "سناریوی واقعی",
+    "راهنمای مرحله‌به‌مرحله",
+    "عیب‌یابی",
+    "مقایسه دو روش",
+    "چک‌لیست",
+    "سؤال و پاسخ",
+    "آزمایش یا مثال عملی",
+    "واقعیت جالب",
+)
 
 
 class AIContentError(RuntimeError):
@@ -78,21 +87,85 @@ class AIContentService:
         self.api_key = api_key
         self.default_model = default_model
 
-    async def generate(self, topic: str | None = None, model: str | None = None) -> dict:
+    @staticmethod
+    def _normalize_text(value: str | None) -> str:
+        value = html.unescape(str(value or "")).lower()
+        value = re.sub(r"<[^>]+>", " ", value)
+        value = re.sub(r"https?://\S+|www\.\S+", " ", value)
+        value = re.sub(r"[^\w\u0600-\u06ff]+", " ", value, flags=re.UNICODE)
+        return re.sub(r"\s+", " ", value).strip()
+
+    @classmethod
+    def similarity(cls, left: str, right: str) -> float:
+        a = cls._normalize_text(left)
+        b = cls._normalize_text(right)
+        if not a or not b:
+            return 0.0
+        sequence = difflib.SequenceMatcher(None, a, b).ratio()
+        a_tokens = set(a.split())
+        b_tokens = set(b.split())
+        union = a_tokens | b_tokens
+        jaccard = len(a_tokens & b_tokens) / len(union) if union else 0.0
+        return max(sequence, jaccard)
+
+    @classmethod
+    def _recent_context(cls, contents: list[ChannelContent]) -> str:
+        if not contents:
+            return "هیچ پست اخیر قابل استفاده برای مقایسه وجود ندارد."
+        lines: list[str] = []
+        for index, content in enumerate(contents, 1):
+            title = cls._normalize_text(content.title)[:180]
+            body = cls._normalize_text(content.body)[:320]
+            lines.append(f"{index}. عنوان: {title}\n   متن: {body}")
+        return "\n".join(lines)
+
+    async def _recent_contents(self, session: AsyncSession, channel_id: int) -> list[ChannelContent]:
+        result = await session.execute(
+            select(ChannelContent)
+            .where(ChannelContent.channel_id == channel_id, ChannelContent.status.in_(["published", "scheduled", "draft"]))
+            .order_by(ChannelContent.id.desc())
+            .limit(RECENT_CONTENT_LIMIT)
+        )
+        return list(result.scalars().all())
+
+    async def generate(
+        self,
+        topic: str | None = None,
+        model: str | None = None,
+        *,
+        recent_context: str | None = None,
+        diversity_feedback: str | None = None,
+    ) -> dict:
         if not self.api_key:
             raise AIContentError("OPENAI_API_KEY تنظیم نشده است.")
         requested_topic = topic or "یک موضوع جذاب و کاربردی برای اعضای کانال ToonelVPN انتخاب کن."
+        recent_block = recent_context or "هیچ پست اخیر قابل استفاده برای مقایسه وجود ندارد."
+        feedback_block = diversity_feedback or ""
         prompt = f"""
 تو مدیر محتوای حرفه‌ای کانال تلگرام ToonelVPN هستی.
-هدف: تولید محتوای فارسی جذاب، کوتاه و طبیعی که ابتدا برای عضو ارزش ایجاد کند و سپس در صورت مناسب بودن او را به ربات هدایت کند.
-از کلیشه، اغراق، وعده غیرواقعی و تبلیغ مستقیم افراطی پرهیز کن.
-یک hook قوی در ابتدای متن، بدنه خوانا با فاصله‌گذاری مناسب و CTA متناسب با هدف بساز.
+هدف: تولید محتوای فارسی جذاب، طبیعی و متنوع که ابتدا برای عضو ارزش ایجاد کند و سپس در صورت مناسب بودن او را به ربات هدایت کند.
+
+قانون بسیار مهم تنوع:
+- پست‌های اخیر پایین را قبل از ایده‌پردازی بررسی کن.
+- موضوع، زاویه، hook، مثال، ساختار و نتیجه‌گیری را با آنها تکرار نکن.
+- بازنویسی همان مطلب با چند کلمه متفاوت ممنوع است.
+- اگر موضوع درخواستی قبلاً پوشش داده شده، زاویه‌ای تازه، مثال تازه یا قالبی کاملاً متفاوت انتخاب کن.
+- برای محتوای آموزشی بین قالب‌های مختلف جابه‌جا شو: {", ".join(EDUCATIONAL_FORMATS)}
+- در هر پست فقط یک ایده اصلی را عمیق و واضح منتقل کن.
+- از کلیشه، اغراق، وعده غیرواقعی و تبلیغ مستقیم افراطی پرهیز کن.
+
+پست‌های اخیر کانال برای جلوگیری از تکرار:
+---
+{recent_block}
+---
+{feedback_block}
+
+موضوع درخواستی: {requested_topic}
+
 برای هر محتوا یک content_category دقیق از فهرست زیر انتخاب کن:
 {", ".join(SMART_CATEGORIES.keys())}
 اگر محتوا درباره قیمت/پرداخت/تعرفه، قانون، موضوع حساس، تخفیف سنگین، کمپین مهم یا ادعای عددی است، همان دسته را انتخاب کن.
 اگر CTA یا لینک یک کمپین مهم/حساس است، cta_risk را high قرار بده.
-
-موضوع درخواستی: {requested_topic}
 
 CTA را هرگز به‌صورت URL خام تولید نکن. فقط از actionهای معنایی مجاز زیر استفاده کن:
 {", ".join(sorted(CTA_ACTIONS))}
@@ -148,15 +221,11 @@ CTA را هرگز به‌صورت URL خام تولید نکن. فقط از acti
             raise AIContentError("AI محتوای قابل انتشار تولید نکرد.")
 
         category = str(result.get("content_category") or "education").strip().lower()
-        if category not in SMART_CATEGORIES:
-            category = "sensitive"
-        result["content_category"] = category
+        result["content_category"] = category if category in SMART_CATEGORIES else "sensitive"
         result["sensitivity"] = str(result.get("sensitivity") or "low").lower()
         result["numeric_claim"] = bool(result.get("numeric_claim"))
         result["cta_risk"] = str(result.get("cta_risk") or "low").lower()
 
-        # Keep only semantic CTA intents. Arbitrary URLs from the model are
-        # deliberately discarded and can never reach Telegram publishing.
         safe_buttons: list[dict[str, str]] = []
         for item in result.get("buttons") or []:
             if not isinstance(item, dict):
@@ -195,26 +264,18 @@ CTA را هرگز به‌صورت URL خام تولید نکن. فقط از acti
     @staticmethod
     def decide_status(mode: str, category: str, settings: AIContentSettings | None = None, *, sensitivity: str = "low", numeric_claim: bool = False, cta_risk: str = "low") -> str:
         category = category if category in SMART_CATEGORIES else "sensitive"
-
-        # Safety gates always win over the selected publication mode. This
-        # prevents a global "auto" mode from bypassing hard-risk categories.
         if category in HARD_APPROVAL_CATEGORIES:
             return "draft"
         if sensitivity == "high" or cta_risk == "high":
             return "draft"
         if numeric_claim and category == "statistics":
             return "draft"
-
         if mode == "approval":
             return "draft"
         if mode == "auto":
             return "scheduled"
-
         rules = AIContentService.smart_rules(settings) if settings else DEFAULT_SMART_RULES
-        decision = rules.get(category, "mandatory")
-        if decision in {"mandatory", "approval"}:
-            return "draft"
-        return "scheduled"
+        return "draft" if rules.get(category, "mandatory") in {"mandatory", "approval"} else "scheduled"
 
     @staticmethod
     def risk_adjusted_rules(settings: AIContentSettings) -> dict[str, str]:
@@ -235,29 +296,44 @@ CTA را هرگز به‌صورت URL خام تولید نکن. فقط از acti
         return rules
 
     async def create_content(self, session: AsyncSession, channel_id: int, settings: AIContentSettings, topic: str | None = None) -> ChannelContent:
-        result = await self.generate(topic=topic, model=settings.model)
+        recent = await self._recent_contents(session, channel_id)
+        recent_context = self._recent_context(recent)
+        best_result: dict | None = None
+        best_similarity = 0.0
+        feedback: str | None = None
+
+        for attempt in range(1, MAX_REGENERATION_ATTEMPTS + 1):
+            result = await self.generate(topic=topic, model=settings.model, recent_context=recent_context, diversity_feedback=feedback)
+            candidate = f"{result.get('title', '')}\n{result.get('body', '')}"
+            similarities = [self.similarity(candidate, f"{item.title}\n{item.body or ''}") for item in recent]
+            similarity = max(similarities, default=0.0)
+            if best_result is None or similarity < best_similarity:
+                best_result = result
+                best_similarity = similarity
+            if similarity < SIMILARITY_DRAFT_THRESHOLD:
+                break
+            feedback = (
+                f"نسخه قبلی بیش از حد شبیه یکی از پست‌های اخیر بود (similarity={similarity:.2f}). "
+                "کاملاً بازطراحی کن: موضوع/زاویه/Hook/مثال/ساختار و CTA را تغییر بده و از بازنویسی نسخه قبلی خودداری کن."
+            )
+
+        if best_result is None:
+            raise AIContentError("AI محتوای متنوع تولید نکرد.")
+        result = best_result
+
         if settings.mode == "smart":
             effective_rules = self.risk_adjusted_rules(settings)
             original_rules = settings.smart_rules
             settings.smart_rules = json.dumps(effective_rules, ensure_ascii=False)
-            status = self.decide_status(
-                settings.mode,
-                str(result.get("content_category") or "education"),
-                settings,
-                sensitivity=str(result.get("sensitivity") or "low"),
-                numeric_claim=bool(result.get("numeric_claim")),
-                cta_risk=str(result.get("cta_risk") or "low"),
-            )
+            status = self.decide_status(settings.mode, str(result.get("content_category") or "education"), settings, sensitivity=str(result.get("sensitivity") or "low"), numeric_claim=bool(result.get("numeric_claim")), cta_risk=str(result.get("cta_risk") or "low"))
             settings.smart_rules = original_rules
         else:
-            status = self.decide_status(
-                settings.mode,
-                str(result.get("content_category") or "education"),
-                settings,
-                sensitivity=str(result.get("sensitivity") or "low"),
-                numeric_claim=bool(result.get("numeric_claim")),
-                cta_risk=str(result.get("cta_risk") or "low"),
-            )
+            status = self.decide_status(settings.mode, str(result.get("content_category") or "education"), settings, sensitivity=str(result.get("sensitivity") or "low"), numeric_claim=bool(result.get("numeric_claim")), cta_risk=str(result.get("cta_risk") or "low"))
+
+        # If all regeneration attempts remained too similar, never auto-publish.
+        if best_similarity >= SIMILARITY_REJECT_THRESHOLD:
+            status = "draft"
+            logger.warning("AI content remained too similar after regeneration attempts: %.2f", best_similarity)
 
         content = ChannelContent(
             channel_id=channel_id,
