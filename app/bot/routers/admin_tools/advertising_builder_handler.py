@@ -144,7 +144,7 @@ async def channels(callback: CallbackQuery, session: AsyncSession):
     for channel in rows:
         status = "🟢" if channel.is_active else "🔴"; lines.append(f"{status} {channel.title} — <code>{channel.chat_id}</code>"); b.row(InlineKeyboardButton(text=f"{status} {channel.title}", callback_data=f"advertising:toggle:{channel.id}"))
     if not rows: lines.append("هنوز کانالی ثبت نشده است.")
-    b.row(InlineKeyboardButton(text="➕ افزودن کانال", callback_data="advertising:add_channel")); b.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="advertising:menu")); await callback.answer(); await callback.message.edit_text("\n".join(lines), reply_markup=b.as_markup())
+    b.row(InlineKeyboardButton(text="➕ افزودن کانال", callback_data="advertising:add_channel")); b.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="advertising:menu")); await callback.answer(); await callback.message.edit_text("\n".join(lines),reply_markup=b.as_markup())
 
 
 @router.callback_query(F.data.regexp(r"^advertising:toggle:\d+$"), IsAdmin())
@@ -199,7 +199,7 @@ async def button_title(message: Message, state: FSMContext, session: AsyncSessio
         await delete_prompt(message,state); await state.set_state(AdvertisingStates.waiting_service_selection); await show_services(message,state,session); asyncio.create_task(delete_later(message)); return
     if not value or len(value)>64: await message.answer("❌ عنوان دکمه باید حداکثر ۶۴ کاراکتر باشد."); return
     await delete_prompt(message,state); await state.update_data(pending_button_title=value); await state.set_state(AdvertisingStates.waiting_button_url)
-    prompt=await message.answer("🔗 <b>لینک دکمه را بفرست</b>\n\nفقط خود لینک را ارسال کن. لازم نیست قالب خاصی بلد باشی.\nمثال: <code>https://example.com</code> یا <code>https://t.me/ToonelVPN</code> یا <code>t.me/ToonelVPN</code> یا <code>@ToonelVPN</code>", reply_markup=cancel_keyboard()); await set_prompt(state,prompt); asyncio.create_task(delete_later(message))
+    prompt=await message.answer("🔗 <b>لینک دکمه تبلیغ را انتخاب کنید</b>\n\nاز بین لینک‌های آماده زیر، لینک موردنظر را کپی و ارسال کنید.\n\n🏠 <b>شروع ربات / صفحه اصلی</b>\n<code>https://t.me/ToonelVpn_bot?start=start</code>\n\n🛒 <b>خرید سرویس</b>\n<code>https://t.me/ToonelVpn_bot?start=buy</code>\n\n⚙️ <b>خرید با مشخصات دلخواه</b>\n<code>https://t.me/ToonelVpn_bot?start=custom_service</code>\n\n🔄 <b>تمدید سرویس</b>\n<code>https://t.me/ToonelVpn_bot?start=renew</code>\n\n📦 <b>سرویس‌های من</b>\n<code>https://t.me/ToonelVpn_bot?start=my_services</code>\n\n👤 <b>حساب کاربری</b>\n<code>https://t.me/ToonelVpn_bot?start=profile</code>\n\n💰 <b>کیف پول</b>\n<code>https://t.me/ToonelVpn_bot?start=wallet</code>\n\n🤝 <b>معرفی به دوستان</b>\n<code>https://t.me/ToonelVpn_bot?start=referral</code>\n\n🏆 <b>سطح من</b>\n<code>https://t.me/ToonelVpn_bot?start=customer_level</code>\n\n🎁 <b>اکانت تست</b>\n<code>https://t.me/ToonelVpn_bot?start=trial</code>\n\n🎧 <b>پشتیبانی</b>\n<code>https://t.me/ToonelVpn_bot?start=support</code>\n\n📌 <b>یا هر لینک معتبر دیگری</b> را مثل قبل ارسال کنید.\nمثال: <code>https://example.com</code> یا <code>https://t.me/ToonelVPN</code> یا <code>t.me/ToonelVPN</code> یا <code>@ToonelVPN</code>", reply_markup=cancel_keyboard()); await set_prompt(state,prompt); asyncio.create_task(delete_later(message))
 
 
 @router.message(AdvertisingStates.waiting_button_url, IsAdmin())
@@ -248,57 +248,3 @@ async def save_draft(session:AsyncSession,data:dict,username:str)->AdvertisingCa
 @router.callback_query(F.data == "advertising:preview", IsAdmin())
 async def preview(callback:CallbackQuery,state:FSMContext,session:AsyncSession):
     data=await state.get_data()
-    if data.get("content_type") in {"photo","video"} and not data.get("media_file_id"): await callback.answer("رسانه تبلیغ ناقص است.",show_alert=True); return
-    if data.get("content_type")=="text" and not data.get("campaign_body"): await callback.answer("متن تبلیغ خالی است.",show_alert=True); return
-    me=await callback.message.bot.get_me(); channels=await AdvertisingChannel.list_active(session)
-    if not me.username or not channels: await callback.answer("ربات username یا کانال فعال ندارد.",show_alert=True); return
-    c=await save_draft(session,data,me.username); await session.commit(); await state.update_data(draft_campaign_id=c.id); markup=await build_ad_markup(c.id,me.username,channels[0].id,session,c.custom_buttons,c.selected_offers,c.show_services)
-    try: await callback.message.delete()
-    except Exception: pass
-    if c.content_type=="photo": await callback.message.bot.send_photo(chat_id=callback.from_user.id,photo=c.media_file_id,caption=c.body or None,show_caption_above_media=c.show_caption_above_media,reply_markup=markup)
-    elif c.content_type=="video": await callback.message.bot.send_video(chat_id=callback.from_user.id,video=c.media_file_id,caption=c.body or None,show_caption_above_media=c.show_caption_above_media,reply_markup=markup)
-    else: await callback.message.bot.send_message(chat_id=callback.from_user.id,text=c.body,reply_markup=markup)
-    await callback.message.bot.send_message(chat_id=callback.from_user.id,text="اگر مورد تأیید است منتشر کن:",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🚀 انتشار در کانال‌های فعال",callback_data=f"advertising:publish:{c.id}")],[InlineKeyboardButton(text="❌ لغو",callback_data=f"advertising:discard:{c.id}")]])); await callback.answer()
-
-
-@router.callback_query(F.data.regexp(r"^advertising:publish:\d+$"), IsAdmin())
-async def publish(callback:CallbackQuery,state:FSMContext,session:AsyncSession):
-    c=await session.get(AdvertisingCampaign,int(callback.data.rsplit(":",1)[1]))
-    if not c or not c.is_active: await callback.answer("کمپین پیدا نشد یا غیرفعال است.",show_alert=True); return
-    channels=await AdvertisingChannel.list_active(session); ok=[]; failed=[]
-    for channel in channels:
-        try:
-            markup=await build_ad_markup(c.id,c.bot_username or "",channel.id,session,c.custom_buttons,c.selected_offers,c.show_services)
-            if c.content_type=="photo": sent=await callback.message.bot.send_photo(chat_id=channel.chat_id,photo=c.media_file_id,caption=c.body or None,show_caption_above_media=c.show_caption_above_media,reply_markup=markup)
-            elif c.content_type=="video": sent=await callback.message.bot.send_video(chat_id=channel.chat_id,video=c.media_file_id,caption=c.body or None,show_caption_above_media=c.show_caption_above_media,reply_markup=markup)
-            else: sent=await callback.message.bot.send_message(chat_id=channel.chat_id,text=c.body,reply_markup=markup)
-            session.add(AdvertisingPublication(campaign_id=c.id,channel_id=channel.id,message_id=sent.message_id)); ok.append(channel.title)
-        except Exception as exc: failed.append(f"{channel.title}: {exc}"); logger.exception("Advertising publish failed: campaign=%s channel=%s",c.id,channel.chat_id)
-    await session.commit(); await state.clear(); await callback.answer("انتشار انجام شد"); lines=[f"✅ <b>کمپین #{c.id} منتشر شد.</b>",f"🟢 موفق: {len(ok)}",f"🔴 ناموفق: {len(failed)}"]
-    if ok: lines.append("\n"+"\n".join(f"🟢 {x}" for x in ok))
-    if failed: lines.append("\n"+"\n".join(f"🔴 {x}" for x in failed[:5]))
-    await callback.message.edit_text("\n".join(lines),reply_markup=menu_keyboard())
-
-
-@router.callback_query(F.data.regexp(r"^advertising:discard:\d+$"), IsAdmin())
-async def discard(callback:CallbackQuery,state:FSMContext,session:AsyncSession):
-    c=await session.get(AdvertisingCampaign,int(callback.data.rsplit(":",1)[1]))
-    if c: c.is_active=False; await session.commit()
-    await state.clear(); await callback.answer("لغو شد"); await callback.message.edit_text("❌ تبلیغ منتشر نشد.",reply_markup=menu_keyboard())
-
-
-@router.callback_query(F.data == "advertising:cancel", IsAdmin())
-async def cancel(callback:CallbackQuery,state:FSMContext):
-    await state.clear(); await callback.answer("لغو شد"); await callback.message.edit_text("❌ ساخت تبلیغ لغو شد.",reply_markup=menu_keyboard())
-
-
-@router.callback_query(F.data == "advertising:stats", IsAdmin())
-async def stats(callback:CallbackQuery,session:AsyncSession):
-    campaigns=list((await session.execute(select(AdvertisingCampaign).where(AdvertisingCampaign.is_active.is_(True)).order_by(AdvertisingCampaign.id.desc()).limit(20))).scalars().all()); lines=["📊 <b>گزارش کمپین‌های تبلیغاتی فعال</b>",""]
-    for c in campaigns:
-        leads=await session.scalar(select(func.count()).select_from(AdvertisingEvent).where(AdvertisingEvent.campaign_id==c.id,AdvertisingEvent.event_type=="start")) or 0
-        buyers=await session.scalar(select(func.count(func.distinct(AdvertisingEvent.tg_id))).select_from(AdvertisingEvent).join(Transaction,Transaction.tg_id==AdvertisingEvent.tg_id).where(AdvertisingEvent.campaign_id==c.id,AdvertisingEvent.event_type=="start",Transaction.status==TransactionStatus.COMPLETED)) or 0
-        pubs=await session.scalar(select(func.count()).select_from(AdvertisingPublication).where(AdvertisingPublication.campaign_id==c.id,AdvertisingPublication.is_active.is_(True))) or 0
-        if pubs: lines.append(f"#{c.id} — <b>{c.title}</b> | انتشار: <b>{pubs}</b> | ورودی: <b>{leads}</b> | خریدار: <b>{buyers}</b>")
-    if len(lines)==2: lines.append("کمپین فعال و منتشرشده‌ای وجود ندارد.")
-    await callback.answer(); await callback.message.edit_text("\n".join(lines),reply_markup=menu_keyboard())
