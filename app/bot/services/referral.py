@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from app.bot.services import VPNService
+    from app.bot.services import NotificationService, VPNService
 
 import logging
 from decimal import Decimal
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.bot.models import SubscriptionData
 from app.bot.utils.constants import ReferrerRewardLevel, ReferrerRewardType, TransactionStatus
 from app.bot.utils.formatting import to_decimal
+from app.bot.services.customer_level import get_customer_level
 from app.bot.services.wallet import WalletService
 from app.config import Config
 from app.db.models import Referral, ReferrerReward, ReferralSettings, Transaction, User
@@ -28,11 +29,13 @@ class ReferralService:
         session_factory: async_sessionmaker,
         vpn_service: VPNService,
         wallet_service: WalletService,
+        notification_service: NotificationService,
     ) -> None:
         self.config = config
         self.session_factory = session_factory
         self.vpn_service = vpn_service
         self.wallet_service = wallet_service
+        self.notification_service = notification_service
         logger.info("Referral Service initialized")
 
     async def is_referred_trial_available(self, user: User) -> bool:
@@ -128,21 +131,56 @@ class ReferralService:
 
         return purchase_count
 
+    async def _notify_referrer_purchase_point(self, session, referrer_tg_id: int) -> None:
+        """Notify the direct referrer after a referred user's successful purchase."""
+        try:
+            level, points = await get_customer_level(session, referrer_tg_id)
+            discount = (
+                f"{level.discount_percent}%"
+                if level.discount_percent > 0
+                else f"ندارید ({level.title})"
+            )
+            await self.notification_service.notify_by_id(
+                chat_id=referrer_tg_id,
+                text=(
+                    "🎉 <b>یک امتیاز جدید گرفتی!</b>\n\n"
+                    "💳 یکی از دوستان دعوت‌شده‌ات یک خرید موفق انجام داد.\n"
+                    "⭐️ امتیاز شما: <b>+1</b>\n"
+                    f"⭐️ مجموع امتیازات شما: <b>{points}</b>\n"
+                    f"⚡️ سطح فعلی: <b>{level.title}</b>\n"
+                    f"💰 تخفیف خرید شما: <b>{discount}</b>"
+                ),
+            )
+        except Exception:
+            # A notification failure must never invalidate a successful payment
+            # or referral reward.
+            logger.exception("Failed to notify referrer %s about purchase point", referrer_tg_id)
+
     async def add_referrers_rewards_on_payment(
         self, referred_tg_id: int, payment_amount: float, payment_id: str
     ) -> bool:
-        if not self.config.shop.REFERRER_REWARD_ENABLED:
-            logger.warning(
-                f"Aborting. Tried to assign referrers payment reward for user {referred_tg_id}, when it is disabled."
-            )
-            return False
-
         async with self.session_factory() as session:
             referral = await Referral.get_referral_with_users(session, referred_tg_id)
             if not referral:
-                logger.warning(f"No referral found for user {referred_tg_id} on payment event.")
+                if not self.config.shop.REFERRER_REWARD_ENABLED:
+                    logger.warning(
+                        f"Aborting. Tried to assign referrers payment reward for user {referred_tg_id}, when it is disabled."
+                    )
+                else:
+                    logger.warning(f"No referral found for user {referred_tg_id} on payment event.")
                 return False
+
             referrer_tg_id = referral.referrer_tg_id
+
+            # Points are independent of the monetary referral commission.
+            # This is the direct referrer's +1 point for the referred user's
+            # successful purchase, including repeat purchases.
+            if referrer_tg_id:
+                await self._notify_referrer_purchase_point(session, referrer_tg_id)
+
+            if not self.config.shop.REFERRER_REWARD_ENABLED:
+                return False
+
             settings = await ReferralSettings.get_or_create(session)
 
             mode = self.config.shop.REFERRER_REWARD_TYPE
