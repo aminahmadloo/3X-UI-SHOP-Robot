@@ -32,14 +32,17 @@ RANGE_FIELDS = {
 
 
 def _keyboard() -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text="⚪️ سطح پایه", callback_data="customer_level_settings:edit:base")],
-        [InlineKeyboardButton(text="🔩 سطح برنزی", callback_data="customer_level_settings:edit:bronze")],
-        [InlineKeyboardButton(text="⚙️ سطح نقره‌ای", callback_data="customer_level_settings:edit:silver")],
-        [InlineKeyboardButton(text="👑 سطح طلایی", callback_data="customer_level_settings:edit:gold")],
+    rows = []
+    for key, (title, _) in FIELDS.items():
+        icon = {"base": "⚪️", "bronze": "🔩", "silver": "⚙️", "gold": "👑"}[key]
+        rows.append([
+            InlineKeyboardButton(text=f"{icon} {title} | ✏️ بازه", callback_data=f"customer_level_settings:edit:{key}"),
+            InlineKeyboardButton(text="💰 تخفیف", callback_data=f"customer_level_settings:edit_discount:{key}"),
+        ])
+    rows.extend([
         [InlineKeyboardButton(text="🔄 بازخوانی مقادیر", callback_data=NavAdminTools.CUSTOMER_LEVEL_SETTINGS)],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavAdminTools.MAIN)],
-    ]
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -67,8 +70,7 @@ def _parse_int(value: str) -> int:
 
 def _parse_range(raw: str, key: str) -> tuple[int, int | None]:
     value = raw.strip().replace("–", "-").replace("—", "-")
-    value = value.replace("تا", "-").replace("الی", "-")
-    value = value.replace(" ", "")
+    value = value.replace("تا", "-").replace("الی", "-").replace(" ", "")
 
     if key == "gold" and value.endswith("+"):
         return _parse_int(value[:-1]), None
@@ -102,8 +104,6 @@ def _validate_ranges(settings: CustomerLevelSettings) -> str | None:
             return f"حداکثر امتیاز {title} نمی‌تواند کمتر از حداقل آن باشد."
         if previous_max is not None and minimum != previous_max + 1:
             return "بازه سطوح باید پیوسته و بدون فاصله یا هم‌پوشانی باشند."
-        if previous_max is not None and previous_max is None:
-            return "پس از یک سطح بدون سقف، سطح دیگری نمی‌تواند وجود داشته باشد."
         previous_max = maximum
 
     if ranges[-1][2] is not None:
@@ -123,17 +123,17 @@ async def show_customer_level_settings(
 
 
 @router.callback_query(F.data.startswith("customer_level_settings:edit:"), IsAdmin())
-async def edit_customer_level_setting(
+async def edit_customer_level_range(
     callback: CallbackQuery,
     state: FSMContext,
     session: AsyncSession,
 ) -> None:
     key = callback.data.rsplit(":", 1)[-1]
-    if key not in FIELDS:
+    if key not in RANGE_FIELDS:
         await callback.answer("مقدار نامعتبر است.", show_alert=True)
         return
 
-    title, _ = FIELDS[key]
+    title = FIELDS[key][0]
     min_field, max_field = RANGE_FIELDS[key]
     settings = await CustomerLevelSettings.get_or_create(session)
     current_range = _range_text(getattr(settings, min_field), getattr(settings, max_field))
