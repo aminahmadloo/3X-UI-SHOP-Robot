@@ -53,6 +53,21 @@ HARD_APPROVAL_CATEGORIES = {
     "legal",
 }
 
+# AI is never allowed to invent destination URLs. It may only request one of
+# these semantic actions; the publisher is responsible for resolving them.
+CTA_ACTIONS = {
+    "BUY",
+    "MY_SERVICES",
+    "RENEW",
+    "WALLET",
+    "ACCOUNT",
+    "LEVEL",
+    "REFERRAL",
+    "SUPPORT",
+    "GIFT",
+    "DOWNLOAD",
+}
+
 
 class AIContentError(RuntimeError):
     pass
@@ -79,6 +94,11 @@ class AIContentService:
 
 موضوع درخواستی: {requested_topic}
 
+CTA را هرگز به‌صورت URL خام تولید نکن. فقط از actionهای معنایی مجاز زیر استفاده کن:
+{", ".join(sorted(CTA_ACTIONS))}
+برای لینک کمپین فقط از فرمت CAMPAIGN:<slug> استفاده کن؛ slug را از موضوع حدس نزن و فقط وقتی استفاده کن که در ورودی صراحتاً ارائه شده باشد.
+اگر CTA مشخصی لازم نیست، آرایه buttons را خالی برگردان.
+
 فقط JSON معتبر با این ساختار برگردان:
 {{
   "title": "عنوان داخلی",
@@ -90,7 +110,7 @@ class AIContentService:
   "numeric_claim": false,
   "cta_risk": "low|medium|high",
   "cta_reason": "دلیل کوتاه انتخاب CTA",
-  "buttons": [{{"label":"متن دکمه","url":"https://example.com"}}],
+  "buttons": [{{"label":"متن دکمه","action":"BUY"}}],
   "image_prompt": "اگر تصویر مناسب است، prompt انگلیسی تولید تصویر؛ در غیر این صورت خالی",
   "video_prompt": "اگر ویدئو مناسب است، prompt انگلیسی؛ در غیر این صورت خالی"
 }}
@@ -134,12 +154,20 @@ class AIContentService:
         result["sensitivity"] = str(result.get("sensitivity") or "low").lower()
         result["numeric_claim"] = bool(result.get("numeric_claim"))
         result["cta_risk"] = str(result.get("cta_risk") or "low").lower()
-        result["buttons"] = [
-            item for item in (result.get("buttons") or [])
-            if isinstance(item, dict)
-            and str(item.get("label") or "").strip()
-            and str(item.get("url") or "").startswith(("https://", "http://"))
-        ][:8]
+
+        # Keep only semantic CTA intents. Arbitrary URLs from the model are
+        # deliberately discarded and can never reach Telegram publishing.
+        safe_buttons: list[dict[str, str]] = []
+        for item in result.get("buttons") or []:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "").strip()[:64]
+            action = str(item.get("action") or "").strip().upper()
+            if not label:
+                continue
+            if action in CTA_ACTIONS or (action.startswith("CAMPAIGN:") and action[10:].strip()):
+                safe_buttons.append({"label": label, "action": action})
+        result["buttons"] = safe_buttons[:8]
         result["content_type"] = "text"
         return result
 
