@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
@@ -59,7 +60,7 @@ async def _channel(session: AsyncSession):
 
 
 async def _settings(session: AsyncSession):
-    service = AIContentService(None)
+    service = AIContentService(os.getenv("OPENAI_API_KEY"))
     settings = await service.get_settings(session)
     return service, settings
 
@@ -254,20 +255,51 @@ async def generate(callback: CallbackQuery, session: AsyncSession):
     if not channel:
         await callback.answer("ابتدا کانال را متصل کن.", show_alert=True)
         return
+
     service, settings = await _settings(session)
+    if not settings.enabled:
+        await callback.answer("AI غیرفعال است. ابتدا آن را فعال کن.", show_alert=True)
+        return
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "⏳ <b>در حال تولید محتوا با AI...</b>\n\nلطفاً چند لحظه صبر کنید.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 مدیریت AI", callback_data="channel:ai_content")],
+            ]
+        ),
+    )
+
     try:
         content = await service.create_content(session, channel.id, settings)
         service.schedule_next(settings)
         await session.commit()
     except AIContentError as exc:
         await session.rollback()
-        await callback.answer(str(exc), show_alert=True)
+        await callback.message.edit_text(
+            f"❌ <b>تولید محتوا انجام نشد</b>\n\n{html.escape(str(exc))}",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="🔄 تلاش دوباره", callback_data="ai_content:generate")],
+                    [InlineKeyboardButton(text="🤖 مدیریت AI", callback_data="channel:ai_content")],
+                ]
+            ),
+        )
         return
     except Exception as exc:
         await session.rollback()
-        await callback.answer(f"خطا در تولید محتوا: {exc}", show_alert=True)
+        await callback.message.edit_text(
+            f"❌ <b>خطا در تولید محتوا</b>\n\n{html.escape(str(exc))}",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="🔄 تلاش دوباره", callback_data="ai_content:generate")],
+                    [InlineKeyboardButton(text="🤖 مدیریت AI", callback_data="channel:ai_content")],
+                ]
+            ),
+        )
         return
-    await callback.answer("محتوا ساخته شد")
+
     await callback.message.edit_text(
         f"✅ <b>محتوای AI #{content.id} ساخته شد</b>\n\n🏷 {html.escape(content.title)}\n📌 وضعیت: <b>{html.escape(content.status)}</b>\n🔘 دکمه‌ها: {len(content.buttons)}\n\n{html.escape(content.body)}\n\n" + ("✋ در پیش‌نویس‌ها منتظر تأیید شماست." if content.status == "draft" else "⚡ برای انتشار وارد صف زمان‌بندی شد."),
         reply_markup=InlineKeyboardMarkup(
