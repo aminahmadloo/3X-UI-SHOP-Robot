@@ -14,6 +14,7 @@ class ReferralSettings(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
     reward_percent: Mapped[int] = mapped_column(nullable=False, default=30)
+    repeat_reward_percent: Mapped[int] = mapped_column(nullable=False, default=5)
 
     @classmethod
     async def get(cls, session: AsyncSession) -> Self | None:
@@ -26,7 +27,7 @@ class ReferralSettings(Base):
         if item:
             return item
 
-        item = cls(id=1, reward_percent=30)
+        item = cls(id=1, reward_percent=30, repeat_reward_percent=5)
         session.add(item)
         await session.commit()
         await session.refresh(item)
