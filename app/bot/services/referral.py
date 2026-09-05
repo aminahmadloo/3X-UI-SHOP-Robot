@@ -96,10 +96,15 @@ class ReferralService:
             return False
 
     @staticmethod
+    def _select_reward_percent(settings: ReferralSettings, purchase_count: int) -> int:
+        """Select the first-purchase or repeat-purchase commission rate."""
+        return int(settings.reward_percent if purchase_count == 0 else settings.repeat_reward_percent)
+
+    @staticmethod
     async def _completed_purchase_count(
         session, referred_tg_id: int, current_payment_id: str
     ) -> int:
-        """Count completed purchases made before the current payment by the referred user."""
+        """Count completed purchases before the current payment by the referred user."""
         result = await session.execute(
             select(Transaction).where(
                 Transaction.tg_id == referred_tg_id,
@@ -152,11 +157,7 @@ class ReferralService:
                     referred_tg_id=referred_tg_id,
                     current_payment_id=payment_id,
                 )
-                reward_percent = (
-                    settings.reward_percent
-                    if purchase_count == 0
-                    else settings.repeat_reward_percent
-                )
+                reward_percent = self._select_reward_percent(settings, purchase_count)
                 reward_rate = Decimal(reward_percent) / Decimal(100)
                 first_level_reward_amount = to_decimal(payment_amount * reward_rate)
                 second_level_rate = Decimal(self.config.shop.REFERRER_LEVEL_TWO_RATE) / Decimal(100)
