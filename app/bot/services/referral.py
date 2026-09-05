@@ -105,9 +105,19 @@ class ReferralService:
             referral = await Referral.get_referral_with_users(session, referred_tg_id)
             if not referral:
                 return False
+
             referrer_tg_id = referral.referrer_tg_id
+            prior_purchases = await self._completed_purchase_count(session, referred_tg_id, payment_id)
+
+            # Customer points are independent from monetary referral rewards.
+            # Notify the referrer about the first successful service purchase even
+            # when monetary referral rewards are disabled.
+            if referrer_tg_id and prior_purchases == 0:
+                await self._notify_referrer_purchase_point(session, referrer_tg_id, referral.referred)
+
             if not self.config.shop.REFERRER_REWARD_ENABLED:
                 return False
+
             settings = await ReferralSettings.get_or_create(session)
             mode = self.config.shop.REFERRER_REWARD_TYPE
             if mode == ReferrerRewardType.DAYS.value:
@@ -115,8 +125,7 @@ class ReferralService:
                 second_level_reward_amount = self.config.shop.REFERRER_LEVEL_TWO_PERIOD
             elif mode == ReferrerRewardType.MONEY.value:
                 payment_amount = to_decimal(payment_amount)
-                purchase_count = await self._completed_purchase_count(session, referred_tg_id, payment_id)
-                reward_percent = self._select_reward_percent(settings, purchase_count)
+                reward_percent = self._select_reward_percent(settings, prior_purchases)
                 first_level_reward_amount = to_decimal(payment_amount * Decimal(reward_percent) / Decimal(100))
                 second_level_reward_amount = to_decimal(payment_amount * Decimal(self.config.shop.REFERRER_LEVEL_TWO_RATE) / Decimal(100))
             else:
@@ -134,11 +143,6 @@ class ReferralService:
                 reward = await ReferrerReward.create_referrer_reward(session=session, user_tg_id=second_level_referral.referrer_tg_id, reward_type=ReferrerRewardType.from_str(mode), amount=second_level_reward_amount, reward_level=ReferrerRewardLevel.SECOND_LEVEL, payment_id=payment_id)
                 if reward:
                     rewards_created.append(reward)
-
-            if referrer_tg_id:
-                prior_purchases = await self._completed_purchase_count(session, referred_tg_id, payment_id)
-                if prior_purchases == 0:
-                    await self._notify_referrer_purchase_point(session, referrer_tg_id, referral.referred)
 
             return bool(rewards_created)
 
