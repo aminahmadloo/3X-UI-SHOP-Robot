@@ -6,33 +6,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import SubscriptionData
 from app.bot.utils.constants import TransactionStatus
-from app.db.models import CustomerLevelSettings, Transaction
+from app.db.models import CustomerLevelSettings, Referral, Transaction
 
 
 @dataclass(frozen=True)
 class CustomerLevel:
     key: str
     title: str
-    min_purchases: int
-    max_purchases: int | None
+    min_points: int
+    max_points: int | None
     discount_percent: int
 
 
 LEVEL_DEFINITIONS = (
-    ("bronze", "سطح پایه", 0, 4, "base_discount_percent"),
-    ("silver", "سطح برنزی", 5, 10, "bronze_discount_percent"),
-    ("gold", "سطح نقره‌ای", 11, 20, "silver_discount_percent"),
-    ("platinum", "سطح طلایی", 21, None, "gold_discount_percent"),
+    ("bronze", "میخ آهنی", 0, 4, "base_discount_percent"),
+    ("silver", "میخ فولادی", 5, 10, "bronze_discount_percent"),
+    ("gold", "میخ تیتانیومی", 11, 20, "silver_discount_percent"),
+    ("platinum", "میخ طلایی", 21, None, "gold_discount_percent"),
 )
 
 # Backward-compatible defaults for callers that only need the level definitions.
 LEVELS = tuple(
     CustomerLevel(key, title, minimum, maximum, default)
     for key, title, minimum, maximum, field, default in (
-        ("bronze", "سطح پایه", 0, 4, "base_discount_percent", 0),
-        ("silver", "سطح برنزی", 5, 10, "bronze_discount_percent", 10),
-        ("gold", "سطح نقره‌ای", 11, 20, "silver_discount_percent", 15),
-        ("platinum", "سطح طلایی", 21, None, "gold_discount_percent", 20),
+        ("bronze", "میخ آهنی", 0, 4, "base_discount_percent", 0),
+        ("silver", "میخ فولادی", 5, 10, "bronze_discount_percent", 10),
+        ("gold", "میخ تیتانیومی", 11, 20, "silver_discount_percent", 15),
+        ("platinum", "میخ طلایی", 21, None, "gold_discount_percent", 20),
     )
 )
 
@@ -69,9 +69,20 @@ async def successful_service_purchase_count(session: AsyncSession, tg_id: int) -
     return count
 
 
-def level_for_purchase_count(count: int, levels: tuple[CustomerLevel, ...] = LEVELS) -> CustomerLevel:
+async def successful_referral_count(session: AsyncSession, tg_id: int) -> int:
+    return await Referral.get_referral_count(session, tg_id)
+
+
+async def get_customer_points(session: AsyncSession, tg_id: int) -> tuple[int, int, int]:
+    """Return total points, successful purchase points and referral points."""
+    purchases = await successful_service_purchase_count(session, tg_id)
+    referrals = await successful_referral_count(session, tg_id)
+    return purchases + referrals, purchases, referrals
+
+
+def level_for_points(points: int, levels: tuple[CustomerLevel, ...] = LEVELS) -> CustomerLevel:
     for level in reversed(levels):
-        if count >= level.min_purchases:
+        if points >= level.min_points:
             return level
     return levels[0]
 
@@ -85,11 +96,11 @@ def discounted_price(price: int | float, discount_percent: int) -> int:
 
 
 async def get_customer_level(session: AsyncSession, tg_id: int) -> tuple[CustomerLevel, int]:
-    count = await successful_service_purchase_count(session, tg_id)
+    points, _, _ = await get_customer_points(session, tg_id)
     levels = await get_customer_levels(session)
-    return level_for_purchase_count(count, levels), count
+    return level_for_points(points, levels), points
 
 
 async def get_discounted_plan_price(session: AsyncSession, tg_id: int, price: int) -> tuple[CustomerLevel, int, int]:
-    level, count = await get_customer_level(session, tg_id)
-    return level, count, discounted_price(price, level.discount_percent)
+    level, points = await get_customer_level(session, tg_id)
+    return level, points, discounted_price(price, level.discount_percent)
