@@ -16,19 +16,19 @@ class CustomerLevelSettingsStates(StatesGroup):
 
 
 FIELDS = {
-    "base": ("سطح پایه", "base_discount_percent"),
-    "bronze": ("سطح برنزی", "bronze_discount_percent"),
-    "silver": ("سطح نقره‌ای", "silver_discount_percent"),
-    "gold": ("سطح طلایی", "gold_discount_percent"),
+    "base": ("میخ آهنی", "base_discount_percent"),
+    "bronze": ("میخ فولادی", "bronze_discount_percent"),
+    "silver": ("میخ تیتانیومی", "silver_discount_percent"),
+    "gold": ("میخ طلایی", "gold_discount_percent"),
 }
 
 
 def _keyboard() -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton(text="⚪️ سطح پایه", callback_data="customer_level_settings:edit:base")],
-        [InlineKeyboardButton(text="🔩 سطح برنزی", callback_data="customer_level_settings:edit:bronze")],
-        [InlineKeyboardButton(text="⚙️ سطح نقره‌ای", callback_data="customer_level_settings:edit:silver")],
-        [InlineKeyboardButton(text="👑 سطح طلایی", callback_data="customer_level_settings:edit:gold")],
+        [InlineKeyboardButton(text="🔩 میخ آهنی", callback_data="customer_level_settings:edit:base")],
+        [InlineKeyboardButton(text="⚙️ میخ فولادی", callback_data="customer_level_settings:edit:bronze")],
+        [InlineKeyboardButton(text="✨ میخ تیتانیومی", callback_data="customer_level_settings:edit:silver")],
+        [InlineKeyboardButton(text="👑 میخ طلایی", callback_data="customer_level_settings:edit:gold")],
         [InlineKeyboardButton(text="🔄 بازخوانی مقادیر", callback_data=NavAdminTools.CUSTOMER_LEVEL_SETTINGS)],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavAdminTools.MAIN)],
     ]
@@ -39,12 +39,12 @@ async def _text(session: AsyncSession) -> str:
     settings = await CustomerLevelSettings.get_or_create(session)
     return (
         "🏆 <b>مدیریت تخفیف سطوح مشتری</b>\n\n"
-        f"⚪️ سطح پایه: <b>{settings.base_discount_percent}%</b>\n"
-        f"🔩 سطح برنزی: <b>{settings.bronze_discount_percent}%</b>\n"
-        f"⚙️ سطح نقره‌ای: <b>{settings.silver_discount_percent}%</b>\n"
-        f"👑 سطح طلایی: <b>{settings.gold_discount_percent}%</b>\n\n"
+        f"🔩 میخ آهنی: <b>{settings.base_discount_percent}%</b>\n"
+        f"⚙️ میخ فولادی: <b>{settings.bronze_discount_percent}%</b>\n"
+        f"✨ میخ تیتانیومی: <b>{settings.silver_discount_percent}%</b>\n"
+        f"👑 میخ طلایی: <b>{settings.gold_discount_percent}%</b>\n\n"
         "برای تغییر درصد هر سطح، روی همان سطح بزنید.\n"
-        "مقدار باید عددی بین ۰ تا ۱۰۰ باشد."
+        "درصد تخفیف هر سطح پویاست و مقدار آن باید عددی بین ۰ تا ۱۰۰ باشد."
     )
 
 
