@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import SubscriptionData
@@ -20,10 +19,10 @@ class CustomerLevel:
 
 
 LEVEL_DEFINITIONS = (
-    ("base", "سطح پایه", 0, 4, "base_discount_percent"),
-    ("bronze", "سطح برنزی", 5, 10, "bronze_discount_percent"),
-    ("silver", "سطح نقره‌ای", 11, 20, "silver_discount_percent"),
-    ("gold", "سطح طلایی", 21, None, "gold_discount_percent"),
+    ("base", "سطح پایه", "base_min_points", "base_max_points", "base_discount_percent"),
+    ("bronze", "سطح برنزی", "bronze_min_points", "bronze_max_points", "bronze_discount_percent"),
+    ("silver", "سطح نقره‌ای", "silver_min_points", "silver_max_points", "silver_discount_percent"),
+    ("gold", "سطح طلایی", "gold_min_points", "gold_max_points", "gold_discount_percent"),
 )
 
 
@@ -31,6 +30,7 @@ def _default_level(key: str, title: str, minimum: int, maximum: int | None, disc
     return CustomerLevel(key, title, minimum, maximum, discount)
 
 
+# Fallback values used only by pure helpers/tests when no DB settings are supplied.
 LEVELS = (
     _default_level("base", "سطح پایه", 0, 4, 0),
     _default_level("bronze", "سطح برنزی", 5, 10, 10),
@@ -45,11 +45,11 @@ async def get_customer_levels(session: AsyncSession) -> tuple[CustomerLevel, ...
         CustomerLevel(
             key,
             title,
-            minimum,
-            maximum,
-            max(0, min(100, int(getattr(settings, field)))),
+            int(getattr(settings, min_field)),
+            getattr(settings, max_field),
+            max(0, min(100, int(getattr(settings, discount_field)))),
         )
-        for key, title, minimum, maximum, field in LEVEL_DEFINITIONS
+        for key, title, min_field, max_field, discount_field in LEVEL_DEFINITIONS
     )
 
 
@@ -72,29 +72,16 @@ async def successful_service_purchase_count(session: AsyncSession, tg_id: int) -
 
 
 async def successful_referral_count(session: AsyncSession, tg_id: int) -> int:
-    """Count referrals that have completed at least one successful purchase."""
-    result = await session.execute(
-        select(func.count(Referral.id))
-        .join(
-            Transaction,
-            Transaction.tg_id == Referral.referred_tg_id,
-        )
-        .where(
-            Referral.referrer_tg_id == tg_id,
-            Transaction.status == TransactionStatus.COMPLETED,
-        )
+    """Count referred users who have completed at least one successful service purchase."""
+    referrals = await session.execute(
+        Referral.__table__.select().where(Referral.referrer_tg_id == tg_id)
     )
-    # Count each referred user only once, even if they make multiple purchases.
-    referred_ids = await session.execute(
-        select(Referral.referred_tg_id)
-        .join(Transaction, Transaction.tg_id == Referral.referred_tg_id)
-        .where(
-            Referral.referrer_tg_id == tg_id,
-            Transaction.status == TransactionStatus.COMPLETED,
-        )
-        .distinct()
-    )
-    return len(referred_ids.scalars().all())
+    referred_ids = [row.referred_tg_id for row in referrals]
+    count = 0
+    for referred_tg_id in set(referred_ids):
+        if await successful_service_purchase_count(session, referred_tg_id) > 0:
+            count += 1
+    return count
 
 
 async def get_customer_points(session: AsyncSession, tg_id: int) -> tuple[int, int, int]:
@@ -105,10 +92,16 @@ async def get_customer_points(session: AsyncSession, tg_id: int) -> tuple[int, i
 
 
 def level_for_points(points: int, levels: tuple[CustomerLevel, ...] = LEVELS) -> CustomerLevel:
-    for level in reversed(levels):
-        if points >= level.min_points:
+    for level in levels:
+        if points < level.min_points:
+            continue
+        if level.max_points is None or points <= level.max_points:
             return level
-    return levels[0]
+
+    # Defensive fallback for an invalid/gapped configuration: use the highest
+    # level whose lower bound has been reached.
+    eligible = [level for level in levels if points >= level.min_points]
+    return eligible[-1] if eligible else levels[0]
 
 
 async def get_customer_level(session: AsyncSession, tg_id: int) -> tuple[CustomerLevel, int]:
