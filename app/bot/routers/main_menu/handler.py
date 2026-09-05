@@ -108,6 +108,175 @@ async def send_main_menu(
     return main_menu
 
 
+
+class _DeepLinkCallbackAdapter:
+    """Minimal CallbackQuery-compatible adapter for /start deep links.
+
+    Existing callback handlers only need callback.answer(), callback.message
+    and occasionally callback.bot. No existing callback handler is modified.
+    """
+
+    def __init__(self, message: Message, bot: Bot) -> None:
+        self.message = message
+        self.bot = bot
+
+    async def answer(self, *args, **kwargs) -> None:
+        return None
+
+
+async def _handle_main_menu_deep_link(
+    payload: str,
+    message: Message,
+    user: User,
+    state: FSMContext,
+    services: ServicesContainer,
+    config: Config,
+    session: AsyncSession,
+) -> bool:
+    """Open an existing main-menu section from a Telegram /start payload.
+
+    Returns True when the payload belongs to a supported main-menu section.
+    Existing referral/invite payload handling remains completely separate.
+    """
+    handlers = {
+        "buy": "buy",
+        "custom_service": "custom_service",
+        "renew": "renew",
+        "my_services": "my_services",
+        "profile": "profile",
+        "wallet": "wallet",
+        "referral": "referral",
+        "customer_level": "customer_level",
+        "trial": "trial",
+        "support": "support",
+    }
+
+    if payload not in handlers:
+        return False
+
+    # The main menu message is the target message that existing callback
+    # handlers normally edit after a button press.
+    main_menu = await send_main_menu(
+        bot=message.bot,
+        user=user,
+        services=services,
+        config=config,
+        state=state,
+        session=session,
+    )
+
+    callback = _DeepLinkCallbackAdapter(
+        message=main_menu,
+        bot=message.bot,
+    )
+
+    route = handlers[payload]
+
+    if route == "buy":
+        from app.bot.routers.subscription.dynamic_service_purchase_handler import (
+            _show,
+        )
+
+        await _show(callback, session, user)
+
+    elif route == "custom_service":
+        await callback_custom_service(callback, session)
+
+    elif route == "renew":
+        from app.bot.routers.main_menu.renew_service_handler import (
+            entry as renew_entry,
+        )
+
+        await renew_entry(
+            callback=callback,
+            user=user,
+            session=session,
+            services=services,
+            state=state,
+        )
+
+    elif route == "my_services":
+        from app.bot.routers.my_services.handler import (
+            callback_my_services,
+        )
+
+        await callback_my_services(
+            callback=callback,
+            user=user,
+            session=session,
+            services=services,
+        )
+
+    elif route == "profile":
+        from app.bot.routers.profile.handler import (
+            callback_profile,
+        )
+
+        await callback_profile(
+            callback=callback,
+            user=user,
+            services=services,
+            state=state,
+            session=session,
+        )
+
+    elif route == "wallet":
+        await callback_wallet(
+            callback=callback,
+            user=user,
+            services=services,
+            session=session,
+        )
+
+    elif route == "referral":
+        from app.bot.routers.referral.handler import (
+            callback_referral,
+        )
+
+        await callback_referral(
+            callback=callback,
+            user=user,
+            state=state,
+            session=session,
+            config=config,
+        )
+
+    elif route == "customer_level":
+        from app.bot.routers.customer_level.handler import (
+            customer_level,
+        )
+
+        await customer_level(
+            callback=callback,
+            user=user,
+            session=session,
+        )
+
+    elif route == "trial":
+        from app.bot.routers.subscription.trial_handler import (
+            callback_get_trial,
+        )
+
+        await callback_get_trial(
+            callback=callback,
+            user=user,
+            state=state,
+            services=services,
+        )
+
+    elif route == "support":
+        from app.bot.routers.support.handler import (
+            callback_support,
+        )
+
+        await callback_support(
+            callback=callback,
+            state=state,
+        )
+
+    return True
+
+
 @router.message(Command(NavMain.START))
 async def command_main_menu(
     message: Message,
@@ -133,6 +302,23 @@ async def command_main_menu(
             logger.debug(f"Main message for user {user.tg_id} deleted.")
         except Exception as exception:
             logger.error(f"Failed to delete main message for user {user.tg_id}: {exception}")
+
+    # Telegram Deep Links arrive as: /start <payload>.
+    # Handle only our reserved main-menu payloads here.
+    # Referral/invite payloads below remain unchanged.
+    if command.args:
+        deep_link_payload = command.args.strip().lower()
+
+        if await _handle_main_menu_deep_link(
+            payload=deep_link_payload,
+            message=message,
+            user=user,
+            state=state,
+            services=services,
+            config=config,
+            session=session,
+        ):
+            return
 
     if command.args and is_new_user:
         referral_arg = command.args.strip()
