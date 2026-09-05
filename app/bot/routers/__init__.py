@@ -15,12 +15,14 @@ from . import (
     managed_card_payment,
     misc,
     my_services,
+    payment_method_visibility,
     profile,
     referral,
     subscription,
     support,
     wallet,
 )
+from .admin_tools.ai_content_handler import router as ai_content_router
 from .admin_tools.card_payment_handler import router as card_payment_router
 from .admin_tools.card_settings_handler import router as card_settings_router
 from .admin_tools.env_settings_enhancer import router as env_settings_enhancer_router
@@ -126,6 +128,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         advertising_admin_router,
         channel_menu_campaigns_router,
         channel_campaign_router,
+        ai_content_router,
         channel_management_router,
         channel_management_extras_router,
         channel_management_v2_router,

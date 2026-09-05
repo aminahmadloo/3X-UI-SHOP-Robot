@@ -7,6 +7,7 @@ __all__ = [
     "transactions",
     "channel_content",
     "channel_analytics",
+    "ai_content",
 ]
 
 
