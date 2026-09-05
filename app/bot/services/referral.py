@@ -71,10 +71,13 @@ class ReferralService:
             purchase_count += 1
         return purchase_count
 
-    async def _notify_referrer_purchase_point(self, session, referrer_tg_id: int) -> None:
+    async def _notify_referrer_purchase_point(self, session, referrer_tg_id: int, referred_user: User | None = None) -> None:
         try:
             level, points = await get_customer_level(session, referrer_tg_id)
             discount = f"{level.discount_percent}%" if level.discount_percent > 0 else f"ندارید ({level.title})"
+            referred_name = (referred_user.first_name or "کاربر") if referred_user else "کاربر"
+            referred_username = f"@{referred_user.username}" if referred_user and referred_user.username else "ندارد"
+            referred_tg_id = referred_user.tg_id if referred_user else "نامشخص"
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [InlineKeyboardButton(text="🏠 ورود به صفحه شروع ربات", callback_data=NavMain.MAIN_MENU, style="danger")]
@@ -84,7 +87,9 @@ class ReferralService:
                 chat_id=referrer_tg_id,
                 text=(
                     "🎉 <b>یک امتیاز جدید گرفتی!</b>\n\n"
-                    "💳 یکی از دوستان دعوت‌شده‌ات یک خرید موفق انجام داد.\n"
+                    f"💳 فرد دعوت‌شده شما <b>{referred_name}</b> یک خرید موفق انجام داد.\n"
+                    f"👤 یوزرنیم: <b>{referred_username}</b>\n"
+                    f"🆔 آیدی تلگرام: <code>{referred_tg_id}</code>\n\n"
                     "⭐️ امتیاز شما: <b>+1</b>\n"
                     f"⭐️ مجموع امتیازات شما: <b>{points}</b>\n"
                     f"⚡️ سطح فعلی: <b>{level.title}</b>\n"
@@ -133,7 +138,7 @@ class ReferralService:
             if referrer_tg_id:
                 prior_purchases = await self._completed_purchase_count(session, referred_tg_id, payment_id)
                 if prior_purchases == 0:
-                    await self._notify_referrer_purchase_point(session, referrer_tg_id)
+                    await self._notify_referrer_purchase_point(session, referrer_tg_id, referral.referred)
 
             return bool(rewards_created)
 
