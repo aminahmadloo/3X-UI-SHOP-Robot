@@ -8,11 +8,21 @@ from . import Base
 
 
 class CustomerLevelSettings(Base):
-    """Global customer-level discount percentages."""
+    """Global customer-level point ranges and discount percentages."""
 
     __tablename__ = "customer_level_settings"
 
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
+
+    base_min_points: Mapped[int] = mapped_column(nullable=False, default=0)
+    base_max_points: Mapped[int] = mapped_column(nullable=False, default=4)
+    bronze_min_points: Mapped[int] = mapped_column(nullable=False, default=5)
+    bronze_max_points: Mapped[int] = mapped_column(nullable=False, default=10)
+    silver_min_points: Mapped[int] = mapped_column(nullable=False, default=11)
+    silver_max_points: Mapped[int] = mapped_column(nullable=False, default=20)
+    gold_min_points: Mapped[int] = mapped_column(nullable=False, default=21)
+    gold_max_points: Mapped[int | None] = mapped_column(nullable=True, default=None)
+
     base_discount_percent: Mapped[int] = mapped_column(nullable=False, default=0)
     bronze_discount_percent: Mapped[int] = mapped_column(nullable=False, default=10)
     silver_discount_percent: Mapped[int] = mapped_column(nullable=False, default=15)
@@ -31,6 +41,14 @@ class CustomerLevelSettings(Base):
 
         item = cls(
             id=1,
+            base_min_points=0,
+            base_max_points=4,
+            bronze_min_points=5,
+            bronze_max_points=10,
+            silver_min_points=11,
+            silver_max_points=20,
+            gold_min_points=21,
+            gold_max_points=None,
             base_discount_percent=0,
             bronze_discount_percent=10,
             silver_discount_percent=15,
