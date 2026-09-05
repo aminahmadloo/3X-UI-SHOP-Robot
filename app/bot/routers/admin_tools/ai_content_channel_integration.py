@@ -81,7 +81,7 @@ def _patch_publisher() -> None:
                 slug = action[len("CAMPAIGN:") :].strip()
                 if slug:
                     campaign = await ChannelCampaignService.get_by_slug(session, slug)
-                    if campaign and campaign.channel_id == channel.id and campaign.is_active_now():
+                    if campaign and campaign.channel_id == channel.chat_id and campaign.is_active_now():
                         if bot_username is None:
                             bot_username = (await bot.get_me()).username
                         if bot_username:
