@@ -13,10 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.models import SubscriptionData
+from app.bot.services.customer_level import get_customer_level
 from app.bot.utils.constants import ReferrerRewardLevel, ReferrerRewardType, TransactionStatus
 from app.bot.utils.formatting import to_decimal
-from app.bot.services.customer_level import get_customer_level
 from app.bot.services.wallet import WalletService
+from app.bot.utils.navigation import NavMain
 from app.config import Config
 from app.db.models import Referral, ReferrerReward, ReferralSettings, Transaction, User
 
@@ -75,7 +76,7 @@ class ReferralService:
             level, points = await get_customer_level(session, referrer_tg_id)
             discount = f"{level.discount_percent}%" if level.discount_percent > 0 else f"ندارید ({level.title})"
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 ورود به صفحه شروع ربات", callback_data="main_menu")]
+                [InlineKeyboardButton(text="🏠 ورود به صفحه شروع ربات", callback_data=NavMain.MAIN_MENU)]
             ])
             await self.notification_service.notify_by_id(
                 chat_id=referrer_tg_id,
