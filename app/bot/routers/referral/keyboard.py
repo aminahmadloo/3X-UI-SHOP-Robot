@@ -11,13 +11,15 @@ from app.bot.utils.navigation import NavDownload
 def referral_keyboard(
     referral_link: str | None = None,
     connect: bool = False,
+    share_text_template: str | None = None,
 ) -> InlineKeyboardMarkup:
-    share_text = (
+    template = share_text_template or (
         "من به‌تازگی مشتری تونلVPN شدم و از کیفیت سرویس‌هاش واقعاً راضی‌ام. "
         "پینگ عالی، سرعت مناسب و قیمت‌های مقرون‌به‌صرفه از مزیت‌های این سرویسه.\n\n"
         "اگر دوست داشتی تو هم امتحانش کنی، از طریق لینک زیر وارد شو و خریدت رو انجام بده:\n\n"
-        f"🔗 {referral_link}"
+        "🔗 {referral_link}"
     )
+    share_text = template.replace("{referral_link}", referral_link or "")
 
     builder = InlineKeyboardBuilder()
 
