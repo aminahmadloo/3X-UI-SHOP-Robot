@@ -131,3 +131,4 @@ class NavAdminTools(str, Enum):
     SUBSCRIPTION_SETTINGS = "subscription_settings"
     CUSTOMER_LEVEL_SETTINGS = "customer_level_settings"
     REFERRAL_SETTINGS = "referral_settings"
+    WELCOME_MESSAGE_SETTINGS = "welcome_message_settings"

@@ -121,7 +121,15 @@ class PaymentGateway(ABC):
         with self.i18n.use_locale(locale):
             from app.bot.routers.main_menu.handler import redirect_to_main_menu
 
-            await redirect_to_main_menu(bot=self.bot, user=user, services=self.services, config=self.config, storage=self.storage)
+            async with self.session() as session:
+                await redirect_to_main_menu(
+                    bot=self.bot,
+                    user=user,
+                    services=self.services,
+                    config=self.config,
+                    session=session,
+                    storage=self.storage,
+                )
             if data.is_extend:
                 await self.services.notification.notify_extend_success(user_id=user.tg_id, data=data)
             elif data.is_change:

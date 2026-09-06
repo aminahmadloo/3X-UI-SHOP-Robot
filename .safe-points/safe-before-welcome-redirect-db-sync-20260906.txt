@@ -1,0 +1,10 @@
+Safe point before final welcome-message runtime hard-code removal.
+Branch: feat/admin-editable-welcome-message
+Base HEAD: 578f9f7eb6ee0b881f05f845a0c7cc2ed7561a60
+Date: 2026-09-06T11:25:32+00:00
+
+Remaining runtime hard-coded welcome path:
+app/bot/routers/main_menu/handler.py::redirect_to_main_menu
+
+Runtime caller:
+app/bot/payment_gateways/_gateway.py
