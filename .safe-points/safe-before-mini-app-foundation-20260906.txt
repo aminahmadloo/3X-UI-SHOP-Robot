@@ -1,0 +1,12 @@
+Safe point before Mini App Foundation + Dashboard + My Services.
+Base commit: b232ec2e65a0a2394477497a204113628fe8edb7
+Base branch: main
+Feature branch: feat/mini-app-foundation-dashboard-services
+Date: 2026-09-06
+
+Scope planned:
+- Telegram Mini App Foundation with server-side initData validation
+- Admin-only Mini App button in the main bot menu
+- Dashboard and My Services read-only views
+- Shared existing users/subscriptions/server data
+- No removal or replacement of existing bot functionality
