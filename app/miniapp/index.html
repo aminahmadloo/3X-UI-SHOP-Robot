@@ -51,7 +51,104 @@ async function getService(id){return api('/miniapp/api/services/'+id)}
 async function copySubscription(id){try{const s=await getService(id);if(!s.subscription_url){toast('Subscription برای این سرویس موجود نیست');return}copyText(s.subscription_url,'Subscription کپی شد')}catch(e){toast('خطا در دریافت Subscription')}}
 async function copyText(text,msg='کپی شد'){try{await navigator.clipboard.writeText(text);haptic();toast(msg)}catch{toast('امکان کپی خودکار وجود ندارد')}}
 function renew(id){haptic();openBot()}
-async function showPlans(){modalTitle.textContent='پلن‌های ToonelVPN';modal.classList.add('open');detail.innerHTML='<div class="loading"><div class="spinner"></div>در حال دریافت پلن‌های فعال…</div>';try{state.plans=await api('/miniapp/api/plans');const plans=state.plans.plans||[];const durations=state.plans.durations||[];detail.innerHTML=`<div class="card"><b>🛒 خرید سرویس</b><div class="muted">قیمت‌ها و مدت‌ها مستقیماً از پلن‌های فعال خرید سرویس ربات خوانده می‌شوند.</div></div><div class="section"><h2>پلن‌ها</h2></div>${plans.map(p=>`<div class="card" style="margin-bottom:9px"><b>📱 ${p.devices<0?'نامحدود':p.devices+' دستگاه'}</b><div class="facts">${Object.entries(p.prices||{}).flatMap(([currency,values])=>Object.entries(values).map(([days,price])=>`<div class="fact"><label>${esc(currency)} • ${days} روز</label><b>${Number(price).toLocaleString('fa-IR')}</b></div>`)).join('')}</div><button class="btn wide" onclick="openBot()">ادامه خرید در ربات</button></div>`).join('')||'<div class="empty">پلنی پیدا نشد.</div>'}<div class="section"><h2>مدت‌های موجود</h2></div><div class="server-list">${durations.map(d=>`<span class="chip">⏱️ ${d} روز</span>`).join('')||'—'}</div>`}catch(e){detail.innerHTML='<div class="error">❌ '+esc(e.message)+'</div>'}}
+async function showPlans(){
+  modalTitle.textContent='پلن‌های ToonelVPN';
+  modal.classList.add('open');
+  detail.innerHTML='<div class="loading"><div class="spinner"></div>در حال دریافت پلن‌های فعال…</div>';
+
+  try{
+    state.plans=await api('/miniapp/api/plans');
+
+    const cards=state.plans.plans||[];
+    const allPlans=cards.flatMap(card=>Array.isArray(card.plans)?card.plans:[]);
+    const durations=[...new Set(allPlans.map(p=>Number(p.duration_days)).filter(Boolean))].sort((a,b)=>a-b);
+
+    const periodLabel=days=>{
+      if(days===30)return'📅 سرویس یکماهه';
+      if(days===60)return'📅 سرویس دو ماهه';
+      if(days===90)return'📅 سرویس سه‌ماهه';
+      return`📅 سرویس ${days} روزه`;
+    };
+
+    const grouped={};
+    allPlans.forEach(p=>{
+      const days=Number(p.duration_days);
+      if(!grouped[days])grouped[days]=[];
+      grouped[days].push(p);
+    });
+
+    Object.values(grouped).forEach(items=>{
+      items.sort((a,b)=>{
+        const volumeDiff=Number(a.volume_gb)-Number(b.volume_gb);
+        return volumeDiff||Number(a.price_toman)-Number(b.price_toman);
+      });
+    });
+
+    const sections=durations.map(days=>`
+      <div class="section">
+        <h2>${periodLabel(days)}</h2>
+        <small>${days} روز</small>
+      </div>
+      <div class="grid">
+        ${(grouped[days]||[]).map(p=>`
+          <div class="card">
+            <div class="service-head">
+              <div>
+                <div style="font-size:18px;font-weight:950">${Number(p.volume_gb).toLocaleString('fa-IR')} GB</div>
+                <div class="muted">حجم سرویس</div>
+              </div>
+              <span class="badge active">${Number(p.duration_days).toLocaleString('fa-IR')} روز</span>
+            </div>
+
+            <div class="facts">
+              <div class="fact">
+                <label>حجم</label>
+                <b>${Number(p.volume_gb).toLocaleString('fa-IR')} GB</b>
+              </div>
+              <div class="fact">
+                <label>مدت</label>
+                <b>${Number(p.duration_days).toLocaleString('fa-IR')} روز</b>
+              </div>
+              <div class="fact">
+                <label>قیمت</label>
+                <b>${Number(p.price_toman).toLocaleString('fa-IR')}</b>
+              </div>
+              <div class="fact">
+                <label>دستگاه</label>
+                <b>${p.devices<0?'نامحدود':Number(p.devices).toLocaleString('fa-IR')}</b>
+              </div>
+            </div>
+
+            <button class="btn wide" onclick="openBot()">
+              🛒 خرید این پلن
+            </button>
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+
+    detail.innerHTML=`
+      <div class="card">
+        <b>🛒 خرید سرویس ToonelVPN</b>
+        <div class="muted">
+          قیمت‌ها و پلن‌ها مستقیماً از پلن‌های فعال خرید سرویس ربات دریافت می‌شوند.
+        </div>
+      </div>
+
+      ${sections||'<div class="empty">پلن فعالی پیدا نشد.</div>'}
+
+      <div class="card" style="margin-top:12px">
+        <b>🔐 خرید امن و هماهنگ با ربات</b>
+        <div class="muted">
+          برای جلوگیری از ایجاد منطق قیمت‌گذاری موازی، خرید نهایی در همان جریان اصلی ربات انجام می‌شود.
+        </div>
+        <button class="btn alt wide" onclick="openBot()">ادامه خرید در ربات</button>
+      </div>
+    `;
+  }catch(e){
+    detail.innerHTML='<div class="error">❌ '+esc(e.message)+'</div>';
+  }
+}
 function showProfile(){modalTitle.textContent='پروفایل من';modal.classList.add('open');const u=state.data.user,t=state.data.telegram,a=state.data.account;detail.innerHTML=`<div class="card" style="text-align:center"><div class="avatar" style="margin:auto">${esc((u.first_name||'ت')[0])}</div><h2>${esc(u.first_name)}</h2><div class="muted">${u.username?'@'+esc(u.username):'بدون username'}</div></div><div class="facts"><div class="fact"><label>Telegram ID</label><b>${u.id}</b></div><div class="fact"><label>تاریخ عضویت</label><b>${date(u.created_at)}</b></div><div class="fact"><label>سطح</label><b>${esc(a.level)}</b></div><div class="fact"><label>امتیاز</label><b>${a.points}</b></div><div class="fact"><label>تخفیف</label><b>${a.discount_percent}%</b></div><div class="fact"><label>دعوت‌ها</label><b>${a.referrals}</b></div></div><div class="card"><b>🧪 وضعیت تست</b><div class="muted">${u.is_trial_used?'تست قبلی استفاده شده است.':'تست استفاده نشده است.'}</div></div>`}
 async function showTransactions(){modalTitle.textContent='تاریخچه پرداخت';modal.classList.add('open');detail.innerHTML='<div class="loading"><div class="spinner"></div>در حال دریافت…</div>';try{const x=await api('/miniapp/api/transactions?limit=50');const rows=(x.transactions||[]).map(t=>`<div class="activity"><span>💳</span><div style="flex:1"><b>${esc(t.payment_id)}</b><div class="muted">${time(t.created_at)}</div></div><span class="badge ${t.status==='completed'?'active':'inactive'}">${esc(t.status)}</span></div>`).join('');detail.innerHTML=`<div class="card">${rows||'<div class="muted">تراکنشی ثبت نشده است.</div>'}</div>`}catch(e){detail.innerHTML='<div class="error">❌ '+esc(e.message)+'</div>'}}
 async function showSupport(){modalTitle.textContent='پشتیبانی';modal.classList.add('open');detail.innerHTML='<div class="loading"><div class="spinner"></div>در حال دریافت تیکت‌ها…</div>';try{const x=await api('/miniapp/api/support');detail.innerHTML=`<div class="card"><b>🎧 پشتیبانی ToonelVPN</b><div class="muted">برای حفظ همان منطق پشتیبانی ربات، ایجاد و ارسال پیام جدید از مسیر اصلی ربات انجام می‌شود.</div><button class="btn wide" onclick="openBot()">💬 ورود به پشتیبانی</button></div><div class="section"><h2>تیکت‌های قبلی</h2></div>${(x.tickets||[]).map(t=>`<div class="ticket"><b>تیکت #${t.id}</b><div class="ticket-status">${esc(t.status)} • ${time(t.updated_at)}</div>${(t.messages||[]).slice(-3).map(m=>`<div class="message"><b>${m.sender_type==='support'?'پشتیبانی':'شما'}:</b> ${esc(m.text)}</div>`).join('')}</div>`).join('')||'<div class="empty">هنوز تیکتی ثبت نشده است.</div>'}`}catch(e){detail.innerHTML='<div class="error">❌ '+esc(e.message)+'</div>'}}
