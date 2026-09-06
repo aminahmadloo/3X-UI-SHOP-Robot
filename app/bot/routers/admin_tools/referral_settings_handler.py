@@ -24,6 +24,7 @@ class ReferralSettingsStates(StatesGroup):
     waiting_first_percent = State()
     waiting_repeat_percent = State()
     waiting_share_text = State()
+    waiting_share_text_confirmation = State()
 
 
 def _keyboard() -> InlineKeyboardMarkup:
@@ -36,6 +37,7 @@ def _keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="👁 پیش‌نمایش", callback_data="referral_settings:preview:share_text"),
                 InlineKeyboardButton(text="📤 ارسال نمونه", callback_data="referral_settings:sample:share_text"),
             ],
+            [InlineKeyboardButton(text="📖 راهنمای متغیرها", callback_data="referral_settings:help:share_text")],
             [InlineKeyboardButton(text="🔄 بازگردانی متن پیش‌فرض", callback_data="referral_settings:reset:share_text")],
             [InlineKeyboardButton(text="🔄 بازخوانی مقادیر", callback_data=NavAdminTools.REFERRAL_SETTINGS)],
             [InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavAdminTools.MAIN)],
@@ -130,6 +132,21 @@ async def edit_referral_share_text(callback: CallbackQuery, state: FSMContext, s
     )
 
 
+@router.callback_query(F.data == "referral_settings:help:share_text", IsAdmin())
+async def referral_share_text_help(callback: CallbackQuery) -> None:
+    await callback.answer()
+    await callback.message.answer(
+        "📖 <b>راهنمای متن دعوت دوستان</b>\n\n"
+        "🔗 <code>{referral_link}</code>\n"
+        "در زمان اشتراک‌گذاری با لینک اختصاصی همان کاربر جایگزین می‌شود.\n\n"
+        "مثال:\n"
+        "<blockquote>دوست داری تونلVPN را امتحان کنی؟\n\n"
+        "🔗 {referral_link}</blockquote>\n\n"
+        f"📏 حداکثر طول متن: {MAX_SHARE_TEXT_LENGTH:,} کاراکتر\n"
+        "⚠️ متغیرهای ناشناخته اجازه ذخیره شدن ندارند."
+    )
+
+
 def _parse_percent(message: Message) -> int | None:
     raw = (message.text or "").strip().replace("٪", "%")
     if raw.endswith("%"):
@@ -162,6 +179,25 @@ async def send_referral_share_sample(callback: CallbackQuery, session: AsyncSess
 
 
 @router.callback_query(F.data == "referral_settings:reset:share_text", IsAdmin())
+async def confirm_reset_referral_share_text(callback: CallbackQuery) -> None:
+    await callback.answer()
+    await callback.message.edit_text(
+        "⚠️ <b>بازگردانی متن پیش‌فرض</b>\n\n"
+        "متن سفارشی فعلی حذف و متن پیش‌فرض جایگزین می‌شود.\n"
+        "این عملیات قابل بازگشت خودکار نیست.\n\n"
+        "آیا مطمئن هستید؟",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ بله، بازگردانی شود", callback_data="referral_settings:reset:confirm"),
+                    InlineKeyboardButton(text="❌ انصراف", callback_data="referral_settings:reset:cancel"),
+                ]
+            ]
+        ),
+    )
+
+
+@router.callback_query(F.data == "referral_settings:reset:confirm", IsAdmin())
 async def reset_referral_share_text(callback: CallbackQuery, session: AsyncSession) -> None:
     settings = await ReferralSettings.get_or_create(session)
     settings.share_text = DEFAULT_REFERRAL_SHARE_TEXT
@@ -169,9 +205,15 @@ async def reset_referral_share_text(callback: CallbackQuery, session: AsyncSessi
     await callback.answer("متن به حالت پیش‌فرض برگشت")
     await callback.message.edit_text(
         "✅ <b>متن دعوت دوستان به حالت پیش‌فرض بازگردانده شد.</b>\n\n"
-        "از این پس متن اصلی پیش‌فرض برای اشتراک‌گذاری استفاده می‌شود.",
+        "از این پس متن پیش‌فرض برای اشتراک‌گذاری استفاده می‌شود.",
         reply_markup=_keyboard(),
     )
+
+
+@router.callback_query(F.data == "referral_settings:reset:cancel", IsAdmin())
+async def cancel_reset_referral_share_text(callback: CallbackQuery, session: AsyncSession) -> None:
+    await callback.answer("عملیات لغو شد")
+    await callback.message.edit_text(await _text(session), reply_markup=_keyboard())
 
 
 @router.message(ReferralSettingsStates.waiting_first_percent, IsAdmin())
@@ -201,19 +243,63 @@ async def save_repeat_referral_setting(message: Message, state: FSMContext, sess
 
 
 @router.message(ReferralSettingsStates.waiting_share_text, IsAdmin())
-async def save_referral_share_text(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def prepare_referral_share_text(message: Message, state: FSMContext) -> None:
     value = (message.text or "").strip()
     error = _validate_share_text(value)
     if error:
         await message.answer(f"❌ {error}")
         return
+
+    await state.update_data(pending_share_text=value)
+    await state.set_state(ReferralSettingsStates.waiting_share_text_confirmation)
+    await message.answer(
+        "👁 <b>پیش‌نمایش متن جدید</b>\n\n"
+        f"<blockquote>{_render_for_admin(value)}</blockquote>\n\n"
+        f"📊 {_share_status(value)}\n\n"
+        "⚠️ این متن هنوز ذخیره نشده است. برای ثبت نهایی تأیید کنید.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ تأیید و ذخیره", callback_data="referral_settings:save:share_text"),
+                    InlineKeyboardButton(text="❌ لغو", callback_data="referral_settings:cancel:share_text"),
+                ]
+            ]
+        ),
+    )
+
+
+@router.callback_query(F.data == "referral_settings:save:share_text", IsAdmin())
+async def confirm_save_referral_share_text(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    data = await state.get_data()
+    value = data.get("pending_share_text")
+    if not isinstance(value, str):
+        await state.clear()
+        await callback.answer("پیش‌نویس پیدا نشد", show_alert=True)
+        await callback.message.edit_text(await _text(session), reply_markup=_keyboard())
+        return
+
+    error = _validate_share_text(value)
+    if error:
+        await state.clear()
+        await callback.answer("متن دیگر معتبر نیست", show_alert=True)
+        await callback.message.edit_text(await _text(session), reply_markup=_keyboard())
+        return
+
     settings = await ReferralSettings.get_or_create(session)
     settings.share_text = value
     await session.commit()
     await state.clear()
-    await message.answer(
+    await callback.answer("ذخیره شد")
+    await callback.message.edit_text(
         "✅ <b>متن دعوت دوستان با موفقیت ذخیره شد.</b>\n\n"
         f"📊 وضعیت: <b>{_share_status(value)}</b>\n\n"
-        "می‌توانید با دکمه‌های «👁 پیش‌نمایش» یا «📤 ارسال نمونه» نتیجه را بررسی کنید.",
+        "متن جدید از این پس در دکمه «📨 دعوت دوستان» استفاده می‌شود.",
         reply_markup=_keyboard(),
     )
+
+
+@router.callback_query(F.data == "referral_settings:cancel:share_text", IsAdmin())
+async def cancel_referral_share_text(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    await state.clear()
+    await callback.answer("تغییرات ذخیره نشد")
+    await callback.message.edit_text(await _text(session), reply_markup=_keyboard())
