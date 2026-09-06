@@ -558,6 +558,7 @@ async def redirect_to_main_menu(
     user: User,
     services: ServicesContainer,
     config: Config,
+    session: AsyncSession,
     storage: RedisStorage | None = None,
     state: FSMContext | None = None,
 ) -> None:
@@ -574,18 +575,7 @@ async def redirect_to_main_menu(
         ),
     )
 
-    text = (
-        f"🌀 <b>{user.first_name} عزیز، به ToonelVPN خوش آمدی</b> 🌐\n\n"
-        "⚡️ اتصال سریع، پایدار و مطمئن به اینترنت آزاد، با سرویس‌هایی متناسب با نیازت.\n\n"
-        "🚀 سرویس‌های متنوع برای استفاده روزمره\n"
-        "🌍 سرورهای مختلف برای انتخاب بهتر\n"
-        "🛡️ اتصال پایدار و مطمئن\n"
-        "💻 سازگار با دستگاه‌های مختلف\n"
-        "🔄 خرید، تمدید و مدیریت آسان سرویس\n"
-        "──────────────────\n\n"
-        "🎁 <b>برای شروع، می‌تونی اکانت تست رو امتحان کنی.</b>\n\n"
-        "✨ <b>یکی از گزینه‌های زیر رو انتخاب کن:</b> 👇"
-    )
+    text = await get_welcome_message(session, user)
 
     if state is not None:
         try:
