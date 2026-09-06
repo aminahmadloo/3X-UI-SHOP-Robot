@@ -127,6 +127,8 @@ async def main() -> None:
         db=db,
         bot_token=config.bot.TOKEN,
         admin_ids=config.bot.ADMINS,
+        vpn_service=services_container.vpn,
+        services=services_container,
     )
     await commands.setup(bot)
     webhook_requests_handler = SimpleRequestHandler(dispatcher=dispatcher, bot=bot)
