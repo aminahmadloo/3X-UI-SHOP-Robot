@@ -120,14 +120,17 @@ async def main() -> None:
     dispatcher.shutdown.register(on_shutdown)
     await MaintenanceMiddleware.load_from_database(db.session)
     middlewares.register(dispatcher=dispatcher, i18n=i18n, session=db.session)
-    filters.register(dispatcher=dispatcher, developer_id=config.bot.DEV_ID, admins_ids=config.bot.ADMINS)
+    filters.register(
+        dispatcher=dispatcher,
+        developer_id=config.bot.DEV_ID,
+        admins_ids=config.bot.ADMINS,
+    )
     routers.include(app=app, dispatcher=dispatcher)
     register_mini_app(
         app=app,
         db=db,
         bot_token=config.bot.TOKEN,
         admin_ids=config.bot.ADMINS,
-        vpn_service=services_container.vpn,
         services=services_container,
     )
     await commands.setup(bot)
