@@ -49,24 +49,7 @@ def _share_status(share_text: str) -> str:
 
 
 def _render_for_admin(share_text: str, referral_link: str = SAMPLE_REFERRAL_LINK) -> str:
-    rendered = share_text.replace("{referral_link}", referral_link)
-    return escape(rendered)
-
-
-async def _text(session: AsyncSession) -> str:
-    settings = await ReferralSettings.get_or_create(session)
-    return (
-        "🎁 <b>تنظیمات معرفی به دوستان</b>\n\n"
-        f"🛒 پاداش خرید اول: <b>{settings.reward_percent}%</b>\n"
-        f"🔄 پاداش خریدهای بعدی: <b>{settings.repeat_reward_percent}%</b>\n\n"
-        "📝 <b>مدیریت متن دعوت دوستان</b>\n"
-        f"📊 وضعیت: <b>{_share_status(settings.share_text)}</b>\n\n"
-        "متن فعلی:\n"
-        f"<blockquote>{_render_for_admin(settings.share_text)}</blockquote>\n\n"
-        "🔗 متغیر قابل استفاده: <code>{referral_link}</code>\n"
-        "این متغیر با لینک اختصاصی هر کاربر جایگزین می‌شود.\n"
-        "اگر متغیر استفاده نشود، لینک همچنان به‌عنوان URL اصلی اشتراک‌گذاری Telegram ارسال می‌شود."
-    )
+    return escape(share_text.replace("{referral_link}", referral_link))
 
 
 def _validate_share_text(value: str) -> str | None:
@@ -86,12 +69,24 @@ def _validate_share_text(value: str) -> str | None:
     return None
 
 
+async def _text(session: AsyncSession) -> str:
+    settings = await ReferralSettings.get_or_create(session)
+    return (
+        "🎁 <b>تنظیمات معرفی به دوستان</b>\n\n"
+        f"🛒 پاداش خرید اول: <b>{settings.reward_percent}%</b>\n"
+        f"🔄 پاداش خریدهای بعدی: <b>{settings.repeat_reward_percent}%</b>\n\n"
+        "📝 <b>مدیریت متن دعوت دوستان</b>\n"
+        f"📊 وضعیت: <b>{_share_status(settings.share_text)}</b>\n\n"
+        "متن فعلی:\n"
+        f"<blockquote>{_render_for_admin(settings.share_text)}</blockquote>\n\n"
+        "🔗 متغیر قابل استفاده: <code>{referral_link}</code>\n"
+        "این متغیر با لینک اختصاصی هر کاربر جایگزین می‌شود.\n"
+        "اگر متغیر استفاده نشود، لینک همچنان به‌عنوان URL اصلی اشتراک‌گذاری Telegram ارسال می‌شود."
+    )
+
+
 @router.callback_query(F.data == NavAdminTools.REFERRAL_SETTINGS, IsAdmin())
-async def show_referral_settings(
-    callback: CallbackQuery,
-    session: AsyncSession,
-    state: FSMContext,
-) -> None:
+async def show_referral_settings(callback: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
     await state.clear()
     await callback.answer()
     await callback.message.edit_text(await _text(session), reply_markup=_keyboard())
@@ -103,9 +98,7 @@ async def edit_first_referral_setting(callback: CallbackQuery, state: FSMContext
     await callback.answer()
     await callback.message.edit_text(
         "✏️ <b>ویرایش پاداش خرید اول</b>\n\n"
-        "درصد جدید را وارد کنید.\n"
-        "مثلاً: <code>30</code>\n\n"
-        "این نرخ فقط برای اولین خرید موفق فرد معرفی‌شده استفاده می‌شود.\n"
+        "درصد جدید را وارد کنید.\nمثلاً: <code>30</code>\n\n"
         "مقدار مجاز: ۰ تا ۱۰۰ درصد"
     )
 
@@ -116,9 +109,7 @@ async def edit_repeat_referral_setting(callback: CallbackQuery, state: FSMContex
     await callback.answer()
     await callback.message.edit_text(
         "✏️ <b>ویرایش پاداش خریدهای بعدی</b>\n\n"
-        "درصد جدید را وارد کنید.\n"
-        "مثلاً: <code>5</code>\n\n"
-        "این نرخ از خرید دوم به بعد، مادام‌العمر استفاده می‌شود.\n"
+        "درصد جدید را وارد کنید.\nمثلاً: <code>5</code>\n\n"
         "مقدار مجاز: ۰ تا ۱۰۰ درصد"
     )
 
@@ -159,7 +150,7 @@ async def preview_referral_share_text(callback: CallbackQuery, session: AsyncSes
     await callback.message.answer(
         "👁 <b>پیش‌نمایش متن دعوت دوستان</b>\n\n"
         f"<blockquote>{_render_for_admin(settings.share_text)}</blockquote>\n\n"
-        "🔗 این پیش‌نمایش از یک لینک نمونه استفاده می‌کند. لینک واقعی هر کاربر هنگام اشتراک‌گذاری به‌صورت اختصاصی جایگزین می‌شود.",
+        "🔗 این پیش‌نمایش از یک لینک نمونه استفاده می‌کند. لینک واقعی هر کاربر هنگام اشتراک‌گذاری جایگزین می‌شود.",
     )
 
 
@@ -167,10 +158,7 @@ async def preview_referral_share_text(callback: CallbackQuery, session: AsyncSes
 async def send_referral_share_sample(callback: CallbackQuery, session: AsyncSession) -> None:
     settings = await ReferralSettings.get_or_create(session)
     await callback.answer("نمونه ارسال شد")
-    await callback.message.answer(
-        _render_for_admin(settings.share_text),
-        disable_web_page_preview=False,
-    )
+    await callback.message.answer(_render_for_admin(settings.share_text), disable_web_page_preview=False)
 
 
 @router.callback_query(F.data == "referral_settings:reset:share_text", IsAdmin())
@@ -187,68 +175,42 @@ async def reset_referral_share_text(callback: CallbackQuery, session: AsyncSessi
 
 
 @router.message(ReferralSettingsStates.waiting_first_percent, IsAdmin())
-async def save_first_referral_setting(
-    message: Message,
-    state: FSMContext,
-    session: AsyncSession,
-) -> None:
+async def save_first_referral_setting(message: Message, state: FSMContext, session: AsyncSession) -> None:
     value = _parse_percent(message)
     if value is None:
         await message.answer("❌ مقدار نامعتبر است. لطفاً یک عدد صحیح بین ۰ تا ۱۰۰ وارد کنید.")
         return
-
     settings = await ReferralSettings.get_or_create(session)
     settings.reward_percent = value
     await session.commit()
     await state.clear()
-
-    await message.answer(
-        "✅ <b>پاداش خرید اول با موفقیت ذخیره شد.</b>\n\n"
-        f"نرخ جدید خرید اول: <b>{value}%</b>",
-        reply_markup=_keyboard(),
-    )
+    await message.answer("✅ <b>پاداش خرید اول با موفقیت ذخیره شد.</b>\n\n" f"نرخ جدید: <b>{value}%</b>", reply_markup=_keyboard())
 
 
 @router.message(ReferralSettingsStates.waiting_repeat_percent, IsAdmin())
-async def save_repeat_referral_setting(
-    message: Message,
-    state: FSMContext,
-    session: AsyncSession,
-) -> None:
+async def save_repeat_referral_setting(message: Message, state: FSMContext, session: AsyncSession) -> None:
     value = _parse_percent(message)
     if value is None:
         await message.answer("❌ مقدار نامعتبر است. لطفاً یک عدد صحیح بین ۰ تا ۱۰۰ وارد کنید.")
         return
-
     settings = await ReferralSettings.get_or_create(session)
     settings.repeat_reward_percent = value
     await session.commit()
     await state.clear()
-
-    await message.answer(
-        "✅ <b>پاداش خریدهای بعدی با موفقیت ذخیره شد.</b>\n\n"
-        f"نرخ جدید خریدهای بعدی: <b>{value}%</b>",
-        reply_markup=_keyboard(),
-    )
+    await message.answer("✅ <b>پاداش خریدهای بعدی با موفقیت ذخیره شد.</b>\n\n" f"نرخ جدید: <b>{value}%</b>", reply_markup=_keyboard())
 
 
 @router.message(ReferralSettingsStates.waiting_share_text, IsAdmin())
-async def save_referral_share_text(
-    message: Message,
-    state: FSMContext,
-    session: AsyncSession,
-) -> None:
+async def save_referral_share_text(message: Message, state: FSMContext, session: AsyncSession) -> None:
     value = (message.text or "").strip()
     error = _validate_share_text(value)
     if error:
         await message.answer(f"❌ {error}")
         return
-
     settings = await ReferralSettings.get_or_create(session)
     settings.share_text = value
     await session.commit()
     await state.clear()
-
     await message.answer(
         "✅ <b>متن دعوت دوستان با موفقیت ذخیره شد.</b>\n\n"
         f"📊 وضعیت: <b>{_share_status(value)}</b>\n\n"
