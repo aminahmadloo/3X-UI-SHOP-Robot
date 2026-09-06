@@ -100,6 +100,7 @@ async def callback_referral(
 
     bot_username = (await callback.bot.get_me()).username
     referral_link = f"https://t.me/{bot_username}?start=ref_{user.tg_id}"
+    settings = await ReferralSettings.get_or_create(session)
 
     await state.update_data({PREVIOUS_CALLBACK_KEY: NavReferral.MAIN})
 
@@ -110,7 +111,10 @@ async def callback_referral(
             config=config,
             bot_username=bot_username,
         ),
-        reply_markup=referral_keyboard(referral_link=referral_link),
+        reply_markup=referral_keyboard(
+            referral_link=referral_link,
+            share_text_template=settings.share_text,
+        ),
     )
 
 
