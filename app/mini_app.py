@@ -15,6 +15,9 @@ from sqlalchemy.orm import selectinload
 from app.bot.models import ServicesContainer
 from app.bot.routers.my_services.handler import _discover_user_subscriptions_from_xui
 from app.bot.services.customer_level import get_customer_level
+from app.db.models.service_period import ServicePeriod
+from app.db.models.service_purchase_plan import ServicePurchasePlan
+from app.db.models.connected_device_settings import ConnectedDeviceSettings
 from app.db.models import (
     Referral,
     ReferrerReward,
@@ -237,12 +240,67 @@ class MiniAppController:
 
     async def plans(self, request: web.Request) -> web.Response:
         await self._authenticate(request)
-        return web.json_response(
-            {
-                "plans": [plan.to_dict() for plan in self.services.plan.get_all_plans()],
-                "durations": self.services.plan.get_durations(),
-            }
-        )
+
+        async with self.db.session() as session:
+            settings = await ConnectedDeviceSettings.get_or_create(session)
+
+            active_periods = await ServicePeriod.list_active(session)
+
+            # Match the Bot purchase flow exactly:
+            # only active/non-archived periods that have normal purchase plans.
+            cards: dict[int, dict[str, object]] = {}
+            durations: list[int] = []
+
+            for period in active_periods:
+                purchase_plans = await ServicePurchasePlan.list_by_type(
+                    session,
+                    period.service_type,
+                )
+
+                if not purchase_plans:
+                    continue
+
+                durations.append(int(period.duration_days))
+
+                for plan in purchase_plans:
+                    volume = int(plan.volume_gb)
+                    card = cards.setdefault(
+                        volume,
+                        {
+                            "devices": int(settings.max_connected_devices),
+                            "prices": {"تومان": {}},
+                            "plans": [],
+                        },
+                    )
+
+                    days_key = str(int(plan.duration_days))
+                    card["prices"]["تومان"][days_key] = int(plan.price_toman)
+                    card["plans"].append(
+                        {
+                            "id": int(plan.id),
+                            "volume_gb": volume,
+                            "duration_days": int(plan.duration_days),
+                            "price_toman": int(plan.price_toman),
+                            "service_type": plan.service_type,
+                        }
+                    )
+
+            ordered_cards = []
+            for volume in sorted(cards):
+                card = cards[volume]
+                card["plans"].sort(
+                    key=lambda x: (x["duration_days"], x["price_toman"])
+                )
+                ordered_cards.append(card)
+
+            return web.json_response(
+                {
+                    "plans": ordered_cards,
+                    "durations": sorted(set(durations)),
+                    "source": "service_periods",
+                    "currency": "تومان",
+                }
+            )
 
     async def service(self, request: web.Request) -> web.Response:
         tg_id, _ = await self._authenticate(request)
