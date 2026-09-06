@@ -6,6 +6,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.types import MenuButtonWebApp, WebAppInfo
 from aiogram.utils.i18n import I18n
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp.web import Application, _run_app
@@ -54,6 +55,27 @@ async def on_startup(
 
     current_webhook = await bot.get_webhook_info()
     logging.info(f"Current webhook URL: {current_webhook.url}")
+
+    # Mini App is admin-only for now. Configure Telegram's native chat menu
+    # button per admin instead of exposing a duplicate inline button in the
+    # bot's main menu. Customer rollout can later switch this to a global menu.
+    mini_app_domain = config.bot.DOMAIN.strip().rstrip("/")
+    if mini_app_domain:
+        if not mini_app_domain.startswith(("http://", "https://")):
+            mini_app_domain = f"https://{mini_app_domain}"
+        mini_app_url = f"{mini_app_domain}/miniapp"
+        mini_app_menu = MenuButtonWebApp(
+            text="📱 Mini App",
+            web_app=WebAppInfo(url=mini_app_url),
+        )
+        for admin_id in config.bot.ADMINS:
+            try:
+                await bot.set_chat_menu_button(
+                    chat_id=int(admin_id),
+                    menu_button=mini_app_menu,
+                )
+            except Exception:
+                logging.exception("Failed to configure Mini App menu button for admin %s", admin_id)
 
     await services.notification.notify_developer(BOT_STARTED_TAG)
     logging.info("Bot started.")
