@@ -149,8 +149,19 @@ async def main() -> None:
         admins_ids=config.bot.ADMINS,
     )
     routers.include(app=app, dispatcher=dispatcher)
-    register_mini_app(app=app, config=config, db=db, services=services_container, i18n=i18n)
-    register_admin_management(app=app, config=config, db=db, services=services_container, i18n=i18n)
+    register_mini_app(
+        app=app,
+        db=db,
+        bot_token=config.bot.TOKEN,
+        admin_ids=config.bot.ADMINS,
+        services=services_container,
+    )
+    register_admin_management(
+        app=app,
+        db=db,
+        bot_token=config.bot.TOKEN,
+        admin_ids=config.bot.ADMINS,
+    )
     await commands.setup(bot=bot)
     setup_application(app, dispatcher, bot=bot)
     await _run_app(
