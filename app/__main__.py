@@ -143,7 +143,12 @@ async def main() -> None:
     dispatcher.shutdown.register(on_shutdown)
     await MaintenanceMiddleware.load_from_database(db.session)
     middlewares.register(dispatcher=dispatcher, i18n=i18n, session=db.session)
-    routers.register(dispatcher=dispatcher)
+    filters.register(
+        dispatcher=dispatcher,
+        developer_id=config.bot.DEV_ID,
+        admins_ids=config.bot.ADMINS,
+    )
+    routers.include(app=app, dispatcher=dispatcher)
     register_mini_app(app=app, config=config, db=db, services=services_container, i18n=i18n)
     register_admin_management(app=app, config=config, db=db, services=services_container, i18n=i18n)
     await commands.setup(bot=bot)
