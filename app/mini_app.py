@@ -12,6 +12,7 @@ from aiohttp import web
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.bot.models import ServicesContainer
 from app.bot.routers.my_services.handler import _discover_user_subscriptions_from_xui
 from app.db.models import Subscription, User
 
@@ -72,11 +73,16 @@ def _validate_init_data(init_data: str, bot_token: str) -> dict[str, object]:
 
 
 class MiniAppController:
-    def __init__(self, db, bot_token: str, admin_ids: list[int], vpn_service=None, services=None) -> None:
+    def __init__(
+        self,
+        db,
+        bot_token: str,
+        admin_ids: list[int],
+        services: ServicesContainer,
+    ) -> None:
         self.db = db
         self.bot_token = bot_token
         self.admin_ids = {int(admin_id) for admin_id in admin_ids}
-        self.vpn_service = vpn_service
         self.services = services
 
     async def _authenticate(self, request: web.Request) -> tuple[int, dict[str, object]]:
@@ -99,96 +105,182 @@ class MiniAppController:
 
     async def me(self, request: web.Request) -> web.Response:
         tg_id, telegram_user = await self._authenticate(request)
-        if self.vpn_service is None or self.services is None:
-            raise web.HTTPServiceUnavailable(text="Mini App VPN services are not initialized")
         async with self.db.session() as session:
             user = await User.get(session=session, tg_id=tg_id)
             if user is None:
                 raise web.HTTPNotFound(text="User not found")
-            # Reuse the same live-XUI discovery used by My Services. Local DB rows
-            # are not treated as the source of truth for what the user owns now.
-            await _discover_user_subscriptions_from_xui(session, user, self.services)
-            await session.commit()
-            result = await session.execute(
-                select(Subscription)
-                .options(selectinload(Subscription.server))
-                .where(Subscription.user_id == user.id, Subscription.server_id.is_not(None))
-                .order_by(Subscription.id.desc())
+
+            # The live 3X-UI discovery is the source of truth. It also removes
+            # stale local rows only after a successful XUI read for that server.
+            subscriptions = await _discover_user_subscriptions_from_xui(
+                session,
+                user,
+                self.services,
             )
-            subscriptions = list(result.scalars().all())
+
+            vpn_service = self.services.vpn
             services_payload: list[dict[str, object]] = []
             for subscription in subscriptions:
-                live = await self.vpn_service.get_client_data(user, subscription.id)
+                live = await vpn_service.get_client_data(user, subscription.id)
                 if live is None:
                     continue
-                services_payload.append(self._serialize_live_subscription(subscription, live))
+                services_payload.append(
+                    self._serialize_live_subscription(subscription, live)
+                )
+
             active = [item for item in services_payload if item["status"] == "active"]
             expired = [item for item in services_payload if item["status"] == "expired"]
-            nearest = min((item for item in services_payload if item.get("expire_date")), key=lambda item: item["expire_date"], default=None)
-            servers = []
-            seen_servers = set()
+            nearest = min(
+                (item for item in services_payload if item.get("expire_date")),
+                key=lambda item: item["expire_date"],
+                default=None,
+            )
+
+            servers: list[dict[str, object]] = []
+            seen_servers: set[tuple[object, object]] = set()
             for item in services_payload:
                 server = item.get("server") or {}
                 key = (server.get("name"), server.get("location"))
                 if key not in seen_servers:
                     seen_servers.add(key)
                     servers.append(server)
+
             used = sum(int(item.get("traffic_used", 0) or 0) for item in services_payload)
-            total = sum(int(item.get("traffic_total", 0) or 0) for item in services_payload if int(item.get("traffic_total", 0) or 0) > 0)
-            recent = sorted([{"type": "service", "title": item["name"], "date": item.get("updated_at") or item.get("created_at"), "status": item["status"]} for item in services_payload], key=lambda item: item["date"] or "", reverse=True)[:5]
-            return web.json_response({
-                "user": {"id": user.tg_id, "first_name": user.first_name, "username": user.username, "language_code": user.language_code, "created_at": user.created_at.isoformat()},
-                "telegram": {"first_name": telegram_user.get("first_name"), "username": telegram_user.get("username"), "photo_url": telegram_user.get("photo_url")},
-                "dashboard": {
-                    "total_services": len(services_payload), "active_services": len(active), "expired_services": len(expired),
-                    "traffic_used": used, "traffic_total": total, "traffic_remaining": max(0, total - used) if total else -1,
-                    "nearest_expiry": nearest.get("expire_date") if nearest else None, "servers": servers, "recent_activity": recent, "generated_at": time.time(),
-                },
-                "services": services_payload,
-            })
+            total = sum(
+                int(item.get("traffic_total", 0) or 0)
+                for item in services_payload
+                if int(item.get("traffic_total", 0) or 0) > 0
+            )
+            recent = sorted(
+                [
+                    {
+                        "type": "service",
+                        "title": item["name"],
+                        "date": item.get("updated_at") or item.get("created_at"),
+                        "status": item["status"],
+                    }
+                    for item in services_payload
+                ],
+                key=lambda item: item["date"] or "",
+                reverse=True,
+            )[:5]
+
+            return web.json_response(
+                {
+                    "user": {
+                        "id": user.tg_id,
+                        "first_name": user.first_name,
+                        "username": user.username,
+                        "language_code": user.language_code,
+                        "created_at": user.created_at.isoformat(),
+                    },
+                    "telegram": {
+                        "first_name": telegram_user.get("first_name"),
+                        "username": telegram_user.get("username"),
+                        "photo_url": telegram_user.get("photo_url"),
+                    },
+                    "dashboard": {
+                        "total_services": len(services_payload),
+                        "active_services": len(active),
+                        "expired_services": len(expired),
+                        "traffic_used": used,
+                        "traffic_total": total,
+                        "traffic_remaining": max(0, total - used) if total else -1,
+                        "nearest_expiry": nearest.get("expire_date") if nearest else None,
+                        "servers": servers,
+                        "recent_activity": recent,
+                        "generated_at": time.time(),
+                    },
+                    "services": services_payload,
+                }
+            )
 
     async def service(self, request: web.Request) -> web.Response:
         tg_id, _ = await self._authenticate(request)
-        if self.vpn_service is None:
-            raise web.HTTPServiceUnavailable(text="Mini App VPN service is not initialized")
         try:
             subscription_id = int(request.match_info["subscription_id"])
         except (KeyError, ValueError):
             raise web.HTTPBadRequest(text="Invalid service id")
+
         async with self.db.session() as session:
             user = await User.get(session=session, tg_id=tg_id)
             if user is None:
                 raise web.HTTPNotFound(text="User not found")
-            result = await session.execute(select(Subscription).options(selectinload(Subscription.server)).where(Subscription.id == subscription_id, Subscription.user_id == user.id))
+
+            # Ownership is always checked against the authenticated Telegram user.
+            result = await session.execute(
+                select(Subscription)
+                .options(selectinload(Subscription.server))
+                .where(
+                    Subscription.id == subscription_id,
+                    Subscription.user_id == user.id,
+                    Subscription.server_id.is_not(None),
+                )
+            )
             subscription = result.scalar_one_or_none()
             if subscription is None:
                 raise web.HTTPNotFound(text="Service not found")
-            live = await self.vpn_service.get_client_data(user, subscription.id)
+
+            live = await self.services.vpn.get_client_data(user, subscription.id)
             if live is None:
                 raise web.HTTPNotFound(text="Live service not found in 3X-UI")
+
             payload = self._serialize_live_subscription(subscription, live)
-            payload["subscription_url"] = await self.vpn_service.get_key(user, subscription.id)
+            payload["subscription_url"] = await self.services.vpn.get_key(
+                user,
+                subscription.id,
+            )
             return web.json_response(payload)
 
     @staticmethod
     def _serialize_live_subscription(subscription, live) -> dict[str, object]:
-        expire_date = subscription.expire_date.isoformat() if subscription.expire_date else None
+        expire_date = (
+            subscription.expire_date.isoformat()
+            if subscription.expire_date
+            else None
+        )
         traffic_total = int(getattr(live, "traffic_total", -1) or -1)
         traffic_used = int(getattr(live, "traffic_used", 0) or 0)
         traffic_remaining = int(getattr(live, "traffic_remaining", -1) or -1)
-        expired = bool(expire_date and subscription.expire_date.timestamp() <= time.time())
+        expired = bool(
+            expire_date and subscription.expire_date.timestamp() <= time.time()
+        )
         enabled = subscription.status == "active" and not expired
         raw_devices = getattr(live, "max_devices", subscription.devices)
         devices = -1 if isinstance(raw_devices, str) else int(raw_devices or 0)
+
         return {
-            "id": subscription.id, "name": getattr(live, "config_name", None) or subscription.config_name,
+            "id": subscription.id,
+            "name": getattr(live, "config_name", None) or subscription.config_name,
             "status": "expired" if expired else ("active" if enabled else "inactive"),
-            "traffic_total": traffic_total, "traffic_used": traffic_used, "traffic_remaining": traffic_remaining,
-            "volume_gb": subscription.volume_gb, "duration_days": subscription.duration_days, "devices": devices,
-            "start_date": subscription.start_date.isoformat() if subscription.start_date else None, "expire_date": expire_date,
-            "created_at": subscription.created_at.isoformat() if subscription.created_at else None, "updated_at": subscription.updated_at.isoformat() if subscription.updated_at else None,
-            "online": None, "inbound_id": getattr(live, "inbound_id", None), "client_id": getattr(live, "client_id", None),
-            "server": {"name": subscription.server.name, "location": subscription.server.location, "online": subscription.server.online} if subscription.server else None,
+            "traffic_total": traffic_total,
+            "traffic_used": traffic_used,
+            "traffic_remaining": traffic_remaining,
+            "traffic_up": int(getattr(live, "traffic_up", 0) or 0),
+            "traffic_down": int(getattr(live, "traffic_down", 0) or 0),
+            "volume_gb": subscription.volume_gb,
+            "duration_days": subscription.duration_days,
+            "devices": devices,
+            "start_date": subscription.start_date.isoformat() if subscription.start_date else None,
+            "expire_date": expire_date,
+            "created_at": subscription.created_at.isoformat() if subscription.created_at else None,
+            "updated_at": subscription.updated_at.isoformat() if subscription.updated_at else None,
+            # ClientData does not expose a reliable per-client online flag.
+            # Keep this explicit instead of presenting a false connection state.
+            "online": None,
+            "inbound_id": getattr(live, "inbound_id", None),
+            "client_id": getattr(live, "client_id", None),
+            "sub_id": getattr(live, "sub_id", None),
+            "flow": getattr(live, "flow", None),
+            "server": (
+                {
+                    "name": subscription.server.name,
+                    "location": subscription.server.location,
+                    "online": subscription.server.online,
+                }
+                if subscription.server
+                else None
+            ),
         }
 
     async def health(self, request: web.Request) -> web.Response:
@@ -198,8 +290,19 @@ class MiniAppController:
         return web.json_response({"ok": True, "database": "ok"})
 
 
-def register(app: web.Application, db, bot_token: str, admin_ids: list[int], vpn_service=None, services=None) -> None:
-    controller = MiniAppController(db=db, bot_token=bot_token, admin_ids=admin_ids, vpn_service=vpn_service, services=services)
+def register(
+    app: web.Application,
+    db,
+    bot_token: str,
+    admin_ids: list[int],
+    services: ServicesContainer,
+) -> None:
+    controller = MiniAppController(
+        db=db,
+        bot_token=bot_token,
+        admin_ids=admin_ids,
+        services=services,
+    )
     app.router.add_get("/miniapp", controller.index)
     app.router.add_get("/miniapp/", controller.index)
     app.router.add_get("/miniapp/api/me", controller.me)
