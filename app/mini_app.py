@@ -36,7 +36,11 @@ def _validate_init_data(init_data: str, bot_token: str) -> dict[str, object]:
     if not init_data or not bot_token:
         raise web.HTTPUnauthorized(text="Invalid Telegram init data")
 
-    raw_pairs = parse_qsl(init_data, keep_blank_values=True, strict_parsing=True)
+    try:
+        raw_pairs = parse_qsl(init_data, keep_blank_values=True, strict_parsing=True)
+    except ValueError as exc:
+        raise web.HTTPUnauthorized(text="Invalid Telegram init data") from exc
+
     keys = [key for key, _ in raw_pairs]
     if len(keys) != len(set(keys)):
         raise web.HTTPUnauthorized(text="Invalid Telegram init data")
@@ -130,17 +134,19 @@ class MiniAppController:
                 .order_by(Subscription.created_at.desc())
             )
             subscriptions = list(result.scalars().all())
+            now = time.time()
 
-            active = [item for item in subscriptions if item.status == "active"]
-            expired = [
-                item
-                for item in subscriptions
-                if item.status == "expired"
-                or (
+            def is_expired(item: Subscription) -> bool:
+                return item.status == "expired" or (
                     item.expire_date is not None
-                    and item.expire_date.timestamp() <= time.time()
+                    and item.expire_date.timestamp() <= now
                 )
+
+            active = [
+                item for item in subscriptions
+                if item.status == "active" and not is_expired(item)
             ]
+            expired = [item for item in subscriptions if is_expired(item)]
 
             return web.json_response(
                 {
@@ -162,17 +168,27 @@ class MiniAppController:
                         "expired_services": len(expired),
                     },
                     "services": [
-                        self._serialize_subscription(item) for item in subscriptions
+                        self._serialize_subscription(item, now=now)
+                        for item in subscriptions
                     ],
                 }
             )
 
     @staticmethod
-    def _serialize_subscription(subscription: Subscription) -> dict[str, object]:
+    def _serialize_subscription(
+        subscription: Subscription, *, now: float | None = None
+    ) -> dict[str, object]:
+        now = time.time() if now is None else now
+        expired = subscription.status == "expired" or (
+            subscription.expire_date is not None
+            and subscription.expire_date.timestamp() <= now
+        )
+        effective_status = "expired" if expired else subscription.status
+
         return {
             "id": subscription.id,
             "name": subscription.config_name,
-            "status": subscription.status,
+            "status": effective_status,
             "volume_gb": subscription.volume_gb,
             "duration_days": subscription.duration_days,
             "devices": subscription.devices,

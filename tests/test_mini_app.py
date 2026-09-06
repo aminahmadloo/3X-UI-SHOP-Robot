@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from datetime import datetime
 from types import SimpleNamespace
 from urllib.parse import urlencode
 
@@ -73,3 +74,20 @@ async def test_authenticate_rejects_non_admin(monkeypatch):
     )
     with pytest.raises(web.HTTPForbidden):
         await controller._authenticate(request)
+
+
+def test_serialize_subscription_marks_past_expiry_as_expired(monkeypatch):
+    monkeypatch.setattr("app.mini_app.time.time", lambda: NOW)
+    subscription = SimpleNamespace(
+        id=1,
+        config_name="Test Service",
+        status="active",
+        volume_gb=20,
+        duration_days=30,
+        devices=2,
+        start_date=None,
+        expire_date=datetime.fromtimestamp(NOW - 1),
+        server=None,
+    )
+    result = MiniAppController._serialize_subscription(subscription, now=NOW)
+    assert result["status"] == "expired"
