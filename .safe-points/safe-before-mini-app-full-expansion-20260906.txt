@@ -1,0 +1,12 @@
+Safe point before full Mini App expansion.
+Date: 2026-09-06
+PR: #43
+Feature branch: feat/mini-app-foundation-dashboard-services
+Previous head before expansion: 0fcb0fc277390816b13e0883c002c89fc10cbf3d
+
+Protection requirements:
+- Existing Telegram Bot logic/buttons/routers must remain unchanged.
+- Mini App remains admin-only until final approval.
+- Live 3X-UI remains the source of truth for VPN services.
+- Mini App data must be strictly scoped to the authenticated Telegram user.
+- Existing Bot purchase, renewal, wallet, referral and support flows remain authoritative.
