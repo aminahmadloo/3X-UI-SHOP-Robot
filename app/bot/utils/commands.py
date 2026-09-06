@@ -1,15 +1,7 @@
 import logging
-import os
 
 from aiogram import Bot
-from aiogram.types import (
-    BotCommand,
-    BotCommandScopeAllPrivateChats,
-    BotCommandScopeChat,
-    MenuButtonCommands,
-    MenuButtonWebApp,
-    WebAppInfo,
-)
+from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeChat
 
 from .navigation import NavMain
 
@@ -46,15 +38,6 @@ def _commands_for_language(language: str) -> list[BotCommand]:
     return commands.get(language, commands["fa"])
 
 
-def _mini_app_url() -> str | None:
-    domain = os.getenv("BOT_DOMAIN", "").strip().rstrip("/")
-    if not domain:
-        return None
-    if not domain.startswith(("http://", "https://")):
-        domain = f"https://{domain}"
-    return f"{domain}/miniapp"
-
-
 async def set_user_commands(bot: Bot, chat_id: int, language: str) -> None:
     """Set commands for one user, independent of Telegram app language."""
     await bot.set_my_commands(
@@ -63,30 +46,7 @@ async def set_user_commands(bot: Bot, chat_id: int, language: str) -> None:
     )
 
 
-async def _setup_mini_app_menu_button(bot: Bot, admin_ids: list[int]) -> None:
-    """Expose Mini App in Telegram's native bottom chat menu for admins only."""
-    url = _mini_app_url()
-    if not url:
-        logger.warning("BOT_DOMAIN is not configured; Mini App menu button was not configured.")
-        return
-
-    # Keep the default/private-chat menu as the normal command menu.
-    await bot.set_chat_menu_button(menu_button=MenuButtonCommands(text="Menu"))
-
-    # Override the menu button only for configured admins.
-    for admin_id in admin_ids:
-        await bot.set_chat_menu_button(
-            chat_id=int(admin_id),
-            menu_button=MenuButtonWebApp(
-                text="Mini App",
-                web_app=WebAppInfo(url=url),
-            ),
-        )
-
-    logger.info("Mini App Telegram menu button configured for %d admin(s).", len(admin_ids))
-
-
-async def setup(bot: Bot, admin_ids: list[int] | None = None) -> None:
+async def setup(bot: Bot) -> None:
     # Persian is the default for everyone. Do not use Telegram's app language
     # to select English/Russian automatically; users choose their language in
     # the bot and then receive a chat-specific command menu.
@@ -98,8 +58,6 @@ async def setup(bot: Bot, admin_ids: list[int] | None = None) -> None:
     await bot.delete_my_commands(scope=scope, language_code="en")
     await bot.delete_my_commands(scope=scope, language_code="ru")
     await bot.set_my_commands(commands=_commands_for_language("fa"), scope=scope)
-
-    await _setup_mini_app_menu_button(bot, admin_ids or [])
 
     logger.info("Bot commands configured successfully with Persian as default.")
 
