@@ -163,6 +163,8 @@ async def main() -> None:
         admin_ids=config.bot.ADMINS,
     )
     await commands.setup(bot=bot)
+    webhook_requests_handler = SimpleRequestHandler(dispatcher=dispatcher, bot=bot)
+    webhook_requests_handler.register(app, path=TELEGRAM_WEBHOOK)
     setup_application(app, dispatcher, bot=bot)
     await _run_app(
         app,
