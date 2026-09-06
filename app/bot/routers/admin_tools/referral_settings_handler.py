@@ -1,4 +1,5 @@
 from html import escape
+import re
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -8,9 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
 from app.bot.utils.navigation import NavAdminTools
-from app.db.models import ReferralSettings
+from app.db.models import DEFAULT_REFERRAL_SHARE_TEXT, ReferralSettings
 
 router = Router(name=__name__)
+
+MAX_SHARE_TEXT_LENGTH = 2500
+ALLOWED_SHARE_VARIABLES = {"referral_link"}
+SHARE_VARIABLE_PATTERN = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+SAMPLE_REFERRAL_LINK = "https://t.me/ToonelVpn_bot?start=ref_12345678"
 
 
 class ReferralSettingsStates(StatesGroup):
@@ -25,24 +31,58 @@ def _keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="✏️ ویرایش پاداش خرید اول", callback_data="referral_settings:edit:first")],
             [InlineKeyboardButton(text="✏️ ویرایش پاداش خریدهای بعدی", callback_data="referral_settings:edit:repeat")],
             [InlineKeyboardButton(text="✏️ ویرایش متن دعوت دوستان", callback_data="referral_settings:edit:share_text")],
+            [
+                InlineKeyboardButton(text="👁 پیش‌نمایش", callback_data="referral_settings:preview:share_text"),
+                InlineKeyboardButton(text="📤 ارسال نمونه", callback_data="referral_settings:sample:share_text"),
+            ],
+            [InlineKeyboardButton(text="🔄 بازگردانی متن پیش‌فرض", callback_data="referral_settings:reset:share_text")],
             [InlineKeyboardButton(text="🔄 بازخوانی مقادیر", callback_data=NavAdminTools.REFERRAL_SETTINGS)],
             [InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavAdminTools.MAIN)],
         ]
     )
 
 
+def _share_status(share_text: str) -> str:
+    status = "پیش‌فرض" if share_text == DEFAULT_REFERRAL_SHARE_TEXT else "سفارشی"
+    return f"{status} • {len(share_text):,} / {MAX_SHARE_TEXT_LENGTH:,} کاراکتر"
+
+
+def _render_for_admin(share_text: str, referral_link: str = SAMPLE_REFERRAL_LINK) -> str:
+    rendered = share_text.replace("{referral_link}", referral_link)
+    return escape(rendered)
+
+
 async def _text(session: AsyncSession) -> str:
     settings = await ReferralSettings.get_or_create(session)
-    share_preview = settings.share_text.replace("{referral_link}", "<code>{referral_link}</code>")
     return (
         "🎁 <b>تنظیمات معرفی به دوستان</b>\n\n"
         f"🛒 پاداش خرید اول: <b>{settings.reward_percent}%</b>\n"
         f"🔄 پاداش خریدهای بعدی: <b>{settings.repeat_reward_percent}%</b>\n\n"
-        "📝 <b>متن اشتراک‌گذاری فعلی:</b>\n"
-        f"<blockquote>{escape(share_preview)}</blockquote>\n\n"
-        "برای قرار دادن لینک اختصاصی هر کاربر داخل متن از <code>{referral_link}</code> استفاده می‌شود.\n"
-        "مقدار مجاز متن: حداکثر ۲۵۰۰ کاراکتر."
+        "📝 <b>مدیریت متن دعوت دوستان</b>\n"
+        f"📊 وضعیت: <b>{_share_status(settings.share_text)}</b>\n\n"
+        "متن فعلی:\n"
+        f"<blockquote>{_render_for_admin(settings.share_text)}</blockquote>\n\n"
+        "🔗 متغیر قابل استفاده: <code>{referral_link}</code>\n"
+        "این متغیر با لینک اختصاصی هر کاربر جایگزین می‌شود.\n"
+        "اگر متغیر استفاده نشود، لینک همچنان به‌عنوان URL اصلی اشتراک‌گذاری Telegram ارسال می‌شود."
     )
+
+
+def _validate_share_text(value: str) -> str | None:
+    if not value:
+        return "متن خالی است. لطفاً متن دعوت دوستان را ارسال کنید."
+    if len(value) > MAX_SHARE_TEXT_LENGTH:
+        return f"متن بیش از حد طولانی است. حداکثر {MAX_SHARE_TEXT_LENGTH:,} کاراکتر مجاز است."
+
+    variables = set(SHARE_VARIABLE_PATTERN.findall(value))
+    unknown = sorted(variables - ALLOWED_SHARE_VARIABLES)
+    if unknown:
+        names = "، ".join(f"{{{name}}}" for name in unknown)
+        return (
+            f"متغیر ناشناخته در متن وجود دارد: {names}\n\n"
+            "تنها متغیر مجاز فعلی: <code>{referral_link}</code>"
+        )
+    return None
 
 
 @router.callback_query(F.data == NavAdminTools.REFERRAL_SETTINGS, IsAdmin())
@@ -92,9 +132,9 @@ async def edit_referral_share_text(callback: CallbackQuery, state: FSMContext, s
         "کل متن پیام اشتراک‌گذاری را در یک پیام ارسال کنید.\n\n"
         "🔗 برای قرار دادن لینک اختصاصی کاربر در هر جای متن، از این متغیر استفاده کنید:\n"
         "<code>{referral_link}</code>\n\n"
-        "اگر متغیر را قرار ندهید، لینک همچنان به‌عنوان لینک اصلی اشتراک‌گذاری Telegram ارسال می‌شود.\n\n"
+        "⚠️ فقط همین متغیر فعلاً مجاز است.\n\n"
         f"📝 <b>متن فعلی:</b>\n<blockquote>{escape(settings.share_text)}</blockquote>\n\n"
-        "حداکثر طول: ۲۵۰۰ کاراکتر."
+        f"حداکثر طول: {MAX_SHARE_TEXT_LENGTH:,} کاراکتر."
     )
 
 
@@ -109,6 +149,40 @@ def _parse_percent(message: Message) -> int | None:
     except ValueError:
         return None
     return value
+
+
+@router.callback_query(F.data == "referral_settings:preview:share_text", IsAdmin())
+async def preview_referral_share_text(callback: CallbackQuery, session: AsyncSession) -> None:
+    settings = await ReferralSettings.get_or_create(session)
+    await callback.answer()
+    await callback.message.answer(
+        "👁 <b>پیش‌نمایش متن دعوت دوستان</b>\n\n"
+        f"<blockquote>{_render_for_admin(settings.share_text)}</blockquote>\n\n"
+        "🔗 این پیش‌نمایش از یک لینک نمونه استفاده می‌کند. لینک واقعی هر کاربر هنگام اشتراک‌گذاری به‌صورت اختصاصی جایگزین می‌شود.",
+    )
+
+
+@router.callback_query(F.data == "referral_settings:sample:share_text", IsAdmin())
+async def send_referral_share_sample(callback: CallbackQuery, session: AsyncSession) -> None:
+    settings = await ReferralSettings.get_or_create(session)
+    await callback.answer("نمونه ارسال شد")
+    await callback.message.answer(
+        _render_for_admin(settings.share_text),
+        disable_web_page_preview=False,
+    )
+
+
+@router.callback_query(F.data == "referral_settings:reset:share_text", IsAdmin())
+async def reset_referral_share_text(callback: CallbackQuery, session: AsyncSession) -> None:
+    settings = await ReferralSettings.get_or_create(session)
+    settings.share_text = DEFAULT_REFERRAL_SHARE_TEXT
+    await session.commit()
+    await callback.answer("متن به حالت پیش‌فرض برگشت")
+    await callback.message.edit_text(
+        "✅ <b>متن دعوت دوستان به حالت پیش‌فرض بازگردانده شد.</b>\n\n"
+        "از این پس متن اصلی پیش‌فرض برای اشتراک‌گذاری استفاده می‌شود.",
+        reply_markup=_keyboard(),
+    )
 
 
 @router.message(ReferralSettingsStates.waiting_first_percent, IsAdmin())
@@ -164,11 +238,9 @@ async def save_referral_share_text(
     session: AsyncSession,
 ) -> None:
     value = (message.text or "").strip()
-    if not value:
-        await message.answer("❌ متن خالی است. لطفاً متن دعوت دوستان را ارسال کنید.")
-        return
-    if len(value) > 2500:
-        await message.answer("❌ متن بیش از حد طولانی است. حداکثر ۲۵۰۰ کاراکتر مجاز است.")
+    error = _validate_share_text(value)
+    if error:
+        await message.answer(f"❌ {error}")
         return
 
     settings = await ReferralSettings.get_or_create(session)
@@ -178,6 +250,7 @@ async def save_referral_share_text(
 
     await message.answer(
         "✅ <b>متن دعوت دوستان با موفقیت ذخیره شد.</b>\n\n"
-        "از این پس متن جدید در دکمه «📨 دعوت دوستان» استفاده می‌شود.",
+        f"📊 وضعیت: <b>{_share_status(value)}</b>\n\n"
+        "می‌توانید با دکمه‌های «👁 پیش‌نمایش» یا «📤 ارسال نمونه» نتیجه را بررسی کنید.",
         reply_markup=_keyboard(),
     )
