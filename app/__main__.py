@@ -26,6 +26,7 @@ from app.bot.utils.constants import (
 )
 from app.config import DEFAULT_BOT_HOST, DEFAULT_LOCALES_DIR, Config, load_config
 from app.db.database import Database
+from app.mini_app import register as register_mini_app
 
 
 async def on_shutdown(db: Database, bot: Bot, services: ServicesContainer) -> None:
@@ -121,6 +122,12 @@ async def main() -> None:
     middlewares.register(dispatcher=dispatcher, i18n=i18n, session=db.session)
     filters.register(dispatcher=dispatcher, developer_id=config.bot.DEV_ID, admins_ids=config.bot.ADMINS)
     routers.include(app=app, dispatcher=dispatcher)
+    register_mini_app(
+        app=app,
+        db=db,
+        bot_token=config.bot.TOKEN,
+        admin_ids=config.bot.ADMINS,
+    )
     await commands.setup(bot)
     webhook_requests_handler = SimpleRequestHandler(dispatcher=dispatcher, bot=bot)
     webhook_requests_handler.register(app, path=TELEGRAM_WEBHOOK)

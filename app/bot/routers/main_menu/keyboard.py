@@ -1,4 +1,6 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+import os
+
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from aiogram.utils.i18n import gettext as _
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -10,6 +12,15 @@ from app.bot.utils.navigation import (
     NavSubscription,
     NavSupport,
 )
+
+
+def _mini_app_url() -> str | None:
+    domain = os.getenv("BOT_DOMAIN", "").strip().rstrip("/")
+    if not domain:
+        return None
+    if not domain.startswith(("http://", "https://")):
+        domain = f"https://{domain}"
+    return f"{domain}/miniapp"
 
 
 def main_menu_keyboard(
@@ -90,7 +101,18 @@ def main_menu_keyboard(
         ),
     )
 
-    # 7. مدیریت — فقط برای ادمین
+    # 7. Mini App — فعلاً فقط برای ادمین
+    mini_app_url = _mini_app_url()
+    if is_admin and mini_app_url:
+        builder.row(
+            InlineKeyboardButton(
+                text="📱 Mini App",
+                web_app=WebAppInfo(url=mini_app_url),
+                style="danger",
+            )
+        )
+
+    # 8. مدیریت — فقط برای ادمین
     if is_admin:
         builder.row(
             InlineKeyboardButton(

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <title>ToonelVPN Mini App</title>
+  <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
+  <style>
+    :root{color-scheme:light dark;--bg:var(--tg-theme-bg-color,#f4f5f7);--card:var(--tg-theme-secondary-bg-color,#fff);--text:var(--tg-theme-text-color,#111827);--hint:var(--tg-theme-hint-color,#6b7280);--accent:var(--tg-theme-button-color,#2481cc);--danger:#d9363e}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,sans-serif;padding:calc(16px + var(--tg-content-safe-area-inset-top,0px)) 14px calc(24px + var(--tg-content-safe-area-inset-bottom,0px))}
+    .wrap{max-width:720px;margin:auto}.hero{display:flex;align-items:center;gap:12px;margin-bottom:16px}.avatar{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;background:var(--accent);color:#fff;font-weight:800;font-size:22px}.title{font-size:21px;font-weight:800}.subtitle{font-size:13px;color:var(--hint);margin-top:3px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:14px}.stat,.card{background:var(--card);border-radius:16px;padding:14px;box-shadow:0 1px 8px rgba(0,0,0,.05)}.stat b{display:block;font-size:22px;margin-bottom:3px}.stat span,.muted{font-size:12px;color:var(--hint)}.section-title{font-size:16px;font-weight:800;margin:18px 4px 9px}.service{background:var(--card);border-radius:16px;padding:14px;margin-bottom:9px}.service-head{display:flex;justify-content:space-between;gap:10px;align-items:center}.service-name{font-weight:800}.badge{font-size:11px;padding:5px 8px;border-radius:999px;background:rgba(46,160,67,.14);color:#2e8b45}.badge.expired{background:rgba(217,54,62,.14);color:var(--danger)}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:11px}.meta div{font-size:12px;color:var(--hint)}.meta strong{display:block;color:var(--text);font-size:13px;margin-top:3px}.empty{padding:28px 14px;text-align:center;color:var(--hint)}.error{background:rgba(217,54,62,.12);color:var(--danger);border-radius:14px;padding:14px;text-align:center}.loading{padding:42px;text-align:center;color:var(--hint)}@media(max-width:420px){.grid{gap:6px}.stat{padding:11px}.stat b{font-size:19px}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div id="app" class="loading">در حال بارگذاری ToonelVPN…</div>
+</div>
+<script>
+const tg=window.Telegram?.WebApp;
+if(tg){tg.ready();tg.expand();}
+const app=document.getElementById('app');
+const initData=tg?.initData||'';
+const fmtDate=v=>v?new Date(v).toLocaleDateString('fa-IR',{year:'numeric',month:'long',day:'numeric'}):'—';
+const statusText=s=>s==='active'?'فعال':'منقضی';
+function render(data){
+ const u=data.user||{},d=data.dashboard||{},items=data.services||[];
+ const avatar=(u.first_name||'T').slice(0,1).toUpperCase();
+ app.className='';
+ app.innerHTML=`<div class="hero"><div class="avatar">${avatar}</div><div><div class="title">داشبورد ToonelVPN</div><div class="subtitle">${u.first_name||''}${u.username?' · @'+u.username:''}</div></div></div>
+ <div class="grid"><div class="stat"><b>${d.total_services??0}</b><span>کل سرویس‌ها</span></div><div class="stat"><b>${d.active_services??0}</b><span>سرویس فعال</span></div><div class="stat"><b>${d.expired_services??0}</b><span>منقضی</span></div></div>
+ <div class="section-title">📦 سرویس‌های من</div>
+ ${items.length?items.map(s=>`<div class="service"><div class="service-head"><div class="service-name">${escapeHtml(s.name)}</div><span class="badge ${s.status==='active'?'':'expired'}">${statusText(s.status)}</span></div><div class="meta"><div>حجم<strong>${s.volume_gb} گیگابایت</strong></div><div>دستگاه<strong>${s.devices}</strong></div><div>سرور<strong>${escapeHtml(s.server?.name||'—')}</strong></div><div>انقضا<strong>${fmtDate(s.expire_date)}</strong></div></div></div>`).join(''):'<div class="card empty">هنوز سرویسی برای این حساب ثبت نشده است.</div>'}`;
+}
+function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
+async function load(){
+ if(!initData){app.innerHTML='<div class="error">این صفحه باید از داخل Telegram و از طریق دکمه Mini App باز شود.</div>';return;}
+ try{const r=await fetch('/miniapp/api/me',{headers:{'X-Telegram-Init-Data':initData}});if(!r.ok)throw new Error(await r.text());render(await r.json());}
+ catch(e){app.innerHTML='<div class="error">دسترسی به Mini App امکان‌پذیر نیست.<br><span class="muted">احراز هویت Telegram یا دسترسی ادمین معتبر نیست.</span></div>';}
+}
+load();
+</script>
+</body>
+</html>
