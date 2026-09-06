@@ -1,0 +1,5 @@
+Safe point before admin-editable welcome message feature.
+Base branch: main
+Base commit: 9bd2bc62311d9cd1831c5629f23198ae1f0af591
+Feature branch: feat/admin-editable-welcome-message
+Scope: move the main welcome-message template into persistent DB settings and expose Telegram-admin editing without restart.
