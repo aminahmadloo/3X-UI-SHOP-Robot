@@ -65,7 +65,7 @@ async def on_startup(
             mini_app_domain = f"https://{mini_app_domain}"
         mini_app_url = f"{mini_app_domain}/miniapp"
         mini_app_menu = MenuButtonWebApp(
-            text="📱 Mini App",
+            text="Mini App",
             web_app=WebAppInfo(url=mini_app_url),
         )
         for admin_id in config.bot.ADMINS:
@@ -143,34 +143,17 @@ async def main() -> None:
     dispatcher.shutdown.register(on_shutdown)
     await MaintenanceMiddleware.load_from_database(db.session)
     middlewares.register(dispatcher=dispatcher, i18n=i18n, session=db.session)
-    filters.register(
-        dispatcher=dispatcher,
-        developer_id=config.bot.DEV_ID,
-        admins_ids=config.bot.ADMINS,
-    )
-    routers.include(app=app, dispatcher=dispatcher)
-    register_mini_app(
-        app=app,
-        db=db,
-        bot_token=config.bot.TOKEN,
-        admin_ids=config.bot.ADMINS,
-        services=services_container,
-    )
-    register_admin_management(
-        app=app,
-        db=db,
-        bot_token=config.bot.TOKEN,
-        admin_ids=config.bot.ADMINS,
-    )
-    await commands.setup(bot)
-    webhook_requests_handler = SimpleRequestHandler(dispatcher=dispatcher, bot=bot)
-    webhook_requests_handler.register(app, path=TELEGRAM_WEBHOOK)
+    routers.register(dispatcher=dispatcher)
+    register_mini_app(app=app, config=config, db=db, services=services_container, i18n=i18n)
+    register_admin_management(app=app, config=config, db=db, services=services_container, i18n=i18n)
+    await commands.setup(bot=bot)
     setup_application(app, dispatcher, bot=bot)
-    await _run_app(app, host=DEFAULT_BOT_HOST, port=config.bot.PORT)
+    await _run_app(
+        app,
+        host=DEFAULT_BOT_HOST,
+        port=config.bot.PORT,
+    )
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logging.info("Bot stopped.")
+    asyncio.run(main())
