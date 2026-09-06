@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
+from app.bot.services.welcome_message import get_welcome_message
 from app.bot.utils.commands import set_user_commands
 from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY
 from app.bot.utils.navigation import NavMain
@@ -90,23 +91,11 @@ async def send_main_menu(
 
     main_menu = await bot.send_message(
         chat_id=user.tg_id,
-        text=(
-            f"🌀 <b>{user.first_name} عزیز، به ToonelVPN خوش آمدی</b> 🌐\n\n"
-            "⚡️ اتصال سریع، پایدار و مطمئن به اینترنت آزاد، با سرویس‌هایی متناسب با نیازت.\n\n"
-            "🚀 سرویس‌های متنوع برای استفاده روزمره\n"
-            "🌍 سرورهای مختلف برای انتخاب بهتر\n"
-            "🛡️ اتصال پایدار و مطمئن\n"
-            "💻 سازگار با دستگاه‌های مختلف\n"
-            "🔄 خرید، تمدید و مدیریت آسان سرویس\n"
-            "──────────────────\n\n"
-            "🎁 <b>برای شروع، می‌تونی اکانت تست رو امتحان کنی.</b>\n\n"
-            "✨ <b>یکی از گزینه‌های زیر رو انتخاب کن:</b> 👇"
-        ),
+        text=await get_welcome_message(session, user),
         reply_markup=reply_markup,
     )
     await state.update_data({MAIN_MESSAGE_ID_KEY: main_menu.message_id})
     return main_menu
-
 
 
 class _DeepLinkCallbackAdapter:
@@ -154,8 +143,6 @@ async def _handle_main_menu_deep_link(
     if payload not in handlers:
         return False
 
-    # The main menu message is the target message that existing callback
-    # handlers normally edit after a button press.
     main_menu = await send_main_menu(
         bot=message.bot,
         user=user,
@@ -290,9 +277,6 @@ async def command_main_menu(
 ) -> None:
     logger.info(f"User {user.tg_id} opened main menu page.")
 
-    # /start must ALWAYS reset the FSM.
-    # This prevents stale states such as waiting_days from
-    # intercepting /start and treating it as a numeric input.
     previous_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
     await state.clear()
 
@@ -303,9 +287,6 @@ async def command_main_menu(
         except Exception as exception:
             logger.error(f"Failed to delete main message for user {user.tg_id}: {exception}")
 
-    # Telegram Deep Links arrive as: /start <payload>.
-    # Handle only our reserved main-menu payloads here.
-    # Referral/invite payloads below remain unchanged.
     if command.args:
         deep_link_payload = command.args.strip().lower()
 
@@ -323,7 +304,6 @@ async def command_main_menu(
     if command.args and is_new_user:
         referral_arg = command.args.strip()
 
-        # Referral links use: /start ref_<telegram_user_id>
         if referral_arg.startswith("ref_"):
             referrer_id_raw = referral_arg[4:].strip()
 
@@ -341,7 +321,6 @@ async def command_main_menu(
                 )
 
         elif referral_arg.isdigit():
-            # Backward compatibility with old /start <tg_id> links.
             await process_creating_referral(
                 session=session,
                 user=user,
@@ -434,7 +413,7 @@ async def change_language(
 
     with I18n.get_current().use_locale(language):
         await callback.message.edit_text(
-            text=(f"🌀 <b>{user.first_name} عزیز، به ToonelVPN خوش آمدی</b> 🌐\n\n""⚡️ اتصال سریع، پایدار و مطمئن به اینترنت آزاد، با سرویس‌هایی متناسب با نیازت.\n\n""🚀 سرویس‌های متنوع برای استفاده روزمره\n""🌍 سرورهای مختلف برای انتخاب بهتر\n""🛡️ اتصال پایدار و مطمئن\n""💻 سازگار با دستگاه‌های مختلف\n""🔄 خرید، تمدید و مدیریت آسان سرویس\n""──────────────────\n\n""🎁 <b>برای شروع، می‌تونی اکانت تست رو امتحان کنی.</b>\n\n""✨ <b>یکی از گزینه‌های زیر رو انتخاب کن:</b> 👇"),
+            text=await get_welcome_message(session, user),
             reply_markup=main_menu_keyboard(
                 is_admin,
                 is_referral_available=config.shop.REFERRER_REWARD_ENABLED,
@@ -563,7 +542,6 @@ async def callback_main_menu(
     logger.info(f"User {user.tg_id} returned to main menu page.")
     await state.clear()
     await state.update_data({MAIN_MESSAGE_ID_KEY: callback.message.message_id})
-    is_admin = await IsAdmin()(user_id=user.tg_id)
     await callback.message.delete()
     await send_main_menu(
         bot=callback.bot,
@@ -609,7 +587,6 @@ async def redirect_to_main_menu(
         "✨ <b>یکی از گزینه‌های زیر رو انتخاب کن:</b> 👇"
     )
 
-    # If an FSM context is available, try to edit the existing main-menu message.
     if state is not None:
         try:
             main_message_id = await state.get_value(MAIN_MESSAGE_ID_KEY)
@@ -634,7 +611,6 @@ async def redirect_to_main_menu(
                 f"{user.tg_id}: {exception}"
             )
 
-    # No usable FSM/message ID: send a fresh main-menu message.
     try:
         await bot.send_message(
             chat_id=user.tg_id,
