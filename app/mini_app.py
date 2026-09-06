@@ -431,7 +431,13 @@ class MiniAppController:
         for item in transactions:
             items.append({"type": "payment", "icon": "💳", "title": "تراکنش پرداخت", "date": item["created_at"], "status": item["status"]})
         for item in wallet_transactions:
-            items.append({"type": "wallet", "icon": "💰", "title": item.get("description") or item["type"], "date": item["created_at"], "status": "credit" if item["amount"] > 0 else "debit"})
+            items.append({
+                "type": "wallet",
+                "icon": "💰",
+                "title": item.description or item.transaction_type,
+                "date": _iso(item.created_at),
+                "status": "credit" if item.amount > 0 else "debit",
+            })
         for item in support.get("tickets", []):
             items.append({"type": "support", "icon": "🎧", "title": f"تیکت پشتیبانی #{item['id']}", "date": item["updated_at"], "status": item["status"]})
         return sorted(items, key=lambda item: item.get("date") or "", reverse=True)
