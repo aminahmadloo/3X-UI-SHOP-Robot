@@ -27,6 +27,7 @@ from app.bot.utils.constants import (
 from app.config import DEFAULT_BOT_HOST, DEFAULT_LOCALES_DIR, Config, load_config
 from app.db.database import Database
 from app.mini_app import register as register_mini_app
+from app.miniapp.admin_management import register_admin_management
 
 
 async def on_shutdown(db: Database, bot: Bot, services: ServicesContainer) -> None:
@@ -132,6 +133,12 @@ async def main() -> None:
         bot_token=config.bot.TOKEN,
         admin_ids=config.bot.ADMINS,
         services=services_container,
+    )
+    register_admin_management(
+        app=app,
+        db=db,
+        bot_token=config.bot.TOKEN,
+        admin_ids=config.bot.ADMINS,
     )
     await commands.setup(bot)
     webhook_requests_handler = SimpleRequestHandler(dispatcher=dispatcher, bot=bot)
