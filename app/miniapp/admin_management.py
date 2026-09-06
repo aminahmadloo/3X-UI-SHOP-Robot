@@ -255,7 +255,6 @@ def register_admin_management(app: web.Application, db, bot_token: str, admin_id
     app.router.add_patch("/miniapp/api/admin/plans/{plan_id}", controller.update_plan)
     app.router.add_delete("/miniapp/api/admin/plans/{plan_id}", controller.delete_plan)
     async def admin_page(request: web.Request) -> web.Response:
-        await controller._require_admin(request)
         return web.Response(text=ADMIN_HTML, content_type="text/html")
     app.router.add_get("/miniapp/admin", admin_page)
 
