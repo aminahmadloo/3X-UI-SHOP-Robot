@@ -5,13 +5,12 @@ import re
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.i18n import gettext as _
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin, IsDev
 from app.bot.services import ServicesContainer
-from app.bot.services.welcome_message import get_welcome_message
 from app.bot.states.custom_service_pricing import CustomServicePricingStates
 from app.bot.states.connected_device_settings import ConnectedDeviceSettingsStates
 from app.bot.states.service_purchase_plan import ServicePurchasePlanStates
@@ -23,6 +22,7 @@ from app.db.models import (
     User,
     WelcomeMessageSettings,
 )
+from app.db.models.welcome_message_settings import DEFAULT_WELCOME_MESSAGE
 
 from .keyboard import (
     admin_tools_keyboard,
@@ -70,9 +70,7 @@ def _render_welcome_for_admin(template: str) -> str:
     return escape(template.replace("{first_name}", WELCOME_SAMPLE_NAME))
 
 
-def _welcome_keyboard():
-    from aiogram.types import InlineKeyboardMarkup
-
+def _welcome_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="✏️ ویرایش متن", callback_data="welcome_message:edit")],
@@ -90,7 +88,7 @@ def _welcome_keyboard():
 
 async def _welcome_text(session: AsyncSession) -> str:
     settings = await WelcomeMessageSettings.get_or_create(session)
-    status = "پیش‌فرض" if settings.message == settings.__class__.message.default.arg else "سفارشی"
+    status = "پیش‌فرض" if settings.message == DEFAULT_WELCOME_MESSAGE else "سفارشی"
     return (
         "📝 <b>مدیریت پیام خوش‌آمدگویی</b>\n\n"
         f"📊 وضعیت: <b>{status}</b>\n"
@@ -126,30 +124,12 @@ async def callback_admin_tools(callback: CallbackQuery, user: User) -> None:
             if button.callback_data == NavAdminTools.TEST_ACCOUNT_SETTINGS:
                 button.text = "🎁 مدیریت اکانت تست"
 
-    markup.inline_keyboard.insert(
-        -1,
-        [InlineKeyboardButton(text="📣 مدیریت تبلیغات", callback_data="advertising:menu")],
-    )
-    markup.inline_keyboard.insert(
-        -1,
-        [InlineKeyboardButton(text="📢 مدیریت کانال", callback_data="channel:menu")],
-    )
-    markup.inline_keyboard.insert(
-        -1,
-        [InlineKeyboardButton(text="🏆 مدیریت تخفیف سطوح مشتری", callback_data=NavAdminTools.CUSTOMER_LEVEL_SETTINGS)],
-    )
-    markup.inline_keyboard.insert(
-        -1,
-        [InlineKeyboardButton(text="🎁 تنظیمات معرفی به دوستان", callback_data=NavAdminTools.REFERRAL_SETTINGS)],
-    )
-    markup.inline_keyboard.insert(
-        -1,
-        [InlineKeyboardButton(text="📝 مدیریت پیام خوش‌آمدگویی", callback_data=NavAdminTools.WELCOME_MESSAGE_SETTINGS)],
-    )
-    markup.inline_keyboard.insert(
-        -1,
-        [InlineKeyboardButton(text="💰 مدیریت مبالغ کیف پول", callback_data="wallet_amounts")],
-    )
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="📣 مدیریت تبلیغات", callback_data="advertising:menu")])
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="📢 مدیریت کانال", callback_data="channel:menu")])
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="🏆 مدیریت تخفیف سطوح مشتری", callback_data=NavAdminTools.CUSTOMER_LEVEL_SETTINGS)])
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="🎁 تنظیمات معرفی به دوستان", callback_data=NavAdminTools.REFERRAL_SETTINGS)])
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="📝 مدیریت پیام خوش‌آمدگویی", callback_data=NavAdminTools.WELCOME_MESSAGE_SETTINGS)])
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="💰 مدیریت مبالغ کیف پول", callback_data="wallet_amounts")])
     await callback.message.edit_text(text=_("admin_tools:message:main"), reply_markup=markup)
 
 
@@ -171,8 +151,7 @@ async def edit_welcome_message(callback: CallbackQuery, state: FSMContext, sessi
         "🔤 برای نمایش نام کاربر از این متغیر استفاده کنید:\n"
         "<code>{first_name}</code>\n\n"
         "⚠️ فقط همین متغیر مجاز است.\n"
-        "📏 حداکثر طول: "
-        f"{MAX_WELCOME_MESSAGE_LENGTH:,} کاراکتر.\n\n"
+        f"📏 حداکثر طول: {MAX_WELCOME_MESSAGE_LENGTH:,} کاراکتر.\n\n"
         f"📝 <b>متن فعلی:</b>\n<blockquote>{escape(settings.message)}</blockquote>"
     )
 
@@ -191,7 +170,7 @@ async def prepare_welcome_message(message: Message, state: FSMContext) -> None:
         "👁 <b>پیش‌نمایش متن جدید</b>\n\n"
         f"<blockquote>{_render_welcome_for_admin(value)}</blockquote>\n\n"
         "اگر متن درست است، روی «ذخیره» بزنید.",
-        reply_markup=__import__("aiogram.types", fromlist=["InlineKeyboardMarkup"]).InlineKeyboardMarkup(
+        reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="💾 ذخیره", callback_data="welcome_message:save")],
                 [InlineKeyboardButton(text="❌ انصراف", callback_data="welcome_message:cancel")],
@@ -264,8 +243,6 @@ async def welcome_message_help(callback: CallbackQuery) -> None:
 @router.callback_query(F.data == "welcome_message:reset", IsAdmin())
 async def reset_welcome_message(callback: CallbackQuery, session: AsyncSession) -> None:
     settings = await WelcomeMessageSettings.get_or_create(session)
-    from app.db.models.welcome_message_settings import DEFAULT_WELCOME_MESSAGE
-
     settings.message = DEFAULT_WELCOME_MESSAGE
     await session.commit()
     await callback.answer("متن به حالت پیش‌فرض برگشت")
