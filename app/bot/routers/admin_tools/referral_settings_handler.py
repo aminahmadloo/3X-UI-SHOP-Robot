@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
 from app.bot.utils.navigation import NavAdminTools
-from app.db.models import DEFAULT_REFERRAL_SHARE_TEXT, ReferralSettings
+from app.db.models import ReferralSettings
+from app.db.models.referral_settings import DEFAULT_REFERRAL_SHARE_TEXT
 
 router = Router(name=__name__)
 
