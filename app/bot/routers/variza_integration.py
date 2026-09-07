@@ -8,7 +8,6 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import SubscriptionData
-from app.bot.payment_gateways.aban_gateway import AbanGateway
 from app.bot.payment_gateways.variza_gateway import VarizaGateway
 from app.bot.routers.main_menu import renew_service_handler
 from app.bot.routers.subscription import managed_payment_compat_handler, payment_handler
@@ -59,7 +58,6 @@ def _renewal_payment_methods_keyboard(
     gateway_factory,
 ) -> InlineKeyboardMarkup:
     """Renewal payment methods with the same smart card gateway choice as purchase."""
-    builder = InlineKeyboardMarkup(inline_keyboard=[])
     rows: list[list[InlineKeyboardButton]] = []
 
     # Preserve ordinary bank gateways (e.g. ZarinPal) exactly as before.
@@ -161,7 +159,7 @@ async def _wallet_variza_payment(
 
     try:
         pay_url = await variza_gateway.create_payment(data)
-    except Exception as exc:
+    except Exception:
         await callback.answer("❌ ایجاد لینک پرداخت واریزا برای شارژ کیف پول انجام نشد.", show_alert=True)
         return
 
