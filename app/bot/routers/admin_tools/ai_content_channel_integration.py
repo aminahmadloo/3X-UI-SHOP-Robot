@@ -122,22 +122,18 @@ def _patch_repost_handler() -> None:
             return
         original = callback
 
-        async def wrapped(*args, **kwargs):
-            session = kwargs.get("session")
-            callback_query = kwargs.get("callback")
-            if session is None or callback_query is None:
-                return await original(*args, **kwargs)
+        async def wrapped(callback_query, session, *args, **kwargs):
             try:
                 content_id = int(callback_query.data.rsplit(":", 1)[1])
                 content = await session.get(ChannelContent, content_id)
             except (AttributeError, IndexError, ValueError, TypeError):
                 content = None
             if not content or not _has_semantic_actions(content):
-                return await original(*args, **kwargs)
+                return await original(callback_query, session, *args, **kwargs)
             original_message_id = content.telegram_message_id
             content.telegram_message_id = None
             try:
-                return await original(*args, **kwargs)
+                return await original(callback_query, session, *args, **kwargs)
             finally:
                 content.telegram_message_id = original_message_id
 
@@ -157,10 +153,7 @@ def _patch_campaign_start() -> None:
             return
         original = callback
 
-        async def wrapped(*args, **kwargs):
-            command = kwargs.get("command")
-            session = kwargs.get("session")
-            user = kwargs.get("user")
+        async def wrapped(message, user, state, services, config, session, command, is_new_user, *args, **kwargs):
             if command and command.args and session and user:
                 payload = command.args.strip()
                 prefix = ChannelCampaignService.start_payload("")
@@ -168,9 +161,27 @@ def _patch_campaign_start() -> None:
                     slug = payload[len(prefix) :].strip()
                     campaign = await ChannelCampaignService.get_by_slug(session, slug)
                     if campaign and campaign.is_active_now():
-                        await ChannelCampaignService.register_start(session, campaign, user.tg_id, referrer_id=None, joined_channel=False, source="campaign")
+                        await ChannelCampaignService.register_start(
+                            session,
+                            campaign,
+                            user.tg_id,
+                            referrer_id=None,
+                            joined_channel=False,
+                            source="campaign",
+                        )
                         command.args = None
-            return await original(*args, **kwargs)
+            return await original(
+                message=message,
+                user=user,
+                state=state,
+                services=services,
+                config=config,
+                session=session,
+                command=command,
+                is_new_user=is_new_user,
+                *args,
+                **kwargs,
+            )
 
         wrapped._ai_campaign_start = True
         handler.callback = wrapped
@@ -251,7 +262,7 @@ def _patch_channel_details() -> None:
                         body = body[:3500].rstrip() + "\n\n… ادامه متن در پست کانال …"
                     lines.extend(["", "📝 <b>متن منتشرشده:</b>", body])
                 if content.content_type in {"photo", "video"}:
-                    lines.extend(["", f"🖼 رسانه: <b>{'دارد' if content.media_file_id else 'ندارد'}</b>"])
+                    lines.extend(["", f"🖼 رسانه: <b>{'دارد' if content.media_file_id else 'ندارد'}</b"])
             elif content.content_type == "poll":
                 lines.extend(["", "📊 <b>نظرسنجی:</b>", content.poll_question or "بدون سوال"])
                 if content.poll_options:
@@ -264,10 +275,14 @@ def _patch_channel_details() -> None:
                     lines.extend(["", "🔘 <b>دکمه‌ها:</b>", " • ".join(labels)])
 
             await callback_query.answer()
-            await callback_query.message.edit_text(
-                "\n".join(lines),
-                reply_markup=channel_management._content_menu(content),
-            )
+            try:
+                await callback_query.message.edit_text(
+                    "\n".join(lines),
+                    reply_markup=channel_management._content_menu(content),
+                )
+            except Exception as exc:
+                if "message is not modified" not in str(exc).lower():
+                    raise
 
         wrapped._ai_details_patch = True
         handler.callback = wrapped
