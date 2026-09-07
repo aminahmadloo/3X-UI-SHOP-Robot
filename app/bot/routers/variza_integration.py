@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 
 from aiogram import F
 from aiogram.fsm.context import FSMContext
@@ -178,6 +179,12 @@ async def _wallet_variza_payment(
         await callback.answer("⏳ یک درخواست پرداخت شما در حال بررسی است.", show_alert=True)
         return
 
+    state_data = await state.get_data()
+    nonce = str(state_data.get("wallet_variza_nonce") or "").strip()
+    if not nonce:
+        nonce = secrets.token_urlsafe(12)
+        await state.update_data(wallet_variza_nonce=nonce)
+
     data = SubscriptionData(
         state=NavSubscription.CONFIG_NAME,
         is_extend=False,
@@ -188,7 +195,7 @@ async def _wallet_variza_payment(
         price=amount,
         plan_id=0,
         volume_gb=0,
-        config_name="wallet_topup",
+        config_name=f"wallet_topup:{nonce}",
         payment_kind="wallet_topup",
     )
 
