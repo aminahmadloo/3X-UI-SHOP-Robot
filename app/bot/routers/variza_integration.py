@@ -52,6 +52,12 @@ def _aban_configured() -> bool:
     )
 
 
+def _zarinpal_enabled() -> bool:
+    return os.getenv("SHOP_PAYMENT_ZARINPAL_ENABLED", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+
 def _renewal_payment_methods_keyboard(
     subscription_id: int,
     plan_id: int,
@@ -61,9 +67,12 @@ def _renewal_payment_methods_keyboard(
     """Renewal payment methods with the same smart card gateway choice as purchase."""
     rows: list[list[InlineKeyboardButton]] = []
 
-    # Preserve ordinary bank gateways (e.g. ZarinPal) exactly as before.
+    # Respect the same ZarinPal feature flag used by the payment gateway factory.
+    # This prevents a stale/registered gateway from leaking into the renewal UI.
     for gateway in gateway_factory.get_gateways():
         if gateway.callback == "pay_aban":
+            continue
+        if gateway.callback == "pay_zarinpal" and not _zarinpal_enabled():
             continue
         rows.append([InlineKeyboardButton(
             text=f"🏦 {gateway.name} | {price:,} تومان",
@@ -101,10 +110,10 @@ def _wallet_payment_methods_keyboard(language: str, amount: int) -> InlineKeyboa
 
     rows: list[list[InlineKeyboardButton]] = []
 
-    if os.getenv("SHOP_PAYMENT_ZARINPAL_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}:
+    if _zarinpal_enabled():
         rows.append([InlineKeyboardButton(
             text=gateway_label,
-            callback_data=f"wallet:method:gateway:{amount}:pay_zarinpal",
+            callback_data=f"wallet:method:gateway:{amount}",
         )])
 
     if _aban_configured() or VarizaGateway.is_available():
@@ -155,6 +164,25 @@ async def _wallet_card_gateway_choice(
         f"💰 مبلغ شارژ: <b>{amount:,} تومان</b>\n\n"
         "لطفاً یکی از درگاه‌های کارت به کارت را انتخاب کنید:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
+def _wallet_variza_invoice_text(data: SubscriptionData, slug: str) -> str:
+    tracking_code = VarizaGateway.tracking_code_for_order(data)
+    return (
+        "💳 <b>فاکتور کارت به کارت هوشمند واریزا</b>\n"
+        "━━━━━━━━━━━━━━━\n"
+        "نوع پرداخت: <b>شارژ کیف پول</b>\n"
+        f"کد پیگیری: <code>{tracking_code}</code>\n"
+        f"شماره فاکتور واریزا: <code>{slug}</code>\n"
+        f"مبلغ شارژ: <code>{data.price:,.0f}</code> تومان\n"
+        "مبلغ قابل واریز: <b>دقیقاً مطابق مبلغ نمایش‌داده‌شده در صفحه واریزا</b>\n"
+        "مهلت پرداخت: <b>طبق زمان اعلام‌شده در صفحه واریزا</b>\n"
+        "━━━━━━━━━━━━━━━\n\n"
+        "⚠️ <b>مهم:</b> مبلغ قابل پرداخت را <b>دقیقاً همان‌طور که در صفحه واریزا نمایش داده می‌شود</b> وارد کنید.\n"
+        "در صورت واریز مبلغ متفاوت، تطبیق و تأیید خودکار پرداخت ممکن است انجام نشود.\n\n"
+        "برای پرداخت، روی دکمه <b>«💳 پرداخت»</b> بزنید.\n"
+        "پس از تأیید واریزا، مبلغ به‌صورت خودکار به کیف پول شما اضافه می‌شود."
     )
 
 
@@ -209,12 +237,9 @@ async def _wallet_variza_payment(
     await state.update_data(subscription_data=data.serialize())
     await callback.answer()
     await callback.message.edit_text(
-        "💳 <b>شارژ کیف پول با درگاه واریزا</b>\n\n"
-        f"💰 مبلغ شارژ: <b>{amount:,} تومان</b>\n"
-        f"🔖 شماره فاکتور واریزا: <code>{slug}</code>\n\n"
-        "برای تکمیل پرداخت روی دکمه زیر بزنید:",
+        _wallet_variza_invoice_text(data, slug),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💳 پرداخت با واریزا", url=pay_url)],
+            [InlineKeyboardButton(text="💳 پرداخت", url=pay_url)],
             [InlineKeyboardButton(text="🔙 تغییر روش پرداخت", callback_data=NavMain.WALLET)],
         ]),
     )
