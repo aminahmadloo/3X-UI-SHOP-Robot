@@ -9,9 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import SubscriptionData
+from app.bot.payment_gateways.aban_gateway import AbanGateway
 from app.bot.payment_gateways.variza_gateway import VarizaGateway
 from app.bot.utils.navigation import NavSubscription
 from app.db.models import ServicePurchasePlan, Transaction, User
+from app.bot.utils.constants import TransactionStatus
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -63,7 +65,7 @@ async def _resolve_subscription(
 
     result = await session.execute(
         select(Transaction)
-        .where(Transaction.tg_id == user.tg_id, Transaction.status == "pending")
+        .where(Transaction.tg_id == user.tg_id, Transaction.status == TransactionStatus.PENDING)
         .order_by(Transaction.created_at.desc())
     )
     for transaction in result.scalars().all():
@@ -71,6 +73,61 @@ async def _resolve_subscription(
         if restored is not None and restored.plan_id == plan_id:
             return restored
     return None
+
+
+def gateway_choice_text(data: SubscriptionData, payable_toman: float | int | None = None) -> str:
+    payable = payable_toman if payable_toman is not None else data.price
+    action = "تمدید سرویس" if data.is_extend else "خرید سرویس"
+    return (
+        "💳 <b>انتخاب درگاه پرداخت کارت به کارت هوشمند</b>\n"
+        "━━━━━━━━━━━━━━━\n"
+        f"نوع سفارش: <b>{action}</b>\n"
+        f"نام کانفیگ: <code>{data.config_name}</code>\n"
+        f"حجم: <code>{data.volume_gb} گیگ</code>\n"
+        f"مدت: <code>{data.duration} روز</code>\n"
+        f"مبلغ سفارش: <code>{data.price:,.0f}</code> تومان\n"
+        f"مبلغ قابل پرداخت: <code>{float(payable):,.0f}</code> تومان\n"
+        "━━━━━━━━━━━━━━━\n\n"
+        "لطفاً یکی از درگاه‌های کارت به کارت را انتخاب کنید."
+    )
+
+
+def gateway_choice_markup(aban_invoice_id: str, plan_id: int) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text="💳 پرداخت با درگاه آبان گیت", callback_data=f"cardgateway:aban:{aban_invoice_id}")],
+    ]
+    if VarizaGateway.is_available():
+        rows.append([InlineKeyboardButton(text="💳 پرداخت با درگاه واریزا", callback_data=f"variza:pay:{plan_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _aban_invoice_text(data: SubscriptionData, invoice_id: str, order_id: str, payable_toman: float | int) -> str:
+    if data.is_extend:
+        plan_volume = data.volume_gb
+        plan_duration = data.duration
+        volume_label = "حجم افزوده"
+        duration_label = "زمان افزوده"
+    else:
+        plan_volume = data.volume_gb
+        plan_duration = data.duration
+        volume_label = "حجم"
+        duration_label = "مدت"
+
+    return (
+        "💳 <b>فاکتور کارت به کارت هوشمند آبان گیت</b>\n"
+        "━━━━━━━━━━━━━━━\n"
+        f"کد پیگیری: <code>{order_id}</code>\n"
+        f"شماره فاکتور آبان گیت: <code>{invoice_id}</code>\n"
+        f"نام کانفیگ: <code>{data.config_name}</code>\n"
+        f"{volume_label}: <code>{plan_volume} گیگ</code>\n"
+        f"{duration_label}: <code>{plan_duration} روز</code>\n"
+        f"مبلغ سفارش: <code>{data.price:,.0f}</code> تومان\n"
+        f"مبلغ قابل پرداخت: <code>{float(payable_toman):,.0f}</code> تومان\n"
+        "مهلت پرداخت: <b>طبق زمان اعلام‌شده در صفحه آبان گیت</b>\n"
+        "━━━━━━━━━━━━━━━\n\n"
+        "برای پرداخت، روی دکمه <b>«💳 پرداخت»</b> بزنید.\n"
+        "پس از تأیید آبان گیت، شارژ یا سفارش شما به‌صورت خودکار انجام می‌شود."
+    )
 
 
 def _invoice_text(data: SubscriptionData, slug: str) -> str:
@@ -108,6 +165,90 @@ def _invoice_text(data: SubscriptionData, slug: str) -> str:
     )
 
 
+@router.callback_query(F.data.regexp(r"^cardgateway:aban:[^:]+$"))
+async def show_aban_invoice(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    aban_gateway: AbanGateway,
+) -> None:
+    invoice_id = (callback.data or "").rsplit(":", 1)[-1]
+    try:
+        async with session.bind.begin() if False else _noop_context():
+            pass
+    except Exception:
+        pass
+
+    async with session as db:
+        transaction = await Transaction.get_by_id(session=db, payment_id=invoice_id)
+        if transaction is None or transaction.tg_id != user.tg_id or transaction.status != TransactionStatus.PENDING:
+            await callback.answer("❌ فاکتور آبان گیت معتبر نیست یا منقضی شده است.", show_alert=True)
+            return
+        data = _restore_subscription(transaction.subscription, user.tg_id)
+        if data is None:
+            await callback.answer("❌ اطلاعات سفارش معتبر نیست.", show_alert=True)
+            return
+
+    invoice = await aban_gateway._get_invoice(invoice_id)
+    order_id = str(invoice.get("order_id") or "").strip()
+    payable_toman = invoice.get("payable_toman")
+    if not order_id or payable_toman is None:
+        await callback.answer("❌ اطلاعات فاکتور آبان گیت ناقص است.", show_alert=True)
+        return
+
+    pay_url = aban_gateway._payment_url(invoice_id, invoice)
+    await callback.answer()
+    await callback.message.edit_text(
+        _aban_invoice_text(data, invoice_id, order_id, payable_toman),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 پرداخت", url=pay_url)],
+            [InlineKeyboardButton(text="🔙 انتخاب درگاه دیگر", callback_data=f"cardgateway:choice:{data.plan_id}")],
+        ]),
+    )
+
+
+@router.callback_query(F.data.regexp(r"^cardgateway:choice:\d+$"))
+async def back_to_gateway_choice(
+    callback: CallbackQuery,
+    user: User,
+    state: FSMContext,
+    session: AsyncSession,
+    aban_gateway: AbanGateway,
+) -> None:
+    plan_id = int((callback.data or "").rsplit(":", 1)[-1])
+    data = await _resolve_subscription(user, plan_id, state, session)
+    if data is None:
+        await callback.answer("❌ اطلاعات سفارش منقضی شده است.", show_alert=True)
+        return
+    async with session as db:
+        result = await db.execute(
+            select(Transaction)
+            .where(
+                Transaction.tg_id == user.tg_id,
+                Transaction.status == TransactionStatus.PENDING,
+                Transaction.subscription == data.serialize(),
+            )
+            .order_by(Transaction.created_at.desc())
+        )
+        transaction = result.scalars().first()
+    payable = data.price
+    invoice_id = transaction.payment_id if transaction else ""
+    if invoice_id:
+        try:
+            invoice = await aban_gateway._get_invoice(invoice_id)
+            payable = invoice.get("payable_toman", payable)
+        except Exception:
+            pass
+    if not invoice_id:
+        await callback.answer("❌ فاکتور آبان گیت پیدا نشد.", show_alert=True)
+        return
+    await callback.answer()
+    await callback.message.edit_text(
+        gateway_choice_text(data, payable),
+        reply_markup=gateway_choice_markup(invoice_id, data.plan_id),
+    )
+
+
 @router.callback_query(F.data.regexp(r"^variza:pay:\d+$"))
 async def create_variza_payment(
     callback: CallbackQuery,
@@ -139,8 +280,8 @@ async def create_variza_payment(
             _invoice_text(data, slug),
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="💳 پرداخت با درگاه واریزا", url=pay_url)],
-                    [InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"variza:back:{plan_id}")],
+                    [InlineKeyboardButton(text="💳 پرداخت", url=pay_url)],
+                    [InlineKeyboardButton(text="🔙 انتخاب درگاه دیگر", callback_data=f"cardgateway:choice:{plan_id}")],
                 ]
             ),
         )
@@ -149,6 +290,10 @@ async def create_variza_payment(
         await callback.answer("❌ خطا در ایجاد پرداخت واریزا.", show_alert=True)
 
 
-@router.callback_query(F.data.regexp(r"^variza:back:\d+$"))
-async def variza_back(callback: CallbackQuery) -> None:
-    await callback.answer("لطفاً روش پرداخت موردنظر را از فاکتور قبلی انتخاب کنید.", show_alert=True)
+def _noop_context():
+    class _Noop:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return False
+    return _Noop()
