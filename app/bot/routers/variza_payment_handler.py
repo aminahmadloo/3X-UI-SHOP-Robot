@@ -60,7 +60,11 @@ async def _resolve_subscription(user: User, plan_id: int, state: FSMContext, ses
 
     result = await session.execute(
         select(Transaction)
-        .where(Transaction.tg_id == user.tg_id, Transaction.status == TransactionStatus.PENDING)
+        .where(
+            Transaction.tg_id == user.tg_id,
+            Transaction.status == TransactionStatus.PENDING,
+            Transaction.gateway == "variza",
+        )
         .order_by(Transaction.created_at.desc())
     )
     for transaction in result.scalars().all():

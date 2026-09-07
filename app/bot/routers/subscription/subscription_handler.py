@@ -217,6 +217,57 @@ async def _start_plan_purchase(
         )
 
 
+@router.callback_query(F.data.regexp(r"^subscription_back_config_name:\d+$"))
+async def callback_subscription_back_to_config_name(
+    callback: CallbackQuery,
+    state: FSMContext,
+) -> None:
+    data = await state.get_data()
+    packed = data.get("subscription_data")
+
+    if not isinstance(packed, dict):
+        await callback.answer(
+            "اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید.",
+            show_alert=True,
+        )
+        await state.clear()
+        return
+
+    callback_data = SubscriptionData(
+        state=NavSubscription.CONFIG_NAME,
+        is_extend=packed.get("is_extend", False),
+        is_change=packed.get("is_change", False),
+        user_id=packed.get("user_id", callback.from_user.id),
+        devices=packed.get("devices", 0),
+        duration=packed.get("duration", 0),
+        price=packed.get("price", 0),
+        original_price=packed.get("original_price", 0),
+        discount_percent=packed.get("discount_percent", 0),
+        discount_level_title=packed.get("discount_level_title", ""),
+        plan_id=packed.get("plan_id", 0),
+        volume_gb=packed.get("volume_gb", 0),
+        config_name=packed.get("config_name", ""),
+    )
+
+    if callback_data.user_id != callback.from_user.id:
+        await callback.answer(
+            "خطا در اطلاعات سفارش.",
+            show_alert=True,
+        )
+        return
+
+    await state.set_state(PurchaseConfigState.waiting_config_name)
+    await callback.answer()
+
+    await callback.message.edit_text(
+        "⚙️ <b>نام کانفیگ</b>\n\n"
+        f"نام خودکار:\n<code>{callback_data.config_name}</code>\n\n"
+        "یا نام دلخواه خود را وارد کنید <b>(فقط انگلیسی)</b>:\n\n"
+        "نام انتخابی باید فقط شامل حروف انگلیسی، عدد، "
+        "<code>_</code> یا <code>-</code> باشد.",
+        reply_markup=config_name_keyboard(callback_data),
+    )
+
 @router.callback_query(F.data.regexp(r"^subscription_plan:\d+$"))
 async def callback_subscription_plan_selected(
     callback: CallbackQuery,
@@ -693,6 +744,30 @@ async def callback_managed_payment_back(
 ) -> None:
     data = await state.get_data()
     packed = data.get("subscription_data")
+
+    # Some payment flows store SubscriptionData using serialize(),
+    # while mp_back historically expected the packed dict form.
+    # Normalize the serialized form here so both flows work.
+    if isinstance(packed, str):
+        try:
+            restored = SubscriptionData.deserialize(packed)
+            packed = {
+                "is_extend": restored.is_extend,
+                "is_change": restored.is_change,
+                "user_id": restored.user_id,
+                "devices": restored.devices,
+                "duration": restored.duration,
+                "price": restored.price,
+                "original_price": restored.original_price,
+                "discount_percent": restored.discount_percent,
+                "discount_level_title": restored.discount_level_title,
+                "plan_id": restored.plan_id,
+                "volume_gb": restored.volume_gb,
+                "config_name": restored.config_name,
+                "subscription_id": restored.subscription_id,
+            }
+        except Exception:
+            packed = None
 
     if not isinstance(packed, dict):
         await callback.answer(

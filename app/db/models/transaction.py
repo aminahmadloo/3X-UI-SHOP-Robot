@@ -36,6 +36,7 @@ class Transaction(Base):
     tg_id: Mapped[int] = mapped_column(ForeignKey("users.tg_id"), nullable=False)
     payment_id: Mapped[str] = mapped_column(String(length=64), unique=True, nullable=False)
     subscription: Mapped[str] = mapped_column(String(length=255), nullable=False)
+    gateway: Mapped[str | None] = mapped_column(String(length=32), nullable=True)
     status: Mapped[TransactionStatus] = mapped_column(
         Enum(TransactionStatus, values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
@@ -51,7 +52,7 @@ class Transaction(Base):
     def __repr__(self) -> str:
         return (
             f"<Transaction(id={self.id}, tg_id={self.tg_id}, payment_id='{self.payment_id}', "
-            f"subscription='{self.subscription}', status='{self.status}', "
+            f"subscription='{self.subscription}', gateway='{self.gateway}', status='{self.status}', "
             f"created_at={self.created_at}, updated_at={self.updated_at})>"
         )
 

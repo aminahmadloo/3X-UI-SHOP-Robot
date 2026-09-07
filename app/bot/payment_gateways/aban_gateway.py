@@ -102,6 +102,7 @@ class AbanGateway(PaymentGateway):
                     Transaction.tg_id == data.user_id,
                     Transaction.status == TransactionStatus.PENDING,
                     Transaction.subscription == serialized,
+                Transaction.gateway == "aban",
                 )
                 .order_by(Transaction.created_at.desc())
             )
@@ -122,7 +123,25 @@ class AbanGateway(PaymentGateway):
 
     async def _reconcile_existing_invoice(self, transaction: Transaction) -> str | None:
         invoice_id = transaction.payment_id
-        invoice = await self._get_invoice(invoice_id)
+        try:
+            invoice = await self._get_invoice(invoice_id)
+        except RuntimeError as exc:
+            message = str(exc)
+            if "HTTP 404" in message and "invoice_not_found" in message:
+                async with self.session() as db:
+                    await Transaction.update(
+                        session=db,
+                        payment_id=invoice_id,
+                        status=TransactionStatus.CANCELED,
+                    )
+                logger.warning(
+                    "AbanGateway invoice %s no longer exists; "
+                    "marking local transaction canceled.",
+                    invoice_id,
+                )
+                return None
+            raise
+
         remote_status = str(invoice.get("status") or "").strip().lower()
 
         if remote_status == "paid":
@@ -199,6 +218,7 @@ class AbanGateway(PaymentGateway):
                     tg_id=data.user_id,
                     subscription=data.serialize(),
                     payment_id=invoice_id,
+                    gateway="aban",
                     status=TransactionStatus.PENDING,
                 )
                 if transaction is None:

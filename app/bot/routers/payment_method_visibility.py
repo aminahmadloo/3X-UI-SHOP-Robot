@@ -163,8 +163,15 @@ def _managed_keyboard(plan_id: int, price: int, gateways: list[PaymentGateway], 
             builder.row(InlineKeyboardButton(text=f"💰 کیف پول | {price:,} تومان", callback_data=f"mp_wallet:{plan_id}"))
         elif (gateway := gateway_map.get(key)) is not None:
             builder.row(InlineKeyboardButton(text=f"{gateway.name} | {price:,} تومان", callback_data=f"mp:{key}:{plan_id}"))
-    builder.row(InlineKeyboardButton(text="🔙", callback_data=back_callback))
-    builder.row(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU))
+    builder.row(InlineKeyboardButton(
+        text="◀️ نام کانفیگ",
+        callback_data=back_callback,
+    ))
+    builder.row(InlineKeyboardButton(
+        text="🔙 بازگشت به منوی اصلی",
+        callback_data=NavMain.MAIN_MENU,
+        style="danger",
+    ))
     return builder.as_markup()
 
 
@@ -292,9 +299,9 @@ def install() -> None:
     renew_service_handler._payment_methods_keyboard = _main_renewal
     renew_service_handler._payment_link_keyboard = _renewal_payment_link_keyboard
     subscription_handler.payment_method_keyboard = _payment_keyboard
-    subscription_handler.managed_payment_method_keyboard = lambda p, price, gateways: _managed_keyboard(p, price, gateways, f"subscription_back_plan:{p}")
+    subscription_handler.managed_payment_method_keyboard = lambda p, price, gateways: _managed_keyboard(p, price, gateways, f"subscription_back_config_name:{p}")
     subscription_keyboard.payment_method_keyboard = _payment_keyboard
-    subscription_keyboard.managed_payment_method_keyboard = lambda p, price, gateways: _managed_keyboard(p, price, gateways, f"subscription_back_plan:{p}")
+    subscription_keyboard.managed_payment_method_keyboard = lambda p, price, gateways: _managed_keyboard(p, price, gateways, f"subscription_back_config_name:{p}")
     subscription_keyboard.managed_payment_method_keyboard_traffic = lambda sid, p, price, gateways: _managed_keyboard(p, price, gateways, f"traffic:add:{sid}")
     subscription_keyboard.managed_payment_method_keyboard_renewal = lambda p, price, gateways: _managed_keyboard(p, price, gateways, f"renewal:service:{p}")
     wallet_handler.payment_method_keyboard = _wallet_keyboard

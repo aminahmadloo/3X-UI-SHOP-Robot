@@ -150,6 +150,7 @@ class ZarinPal(PaymentGateway):
                 tg_id=data.user_id,
                 subscription=data.serialize(),
                 payment_id=authority,
+                gateway="zarinpal",
                 status=TransactionStatus.PENDING,
             )
             if transaction is None:

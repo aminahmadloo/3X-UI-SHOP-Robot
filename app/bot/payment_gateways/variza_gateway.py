@@ -217,6 +217,7 @@ class VarizaGateway(PaymentGateway):
                 Transaction.tg_id == data.user_id,
                 Transaction.status == TransactionStatus.PENDING,
                 Transaction.subscription == serialized,
+                Transaction.gateway == "variza",
             ).order_by(Transaction.created_at.desc()))
             return result.scalars().first()
 
@@ -277,7 +278,14 @@ class VarizaGateway(PaymentGateway):
             if self._to_toman(response_amount) != amount:
                 raise RuntimeError("Variza returned an unexpected payment amount")
             async with self.session() as db:
-                transaction = await Transaction.create(session=db, tg_id=data.user_id, subscription=data.serialize(), payment_id=slug, status=TransactionStatus.PENDING)
+                transaction = await Transaction.create(
+                session=db,
+                tg_id=data.user_id,
+                subscription=data.serialize(),
+                payment_id=slug,
+                gateway="variza",
+                status=TransactionStatus.PENDING,
+            )
                 if transaction is None:
                     raise RuntimeError(f"Could not create ToonelVPN transaction for Variza {slug}")
             logger.info("Variza payment created: slug=%s tg_id=%s amount=%s order_key=%s", slug, data.user_id, amount, order_key)
@@ -288,6 +296,7 @@ class VarizaGateway(PaymentGateway):
             result = await db.execute(select(Transaction).where(
                 Transaction.status == TransactionStatus.PENDING,
                 Transaction.subscription == serialized,
+                Transaction.gateway == "variza",
                 Transaction.payment_id != current_payment_id,
             ))
             siblings = list(result.scalars().all())
