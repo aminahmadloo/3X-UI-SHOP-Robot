@@ -16,6 +16,7 @@ from app.bot import filters, middlewares, routers, services, tasks
 from app.bot.middlewares import MaintenanceMiddleware
 from app.bot.models import ServicesContainer
 from app.bot.payment_gateways import GatewayFactory
+from app.bot.payment_gateways.variza_gateway import VarizaGateway
 from app.bot.utils import commands
 from app.bot.utils.constants import (
     BOT_STARTED_TAG,
@@ -111,6 +112,19 @@ async def main() -> None:
         i18n=i18n,
         services=services_container,
     )
+
+    # Variza is deliberately isolated from GatewayFactory. Existing gateway
+    # registration, routing and visibility continue to work unchanged.
+    variza_gateway = VarizaGateway(
+        app=app,
+        config=config,
+        session=db.session,
+        storage=storage,
+        bot=bot,
+        i18n=i18n,
+        services=services_container,
+    )
+
     dispatcher = Dispatcher(
         db=db,
         storage=storage,
@@ -118,6 +132,7 @@ async def main() -> None:
         bot=bot,
         services=services_container,
         gateway_factory=gateway_factory,
+        variza_gateway=variza_gateway,
         redis=storage.redis,
         i18n=i18n,
     )
