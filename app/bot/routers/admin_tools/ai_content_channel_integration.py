@@ -251,7 +251,7 @@ def _patch_channel_details() -> None:
                         body = body[:3500].rstrip() + "\n\n… ادامه متن در پست کانال …"
                     lines.extend(["", "📝 <b>متن منتشرشده:</b>", body])
                 if content.content_type in {"photo", "video"}:
-                    lines.extend(["", f"🖼 رسانه: <b>{'دارد' if content.media_file_id else 'ندارد'}</b"])
+                    lines.extend(["", f"🖼 رسانه: <b>{'دارد' if content.media_file_id else 'ندارد'}</b>"])
             elif content.content_type == "poll":
                 lines.extend(["", "📊 <b>نظرسنجی:</b>", content.poll_question or "بدون سوال"])
                 if content.poll_options:
