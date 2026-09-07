@@ -11,6 +11,7 @@ from app.bot.utils.navigation import (
     NavSubscription,
     NavSupport,
 )
+from app.db.models import ChannelContent
 
 CTA_CALLBACKS = {
     "BUY": NavSubscription.BUY.value,
@@ -44,20 +45,24 @@ def _patch_ai_settings() -> None:
     ai_content_handler._settings = settings
 
 
+def _build_bot_deep_link(bot_username: str, start_parameter: str) -> str:
+    """Build a Telegram bot deep link without introducing callback buttons."""
+    return f"https://t.me/{bot_username}?start={start_parameter}"
+
+
+def _has_semantic_actions(content: ChannelContent) -> bool:
+    return any(
+        isinstance(item, dict) and str(item.get("action") or "").strip()
+        for item in (content.buttons or [])
+    )
+
+
 def _patch_publisher() -> None:
     from app.bot.routers.admin_tools import channel_management_handler as channel_management
 
     original_publish = channel_management._publish_content
-    original_button = channel_management.InlineKeyboardButton
     if getattr(original_publish, "_ai_semantic_cta", False):
         return
-
-    def patched_button(*args, **kwargs):
-        url = kwargs.get("url")
-        if isinstance(url, str) and url.startswith(AI_ACTION_PREFIX):
-            kwargs.pop("url", None)
-            kwargs["callback_data"] = url[len(AI_ACTION_PREFIX) :]
-        return original_button(*args, **kwargs)
 
     async def publish_content(bot, session, content, channel):
         transformed: list[dict[str, str]] = []
@@ -72,9 +77,12 @@ def _patch_publisher() -> None:
             if not label:
                 continue
 
-            callback_data = CTA_CALLBACKS.get(action)
-            if callback_data:
-                transformed.append({"label": label, "url": f"{AI_ACTION_PREFIX}{callback_data}"})
+            start_parameter = CTA_CALLBACKS.get(action)
+            if start_parameter:
+                if bot_username is None:
+                    bot_username = (await bot.get_me()).username
+                if bot_username:
+                    transformed.append({"label": label, "url": _build_bot_deep_link(bot_username, start_parameter)})
                 continue
 
             if action.startswith("CAMPAIGN:"):
@@ -85,30 +93,53 @@ def _patch_publisher() -> None:
                         if bot_username is None:
                             bot_username = (await bot.get_me()).username
                         if bot_username:
-                            transformed.append(
-                                {
-                                    "label": label,
-                                    "url": ChannelCampaignService.build_link(bot_username, slug),
-                                }
-                            )
+                            transformed.append({"label": label, "url": ChannelCampaignService.build_link(bot_username, slug)})
                 continue
 
-            # Preserve manually authored legacy URL buttons. AI-generated
-            # content is restricted to semantic actions by AIContentService.
             if url.startswith(("https://", "http://", "tg://")):
                 transformed.append({"label": label, "url": url})
 
         old_buttons = content.buttons
-        channel_management.InlineKeyboardButton = patched_button
         try:
             content.buttons = transformed
             return await original_publish(bot, session, content, channel)
         finally:
             content.buttons = old_buttons
-            channel_management.InlineKeyboardButton = original_button
 
     publish_content._ai_semantic_cta = True
     channel_management._publish_content = publish_content
+
+
+def _patch_repost_handler() -> None:
+    """Force AI semantic reposts through the publisher instead of copyMessage."""
+    from app.bot.routers.admin_tools import channel_management_handler as channel_management
+
+    for handler in channel_management.router.callback_query.handlers:
+        callback = getattr(handler, "callback", None)
+        if getattr(callback, "__name__", "") != "repost_content":
+            continue
+        if getattr(callback, "_ai_repost_safe", False):
+            return
+        original = callback
+
+        async def wrapped(callback_query, session, *args, **kwargs):
+            try:
+                content_id = int(callback_query.data.rsplit(":", 1)[1])
+                content = await session.get(ChannelContent, content_id)
+            except (AttributeError, IndexError, ValueError, TypeError):
+                content = None
+            if not content or not _has_semantic_actions(content):
+                return await original(callback_query, session, *args, **kwargs)
+            original_message_id = content.telegram_message_id
+            content.telegram_message_id = None
+            try:
+                return await original(callback_query, session, *args, **kwargs)
+            finally:
+                content.telegram_message_id = original_message_id
+
+        wrapped._ai_repost_safe = True
+        handler.callback = wrapped
+        return
 
 
 def _patch_campaign_start() -> None:
@@ -120,13 +151,9 @@ def _patch_campaign_start() -> None:
             continue
         if getattr(callback, "_ai_campaign_start", False):
             return
-
         original = callback
 
-        async def wrapped(*args, **kwargs):
-            command = kwargs.get("command")
-            session = kwargs.get("session")
-            user = kwargs.get("user")
+        async def wrapped(message, user, state, services, config, session, command, is_new_user, *args, **kwargs):
             if command and command.args and session and user:
                 payload = command.args.strip()
                 prefix = ChannelCampaignService.start_payload("")
@@ -143,7 +170,18 @@ def _patch_campaign_start() -> None:
                             source="campaign",
                         )
                         command.args = None
-            return await original(*args, **kwargs)
+            return await original(
+                message=message,
+                user=user,
+                state=state,
+                services=services,
+                config=config,
+                session=session,
+                command=command,
+                is_new_user=is_new_user,
+                *args,
+                **kwargs,
+            )
 
         wrapped._ai_campaign_start = True
         handler.callback = wrapped
@@ -154,11 +192,7 @@ def _remove_duplicate_channel_menu() -> None:
     from app.bot.routers.admin_tools import ai_content_handler
 
     observer = ai_content_handler.router.callback_query
-    observer.handlers[:] = [
-        handler
-        for handler in observer.handlers
-        if getattr(handler.callback, "__name__", "") != "channel_menu_with_ai"
-    ]
+    observer.handlers[:] = [handler for handler in observer.handlers if getattr(handler.callback, "__name__", "") != "channel_menu_with_ai"]
 
 
 def _patch_canonical_channel_menu() -> None:
@@ -171,12 +205,7 @@ def _patch_canonical_channel_menu() -> None:
     def menu_with_ai(*args, **kwargs):
         markup = original_menu(*args, **kwargs)
         rows = list(markup.inline_keyboard)
-        ai_row = [
-            channel_management.InlineKeyboardButton(
-                text=AI_MENU_BUTTON,
-                callback_data="channel:ai_content",
-            )
-        ]
+        ai_row = [channel_management.InlineKeyboardButton(text=AI_MENU_BUTTON, callback_data="channel:ai_content")]
         insert_at = max(0, len(rows) - 1)
         rows.insert(insert_at, ai_row)
         return channel_management.InlineKeyboardMarkup(inline_keyboard=rows)
@@ -185,12 +214,89 @@ def _patch_canonical_channel_menu() -> None:
     channel_management._menu = menu_with_ai
 
 
+def _patch_channel_details() -> None:
+    """Make published-content details display stored content reliably."""
+    from app.bot.routers.admin_tools import channel_management_handler as channel_management
+
+    for handler in channel_management.router.callback_query.handlers:
+        callback = getattr(handler, "callback", None)
+        if getattr(callback, "__name__", "") != "content_details":
+            continue
+        if getattr(callback, "_ai_details_patch", False):
+            return
+        original = callback
+
+        async def wrapped(callback_query, session, *args, **kwargs):
+            try:
+                content_id = int(callback_query.data.rsplit(":", 1)[1])
+                content = await session.get(ChannelContent, content_id)
+            except (AttributeError, IndexError, ValueError, TypeError):
+                content = None
+
+            if not content:
+                return await original(callback_query, session, *args, **kwargs)
+
+            status = {
+                "draft": "📂 پیش‌نویس",
+                "scheduled": "📅 زمان‌بندی‌شده",
+                "published": "🟢 منتشرشده",
+            }.get(content.status, content.status)
+            lines = [
+                f"📄 <b>پست #{content.id}</b>",
+                "",
+                f"🏷 عنوان: <b>{content.title or 'بدون عنوان'}</b>",
+                f"📦 نوع: <b>{content.content_type}</b>",
+                f"📌 وضعیت: {status}",
+            ]
+            if content.telegram_message_id:
+                lines.append(f"🆔 پیام کانال: <code>{content.telegram_message_id}</code>")
+            if content.published_at:
+                lines.append(f"📤 انتشار: <b>{content.published_at:%Y-%m-%d %H:%M}</b>")
+            if content.scheduled_at:
+                lines.append(f"📅 زمان: <b>{content.scheduled_at:%Y-%m-%d %H:%M}</b>")
+
+            if content.content_type in {"text", "photo", "video"}:
+                body = (content.body or "").strip()
+                if body:
+                    if len(body) > 3500:
+                        body = body[:3500].rstrip() + "\n\n… ادامه متن در پست کانال …"
+                    lines.extend(["", "📝 <b>متن منتشرشده:</b>", body])
+                if content.content_type in {"photo", "video"}:
+                    lines.extend(["", f"🖼 رسانه: <b>{'دارد' if content.media_file_id else 'ندارد'}</b>"])
+            elif content.content_type == "poll":
+                lines.extend(["", "📊 <b>نظرسنجی:</b>", content.poll_question or "بدون سوال"])
+                if content.poll_options:
+                    lines.extend([f"{i}. {option}" for i, option in enumerate(content.poll_options, 1)])
+
+            buttons = content.buttons or []
+            if buttons:
+                labels = [str(item.get("label") or "لینک") for item in buttons if isinstance(item, dict)]
+                if labels:
+                    lines.extend(["", "🔘 <b>دکمه‌ها:</b>", " • ".join(labels)])
+
+            await callback_query.answer()
+            try:
+                await callback_query.message.edit_text(
+                    "\n".join(lines),
+                    reply_markup=channel_management._content_menu(content),
+                )
+            except Exception as exc:
+                if "message is not modified" not in str(exc).lower():
+                    raise
+
+        wrapped._ai_details_patch = True
+        handler.callback = wrapped
+        return
+
+
 def install() -> None:
     _patch_ai_settings()
     _remove_duplicate_channel_menu()
     _patch_canonical_channel_menu()
     _patch_publisher()
+    _patch_repost_handler()
     _patch_campaign_start()
+    _patch_channel_details()
 
 
 install()
