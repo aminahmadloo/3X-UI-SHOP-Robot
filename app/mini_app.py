@@ -428,16 +428,16 @@ class MiniAppController:
     async def _recent_transactions(self, session, tg_id: int, limit: int) -> list[dict[str, object]]:
         result = await session.execute(
             select(Transaction)
-            .where(Transaction.user_tg_id == tg_id)
+            .where(Transaction.tg_id == tg_id)
             .order_by(Transaction.created_at.desc())
             .limit(limit)
         )
         return [
             {
                 "id": item.id,
-                "amount": int(item.amount),
+                "payment_id": item.payment_id,
+                "subscription": item.subscription,
                 "status": _tx_status(item.status),
-                "type": _tx_status(item.transaction_type),
                 "created_at": _iso(item.created_at),
             }
             for item in result.scalars().all()

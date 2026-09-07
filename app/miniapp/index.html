@@ -19,7 +19,19 @@
 <div id="modal" class="modal"><div class="sheet"><div class="sheet-head"><h2 id="modalTitle">ToonelVPN</h2><button class="close" onclick="closeModal()">✕</button></div><div id="detail"></div></div></div>
 <div id="toast" class="toast"></div>
 <script>
-const tg=window.Telegram?.WebApp;if(tg){tg.ready();tg.expand();tg.enableClosingConfirmation?.()}
+let tg=null;
+function initTelegramWebApp(){
+  tg=window.Telegram?.WebApp||null;
+  if(!tg)return false;
+  try{
+    tg.ready();
+    tg.expand();
+    tg.enableClosingConfirmation?.();
+  }catch{}
+  return true;
+}
+initTelegramWebApp();
+
 const root=document.getElementById('root'),modal=document.getElementById('modal'),detail=document.getElementById('detail'),modalTitle=document.getElementById('modalTitle'),toastEl=document.getElementById('toast');
 let state={data:null,tab:'home',plans:null};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -39,7 +51,29 @@ function deviceLabel(value){
   const n=Number(value);
   return Number.isFinite(n)&&n>0 ? n.toLocaleString('fa-IR') : 'نامحدود';
 }
-async function load(){try{if(!tg?.initData)throw new Error('این Mini App باید از داخل تلگرام باز شود.');root.innerHTML='<div class="loading"><div class="spinner"></div>دریافت اطلاعات زنده از 3X-UI…</div>';state.data=await api('/miniapp/api/me');render()}catch(e){root.innerHTML='<div class="error">❌ '+esc(e.message)+'<br><br><button class="btn" onclick="load()">تلاش دوباره</button></div>'}}
+async function load(){
+  try{
+    root.innerHTML='<div class="loading"><div class="spinner"></div>در حال اتصال به Telegram…</div>';
+
+    const maxAttempts=20;
+    for(let attempt=0;attempt<maxAttempts;attempt++){
+      initTelegramWebApp();
+
+      if(tg?.initData){
+        root.innerHTML='<div class="loading"><div class="spinner"></div>دریافت اطلاعات زنده از 3X-UI…</div>';
+        state.data=await api('/miniapp/api/me');
+        render();
+        return;
+      }
+
+      await new Promise(resolve=>setTimeout(resolve,150));
+    }
+
+    throw new Error('این Mini App باید از داخل تلگرام باز شود.');
+  }catch(e){
+    root.innerHTML='<div class="error">❌ '+esc(e.message)+'<br><br><button class="btn" onclick="load()">تلاش دوباره</button></div>';
+  }
+}
 function header(){const u=state.data.user,t=state.data.telegram,photo=t?.photo_url?`<img class="avatar" src="${esc(t.photo_url)}">`:`<div class="avatar">${esc((u.first_name||'ت')[0])}</div>`;return `<div class="top"><div class="identity">${photo}<div><div class="name">سلام ${esc(u.first_name)} 👋</div><div class="muted">حساب ToonelVPN • ${u.username?'@'+esc(u.username):'Telegram'}</div></div></div><button class="icon-btn" onclick="load()">↻</button></div>`}
 function serviceCard(s){const[st,cl]=status(s.status),total=Number(s.traffic_total||0),used=Number(s.traffic_used||0),pct=total>0?Math.min(100,Math.round(used/total*100)):0;return `<div class="service"><div class="service-head"><div class="service-name">${esc(s.name||'سرویس ToonelVPN')}</div><span class="badge ${cl}">${st}</span></div><div class="facts"><div class="fact"><label>حجم کل</label><b>${bytes(total)}</b></div><div class="fact"><label>مصرف</label><b>${bytes(used)}</b></div><div class="fact"><label>باقی‌مانده</label><b>${bytes(s.traffic_remaining)}</b></div><div class="fact"><label>انقضا</label><b>${date(s.expire_date)}</b></div><div class="fact"><label>دستگاه</label><b>${deviceLabel(s.devices)}</b></div></div>${total>0?`<div class="progress"><i style="width:${pct}%"></i></div><div class="muted">${pct}% مصرف شده</div>`:''}<div class="actions"><button class="btn" onclick="openDetail(${s.id})">جزئیات و اتصال</button><button class="btn alt" onclick="copySubscription(${s.id})">Subscription</button><button class="btn alt" onclick="renew(${s.id})">تمدید</button></div></div>`}
 function home(){const d=state.data.dashboard,a=state.data.account,s=state.data.services[0];return `${header()}<div class="hero"><div class="hero-row"><div><div class="hero-label">وضعیت کلی حساب</div><div class="hero-status">${d.active_services?'🟢 سرویس فعال':'⚪ بدون سرویس فعال'}</div><div class="hero-meta">${d.active_services} فعال</div></div><div class="balance">💰 موجودی کیف پول: ${money(a.wallet_balance)}</div></div></div><div class="grid"><div class="stat"><b>${d.active_services}</b><span>سرویس فعال</span></div><div class="stat"><b>${bytes(d.traffic_used)}</b><span>مصرف‌شده</span></div><div class="stat"><b>${bytes(d.traffic_remaining)}</b><span>باقی‌مانده</span></div><div class="stat"><b>${s?date(s.expire_date):'—'}</b><span>نزدیک‌ترین انقضا</span></div></div><div class="section"><h2>میانبرهای سریع</h2></div><div class="quick"><button class="tile" onclick="setTab('services')">🔐 سرویس‌های من<small>مدیریت و اتصال</small></button><button class="tile" onclick="showPlans()">🛒 خرید سرویس<small>پلن‌ها و مدت‌ها</small></button><button class="tile" onclick="setTab('wallet')">💰 کیف پول<small>${money(a.wallet_balance)}</small></button><button class="tile" onclick="setTab('referral')">🎁 دعوت دوستان<small>${a.referrals} دعوت</small></button></div>${s?`<div class="section"><h2>سرویس اصلی</h2><small>اطلاعات زنده</small></div>${serviceCard(s)}`:''}<div class="section"><h2>فعالیت اخیر</h2></div>${activityBox(state.data.dashboard.recent_activity)}</div>`}
