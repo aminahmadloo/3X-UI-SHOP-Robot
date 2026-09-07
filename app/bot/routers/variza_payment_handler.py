@@ -9,7 +9,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import SubscriptionData
-from app.bot.payment_gateways import GatewayFactory
 from app.bot.payment_gateways.aban_gateway import AbanGateway
 from app.bot.payment_gateways.variza_gateway import VarizaGateway
 from app.bot.utils.constants import TransactionStatus
@@ -90,8 +89,14 @@ def _packed_subscription_data(packed: dict, user_tg_id: int, plan_id: int) -> Su
     return data
 
 
-def gateway_choice_text(data: SubscriptionData, payable_toman: float | int | None = None) -> str:
-    payable = payable_toman if payable_toman is not None else data.price
+def _warning_text(provider: str) -> str:
+    return (
+        f"⚠️ <b>مهم:</b> مبلغ قابل پرداخت را <b>دقیقاً همان‌طور که در صفحه {provider} نمایش داده می‌شود</b> وارد کنید.\n"
+        "در صورت واریز مبلغ متفاوت، تطبیق و تأیید خودکار پرداخت ممکن است انجام نشود."
+    )
+
+
+def gateway_choice_text(data: SubscriptionData) -> str:
     action = "تمدید سرویس" if data.is_extend else "خرید سرویس"
     return (
         "💳 <b>انتخاب درگاه پرداخت کارت به کارت هوشمند</b>\n"
@@ -101,14 +106,13 @@ def gateway_choice_text(data: SubscriptionData, payable_toman: float | int | Non
         f"حجم: <code>{data.volume_gb} گیگ</code>\n"
         f"مدت: <code>{data.duration} روز</code>\n"
         f"مبلغ سفارش: <code>{data.price:,.0f}</code> تومان\n"
-        f"مبلغ قابل پرداخت: <code>{float(payable):,.0f}</code> تومان\n"
         "━━━━━━━━━━━━━━━\n\n"
         "لطفاً یکی از درگاه‌های کارت به کارت را انتخاب کنید."
     )
 
 
-def gateway_choice_markup(aban_invoice_id: str, plan_id: int) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text="💳 پرداخت با درگاه آبان گیت", callback_data=f"cardgateway:aban:{aban_invoice_id}")]]
+def gateway_choice_markup(plan_id: int) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="💳 پرداخت با درگاه آبان گیت", callback_data=f"cardgateway:aban:{plan_id}")]]
     if VarizaGateway.is_available():
         rows.append([InlineKeyboardButton(text="💳 پرداخت با درگاه واریزا", callback_data=f"variza:pay:{plan_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -129,13 +133,19 @@ def _aban_invoice_text(data: SubscriptionData, invoice_id: str, order_id: str, p
         f"مبلغ قابل پرداخت: <code>{float(payable_toman):,.0f}</code> تومان\n"
         "مهلت پرداخت: <b>طبق زمان اعلام‌شده در صفحه آبان گیت</b>\n"
         "━━━━━━━━━━━━━━━\n\n"
+        f"{_warning_text('آبان گیت')}\n\n"
         "برای پرداخت، روی دکمه <b>«💳 پرداخت»</b> بزنید.\n"
         "پس از تأیید آبان گیت، شارژ یا سفارش شما به‌صورت خودکار انجام می‌شود."
     )
 
 
-def _invoice_text(data: SubscriptionData, slug: str) -> str:
-    tracking_code = VarizaGateway.tracking_code_for_slug(slug)
+def _variza_invoice_text(data: SubscriptionData, slug: str, payable_toman: int | None) -> str:
+    tracking_code = VarizaGateway.tracking_code_for_order(data)
+    amount_line = (
+        f"مبلغ قابل پرداخت: <code>{payable_toman:,.0f}</code> تومان"
+        if payable_toman is not None
+        else "مبلغ قابل پرداخت: <b>مبلغ درج‌شده در صفحه واریزا</b>"
+    )
     volume_label = "حجم افزوده" if data.is_extend else "حجم"
     duration_label = "زمان افزوده" if data.is_extend else "مدت"
     success_text = "تمدید سرویس" if data.is_extend else "شارژ یا سفارش"
@@ -148,15 +158,16 @@ def _invoice_text(data: SubscriptionData, slug: str) -> str:
         f"{volume_label}: <code>{data.volume_gb} گیگ</code>\n"
         f"{duration_label}: <code>{data.duration} روز</code>\n"
         f"مبلغ سفارش: <code>{data.price:,.0f}</code> تومان\n"
-        f"مبلغ قابل پرداخت: <code>{data.price:,.0f}</code> تومان\n"
+        f"{amount_line}\n"
         "مهلت پرداخت: <b>طبق زمان اعلام‌شده در صفحه واریزا</b>\n"
         "━━━━━━━━━━━━━━━\n\n"
+        f"{_warning_text('واریزا')}\n\n"
         "برای پرداخت، روی دکمه <b>«💳 پرداخت»</b> بزنید.\n"
         f"پس از تأیید واریزا، {success_text} شما به‌صورت خودکار انجام می‌شود."
     )
 
 
-async def _show_aban_invoice(callback: CallbackQuery, user: User, session: AsyncSession, aban_gateway: AbanGateway, invoice_id: str, data: SubscriptionData) -> None:
+async def _show_aban_invoice(callback: CallbackQuery, data: SubscriptionData, aban_gateway: AbanGateway, invoice_id: str) -> None:
     invoice = await aban_gateway._get_invoice(invoice_id)
     order_id = str(invoice.get("order_id") or "").strip()
     payable_toman = invoice.get("payable_toman")
@@ -174,120 +185,73 @@ async def _show_aban_invoice(callback: CallbackQuery, user: User, session: Async
 
 
 @router.callback_query(F.data.regexp(r"^mp:pay_aban:\d+$"))
-async def legacy_aban_payment_selector(
-    callback: CallbackQuery,
-    user: User,
-    session: AsyncSession,
-    gateway_factory: GatewayFactory,
-    state: FSMContext,
-) -> None:
+async def legacy_aban_payment_selector(callback: CallbackQuery, user: User, state: FSMContext, session: AsyncSession) -> None:
     plan_id = int((callback.data or "").rsplit(":", 1)[-1])
-    state_data = await state.get_data()
-    packed = state_data.get("subscription_data")
-    if isinstance(packed, str):
-        try:
-            restored = SubscriptionData.deserialize(packed)
-            packed = {
-                "is_extend": restored.is_extend,
-                "is_change": restored.is_change,
-                "user_id": restored.user_id,
-                "devices": restored.devices,
-                "duration": restored.duration,
-                "price": restored.price,
-                "plan_id": restored.plan_id,
-                "volume_gb": restored.volume_gb,
-                "config_name": restored.config_name,
-                "subscription_id": restored.subscription_id,
-            }
-        except Exception:
-            packed = None
-    if not isinstance(packed, dict):
-        await callback.answer("❌ اطلاعات سفارش منقضی شده است.", show_alert=True)
-        return
-    data = _packed_subscription_data(packed, user.tg_id, plan_id)
+    data = await _resolve_subscription(user, plan_id, state, session)
     if data is None:
-        await callback.answer("❌ اطلاعات سفارش با پلن انتخاب‌شده مطابقت ندارد.", show_alert=True)
+        state_data = await state.get_data()
+        packed = state_data.get("subscription_data")
+        if isinstance(packed, str):
+            try:
+                restored = SubscriptionData.deserialize(packed)
+                packed = {
+                    "is_extend": restored.is_extend,
+                    "is_change": restored.is_change,
+                    "user_id": restored.user_id,
+                    "devices": restored.devices,
+                    "duration": restored.duration,
+                    "price": restored.price,
+                    "plan_id": restored.plan_id,
+                    "volume_gb": restored.volume_gb,
+                    "config_name": restored.config_name,
+                    "subscription_id": restored.subscription_id,
+                }
+            except Exception:
+                packed = None
+        if isinstance(packed, dict):
+            data = _packed_subscription_data(packed, user.tg_id, plan_id)
+    if data is None:
+        await callback.answer("❌ اطلاعات سفارش منقضی شده است.", show_alert=True)
         return
     plan = await ServicePurchasePlan.get(session, plan_id)
     if not plan or plan.duration_days <= 0 or plan.volume_gb <= 0:
         await callback.answer("❌ پلن سفارش معتبر نیست.", show_alert=True)
         return
-
-    try:
-        gateway = gateway_factory.get_gateway("pay_aban")
-        pay_url = await gateway.create_payment(data)
-        invoice_id = pay_url.rstrip("/").rsplit("/", 1)[-1]
-        invoice = await gateway._get_invoice(invoice_id)
-        order_id = str(invoice.get("order_id") or "").strip()
-        payable_toman = invoice.get("payable_toman")
-        if not invoice_id or not order_id or payable_toman is None:
-            raise RuntimeError("AbanGateway returned incomplete invoice details")
-        if VarizaGateway.is_available():
-            await callback.answer()
-            await callback.message.edit_text(
-                gateway_choice_text(data, payable_toman),
-                reply_markup=gateway_choice_markup(invoice_id, plan_id),
-            )
-            return
-        await _show_aban_invoice(callback, user, session, gateway, invoice_id, data)
-    except Exception as exc:
-        logger.exception("Legacy Aban payment flow failed for user %s: %s", user.tg_id, exc)
-        await callback.answer("❌ خطا در ایجاد پرداخت.", show_alert=True)
+    await state.update_data(subscription_data=data.serialize())
+    await callback.answer()
+    await callback.message.edit_text(
+        gateway_choice_text(data),
+        reply_markup=gateway_choice_markup(plan_id),
+    )
 
 
-@router.callback_query(F.data.regexp(r"^cardgateway:aban:[^:]+$"))
-async def show_aban_invoice(callback: CallbackQuery, user: User, session: AsyncSession, aban_gateway: AbanGateway) -> None:
-    invoice_id = (callback.data or "").rsplit(":", 1)[-1]
-    transaction = await Transaction.get_by_id(session=session, payment_id=invoice_id)
-    if transaction is None or transaction.tg_id != user.tg_id or transaction.status != TransactionStatus.PENDING:
-        await callback.answer("❌ فاکتور آبان گیت معتبر نیست یا منقضی شده است.", show_alert=True)
-        return
-    data = _restore_subscription(transaction.subscription, user.tg_id)
-    if data is None:
-        await callback.answer("❌ اطلاعات سفارش معتبر نیست.", show_alert=True)
-        return
-    try:
-        await _show_aban_invoice(callback, user, session, aban_gateway, invoice_id, data)
-    except Exception as exc:
-        logger.exception("Failed to load Aban invoice %s: %s", invoice_id, exc)
-        await callback.answer("❌ دریافت اطلاعات فاکتور آبان گیت ناموفق بود.", show_alert=True)
-
-
-@router.callback_query(F.data.regexp(r"^cardgateway:choice:\d+$"))
-async def back_to_gateway_choice(callback: CallbackQuery, user: User, state: FSMContext, session: AsyncSession, aban_gateway: AbanGateway) -> None:
+@router.callback_query(F.data.regexp(r"^cardgateway:aban:\d+$"))
+async def choose_aban_gateway(callback: CallbackQuery, user: User, state: FSMContext, session: AsyncSession, aban_gateway: AbanGateway) -> None:
     plan_id = int((callback.data or "").rsplit(":", 1)[-1])
     data = await _resolve_subscription(user, plan_id, state, session)
     if data is None:
         await callback.answer("❌ اطلاعات سفارش منقضی شده است.", show_alert=True)
         return
-    result = await session.execute(
-        select(Transaction)
-        .where(
-            Transaction.tg_id == user.tg_id,
-            Transaction.status == TransactionStatus.PENDING,
-            Transaction.subscription == data.serialize(),
-        )
-        .order_by(Transaction.created_at.desc())
-    )
-    transactions = list(result.scalars().all())
-    aban_invoice_id = ""
-    payable = data.price
-    for item in transactions:
-        try:
-            invoice = await aban_gateway._get_invoice(item.payment_id)
-            if invoice.get("order_id"):
-                aban_invoice_id = item.payment_id
-                payable = invoice.get("payable_toman", payable)
-                break
-        except Exception:
-            continue
-    if not aban_invoice_id:
-        await callback.answer("❌ فاکتور آبان گیت پیدا نشد.", show_alert=True)
+    try:
+        pay_url = await aban_gateway.create_payment(data)
+        invoice_id = pay_url.rstrip("/").rsplit("/", 1)[-1]
+        await _show_aban_invoice(callback, data, aban_gateway, invoice_id)
+    except Exception as exc:
+        logger.exception("Aban payment creation failed for user %s: %s", user.tg_id, exc)
+        await callback.answer("❌ خطا در ایجاد پرداخت آبان گیت.", show_alert=True)
+
+
+@router.callback_query(F.data.regexp(r"^cardgateway:choice:\d+$"))
+async def back_to_gateway_choice(callback: CallbackQuery, user: User, state: FSMContext, session: AsyncSession) -> None:
+    plan_id = int((callback.data or "").rsplit(":", 1)[-1])
+    data = await _resolve_subscription(user, plan_id, state, session)
+    if data is None:
+        await callback.answer("❌ اطلاعات سفارش منقضی شده است.", show_alert=True)
         return
     await callback.answer()
     await callback.message.edit_text(
-        gateway_choice_text(data, payable),
-        reply_markup=gateway_choice_markup(aban_invoice_id, data.plan_id),
+        gateway_choice_text(data),
+        reply_markup=gateway_choice_markup(plan_id),
     )
 
 
@@ -308,9 +272,10 @@ async def create_variza_payment(callback: CallbackQuery, user: User, state: FSMC
     try:
         pay_url = await variza_gateway.create_payment(data)
         slug = pay_url.rstrip("/").rsplit("/", 1)[-1]
+        payable_toman = await VarizaGateway.fetch_displayed_payable_toman(pay_url)
         await callback.answer()
         await callback.message.edit_text(
-            _invoice_text(data, slug),
+            _variza_invoice_text(data, slug, payable_toman),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="💳 پرداخت", url=pay_url)],
                 [InlineKeyboardButton(text="🔙 انتخاب درگاه دیگر", callback_data=f"cardgateway:choice:{plan_id}")],
