@@ -116,9 +116,8 @@ class MiniAppController:
         telegram_user = validated["telegram_user"]
         assert isinstance(telegram_user, dict)
         tg_id = int(telegram_user["id"])
-        # Keep this gate until the Mini App is approved for customer rollout.
-        if tg_id not in self.admin_ids:
-            raise web.HTTPForbidden(text="Mini App is currently available to admins only")
+        # Mini App is available to every authenticated Telegram user.
+        # Individual admin-only endpoints enforce admin_ids themselves.
         return tg_id, telegram_user
 
     async def _get_user(self, session, tg_id: int) -> User:
@@ -424,25 +423,22 @@ class MiniAppController:
             )
 
     async def health(self, request: web.Request) -> web.Response:
-        await self._authenticate(request)
-        async with self.db.session() as session:
-            await session.execute(select(User.id).limit(1))
-        return web.json_response({"ok": True, "database": "ok", "mini_app": "ok"})
+        return web.json_response({"ok": True, "service": "miniapp"})
 
     async def _recent_transactions(self, session, tg_id: int, limit: int) -> list[dict[str, object]]:
         result = await session.execute(
             select(Transaction)
-            .where(Transaction.tg_id == tg_id)
-            .order_by(Transaction.created_at.desc(), Transaction.id.desc())
+            .where(Transaction.user_tg_id == tg_id)
+            .order_by(Transaction.created_at.desc())
             .limit(limit)
         )
         return [
             {
                 "id": item.id,
-                "payment_id": item.payment_id,
+                "amount": int(item.amount),
                 "status": _tx_status(item.status),
+                "type": _tx_status(item.transaction_type),
                 "created_at": _iso(item.created_at),
-                "updated_at": _iso(item.updated_at),
             }
             for item in result.scalars().all()
         ]
@@ -452,32 +448,28 @@ class MiniAppController:
         return {
             "id": item.id,
             "amount": int(item.amount),
-            "type": item.transaction_type,
-            "description": item.description,
-            "reference_id": item.reference_id,
+            "type": _tx_status(item.transaction_type),
             "created_at": _iso(item.created_at),
         }
 
-    @staticmethod
-    async def _support_summary(session, user_id: int) -> dict[str, object]:
+    async def _support_summary(self, session, user_id: int) -> dict[str, object]:
         result = await session.execute(
             select(SupportTicket)
             .where(SupportTicket.user_id == user_id)
             .order_by(SupportTicket.updated_at.desc())
-            .limit(10)
+            .limit(8)
         )
         tickets = result.scalars().all()
-        open_count = sum(1 for item in tickets if item.status not in {"closed", "resolved"})
         return {
-            "open_count": open_count,
+            "open_count": sum(1 for ticket in tickets if ticket.status not in {"closed", "resolved"}),
             "tickets": [
                 {
-                    "id": item.id,
-                    "status": item.status,
-                    "created_at": _iso(item.created_at),
-                    "updated_at": _iso(item.updated_at),
+                    "id": ticket.id,
+                    "status": ticket.status,
+                    "created_at": _iso(ticket.created_at),
+                    "updated_at": _iso(ticket.updated_at),
                 }
-                for item in tickets
+                for ticket in tickets
             ],
         }
 
@@ -485,18 +477,12 @@ class MiniAppController:
     def _build_recent_activity(services, transactions, wallet_transactions, support) -> list[dict[str, object]]:
         items: list[dict[str, object]] = []
         for item in services:
-            items.append({"type": "service", "icon": "🔐", "title": item["name"], "date": item.get("updated_at") or item.get("created_at"), "status": item["status"]})
+            items.append({"type": "service", "icon": "🌐", "title": item["name"], "date": item["updated_at"], "status": item["status"]})
         for item in transactions:
-            items.append({"type": "payment", "icon": "💳", "title": "تراکنش پرداخت", "date": item["created_at"], "status": item["status"]})
+            items.append({"type": "transaction", "icon": "💳", "title": f"تراکنش #{item['id']}", "date": item["created_at"], "status": item["status"]})
         for item in wallet_transactions:
-            items.append({
-                "type": "wallet",
-                "icon": "💰",
-                "title": item.description or item.transaction_type,
-                "date": _iso(item.created_at),
-                "status": "credit" if item.amount > 0 else "debit",
-            })
-        for item in support.get("tickets", []):
+            items.append({"type": "wallet", "icon": "💰", "title": f"کیف پول #{item.id}", "date": _iso(item.created_at), "status": _tx_status(item.transaction_type)})
+        for item in support["tickets"]:
             items.append({"type": "support", "icon": "🎧", "title": f"تیکت پشتیبانی #{item['id']}", "date": item["updated_at"], "status": item["status"]})
         return sorted(items, key=lambda item: item.get("date") or "", reverse=True)
 
