@@ -141,37 +141,73 @@ class VarizaGateway(PaymentGateway):
 
     @classmethod
     async def fetch_displayed_payable_toman(cls, pay_url: str) -> int | None:
-        """Read the exact amount shown on the public Variza payment page."""
+        """Read the exact payable amount from the visible Variza payment page."""
         try:
             async with ClientSession(timeout=ClientTimeout(total=10)) as client:
                 async with client.get(pay_url, allow_redirects=True) as response:
                     if response.status != 200:
-                        logger.warning("Variza pay page returned HTTP %s for %s", response.status, pay_url)
+                        logger.warning(
+                            "Variza pay page returned HTTP %s for %s",
+                            response.status,
+                            pay_url,
+                        )
                         return None
                     body = await response.text()
         except Exception:
             logger.exception("Failed to load Variza pay page %s", pay_url)
             return None
 
-        text = html.unescape(re.sub(r"<[^>]+>", " ", body))
-        text = re.sub(r"\s+", " ", text)
-        match = re.search(
-            r"مبلغ\s+را\s+دقیق(?:اً|ا)?\s+واریز\s+کنید.*?([0-9۰-۹٠-٩][0-9۰-۹٠-٩,٬\.\s]{2,})\s*(?:ریال|﷼)",
-            text,
-            re.IGNORECASE | re.DOTALL,
+        # Remove non-visible HTML content first. Variza may keep unrelated
+        # numeric values in JavaScript/state data that must never be parsed
+        # as the payable amount.
+        visible_body = re.sub(
+            r"(?is)<(script|style|noscript|template)\b[^>]*>.*?</\1>",
+            " ",
+            body,
         )
+        visible_body = re.sub(r"(?is)<!--.*?-->", " ", visible_body)
+
+        text = html.unescape(re.sub(r"<[^>]+>", " ", visible_body))
+        text = re.sub(r"\s+", " ", text).strip()
+
+        # Extract only the number associated with the exact visible label.
+        match = re.search(
+            r"مبلغ\s*را\s*دقیق(?:اً|ا)?\s*واریز\s*کنید"
+            r"[^0-9۰-۹٠-٩]{0,120}"
+            r"([0-9۰-۹٠-٩][0-9۰-۹٠-٩,٬\.\s]*)"
+            r"\s*(?:ریال|﷼)",
+            text,
+            re.IGNORECASE,
+        )
+
         if not match:
-            logger.warning("Could not parse exact payable amount from Variza pay page %s", pay_url)
+            logger.warning(
+                "Could not parse exact payable amount from Variza pay page %s",
+                pay_url,
+            )
             return None
 
         rial_text = cls._normalize_digits(match.group(1))
-        rial_text = rial_text.replace(",", "").replace("٬", "").replace(".", "").replace(" ", "")
+        rial_text = (
+            rial_text
+            .replace(",", "")
+            .replace("٬", "")
+            .replace(".", "")
+            .replace(" ", "")
+        )
+
         try:
             rial = int(rial_text)
         except ValueError:
+            logger.warning(
+                "Invalid Variza payable amount extracted: %r",
+                rial_text,
+            )
             return None
+
         if rial <= 0 or rial % 10 != 0:
             return None
+
         return rial // 10
 
     async def _find_pending_transaction(self, data: SubscriptionData) -> Transaction | None:
