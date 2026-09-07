@@ -96,7 +96,15 @@ def menu_markup(settings: PaymentGatewaySettings | None) -> InlineKeyboardMarkup
             rows.append([InlineKeyboardButton(text="♻️ بازگشت به مقدار .env", callback_data="paymentgateway:reset_env")])
     else:
         rows.append([InlineKeyboardButton(text="🟢 استفاده از مسیر .env", callback_data="paymentgateway:use_env")])
-    rows.append([InlineKeyboardButton(text="💳 تنظیمات پرداخت خودکار کارت‌به‌کارت", callback_data="paymentgateway:aban")])
+
+    rows.append([InlineKeyboardButton(
+        text="💳 تنظیمات کارت به کارت آبان گیت",
+        callback_data="paymentgateway:aban",
+    )])
+    rows.append([InlineKeyboardButton(
+        text="💳 تنظیمات کارت به کارت واریزا",
+        callback_data="paymentgateway:variza",
+    )])
     rows.append([InlineKeyboardButton(text="👁️ مدیریت نمایش روش‌های پرداخت", callback_data="paymentgateway:methods")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavAdminTools.MAIN)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -171,10 +179,9 @@ async def show_menu(callback: CallbackQuery, session: AsyncSession, config: Conf
         f"مسیر پرداخت مؤثر: <code>{html.escape(effective_url)}</code>\n"
         f"مسیر .env: <code>{html.escape(env_url)}</code>\n"
         f"وضعیت مسیر سفارشی: <b>{custom_status}</b>\n\n"
-        "💳 <b>پرداخت خودکار کارت به کارت — AbanGateway</b>\n"
-        f"وضعیت اتصال: <b>{aban_status}</b>\n"
-        "مهلت فاکتور: <b>طبق تنظیمات حساب AbanGateway</b>\n"
-        "Webhook: <code>/webhooks/aban-gateway</code>"
+        "💳 <b>پرداخت خودکار کارت به کارت</b>\n"
+        f"وضعیت اتصال آبان گیت: <b>{aban_status}</b>\n"
+        "تنظیمات آبان و واریزا از مسیرهای مستقل مدیریت می‌شوند."
     )
     await callback.message.edit_text(text, reply_markup=menu_markup(settings))
 
@@ -195,7 +202,7 @@ async def aban_settings_menu(callback: CallbackQuery, config: Config) -> None:
     api_url = _read_env_value("ABAN_GATEWAY_API_BASE_URL") or "https://abangateway.ir/api/v1"
 
     text = (
-        "💳 <b>پرداخت خودکار کارت به کارت — AbanGateway</b>\n\n"
+        "💳 <b>تنظیمات کارت به کارت آبان گیت</b>\n\n"
         f"🔑 توکن: <b>{token_status}</b>\n"
         f"🔐 Webhook Secret: <b>{secret_status}</b>\n"
         f"📡 وضعیت سرویس: <b>{'🟢 آماده استفاده' if configured else '🔴 ناقص'}</b>\n\n"
@@ -250,7 +257,7 @@ async def aban_token_save(message: Message, state: FSMContext) -> None:
         "🔐 مقدار Token در پنل نمایش داده نمی‌شود.\n"
         "⚠️ برای اعمال آن در محیط اجرای Bot، کانتینر باید دوباره ایجاد/راه‌اندازی شود.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💳 تنظیمات AbanGateway", callback_data="paymentgateway:aban")],
+            [InlineKeyboardButton(text="💳 تنظیمات آبان گیت", callback_data="paymentgateway:aban")],
             [InlineKeyboardButton(text="🔙 تنظیمات درگاه‌ها", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
         ]),
     )
@@ -289,7 +296,7 @@ async def aban_secret_save(message: Message, state: FSMContext) -> None:
         "🔐 مقدار Secret در پنل نمایش داده نمی‌شود.\n"
         "⚠️ برای اعمال آن در محیط اجرای Bot، کانتینر باید دوباره ایجاد/راه‌اندازی شود.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💳 تنظیمات AbanGateway", callback_data="paymentgateway:aban")],
+            [InlineKeyboardButton(text="💳 تنظیمات آبان گیت", callback_data="paymentgateway:aban")],
             [InlineKeyboardButton(text="🔙 تنظیمات درگاه‌ها", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
         ]),
     )
@@ -325,78 +332,67 @@ async def toggle_payment_method(callback: CallbackQuery, session: AsyncSession, 
 
 @router.callback_query(F.data == "paymentgateway:edit_zarinpal_url", IsAdmin())
 async def edit_zarinpal_url_start(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
+    await state.clear()
     await state.set_state(PaymentGatewaySettingsState.waiting_zarinpal_payment_base_url)
+    await callback.answer()
     await callback.message.edit_text(
-        "✏️ <b>مسیر پرداخت اختصاصی زرین‌پال</b>\n\n"
-        "آدرس پایه را وارد کنید. مثال:\n<code>https://payment.example.com</code>\n\n"
-        "یا برای نمایش مستقیم صفحه پرداخت زرین‌پال، گزینه زیر را انتخاب کنید.",
+        "✏️ <b>ویرایش مسیر پرداخت زرین‌پال</b>\n\n"
+        "URL جدید را ارسال کنید.\nمثال: <code>https://example.com/pay</code>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔴 استفاده مستقیم از زرین‌پال", callback_data="paymentgateway:set_direct")],
             [InlineKeyboardButton(text="🔙 انصراف", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
         ]),
     )
 
 
-@router.callback_query(F.data == "paymentgateway:set_direct", IsAdmin())
-async def set_direct_payment(callback: CallbackQuery, state: FSMContext, session: AsyncSession, config: Config) -> None:
-    settings = await PaymentGatewaySettings.get(session)
-    if settings is None:
-        settings = PaymentGatewaySettings(id=1)
-        session.add(settings)
-    settings.zarinpal_payment_base_url = ""
-    settings.zarinpal_payment_base_url_configured = True
-    await session.commit()
-    await state.clear()
-    await callback.answer("پرداخت مستقیم زرین‌پال فعال شد.", show_alert=True)
-    await show_menu(callback, session, config)
-
-
 @router.message(PaymentGatewaySettingsState.waiting_zarinpal_payment_base_url, IsAdmin())
-async def receive_zarinpal_url(message: Message, state: FSMContext, session: AsyncSession, config: Config) -> None:
-    value = (message.text or "").strip().rstrip("/")
-    if value:
-        parsed = urlparse(value)
-        if parsed.scheme != "https" or not parsed.netloc or parsed.path not in ("", "/") or parsed.query or parsed.fragment:
-            await message.answer("❌ آدرس معتبر نیست. فقط یک URL پایه HTTPS وارد کنید.")
-            return
+async def edit_zarinpal_url_save(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    value = (message.text or "").strip()
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        await message.answer("❌ URL معتبر نیست.")
+        return
     settings = await PaymentGatewaySettings.get(session)
     if settings is None:
-        settings = PaymentGatewaySettings(id=1)
+        settings = PaymentGatewaySettings(zarinpal_payment_base_url=value, zarinpal_payment_base_url_configured=True)
         session.add(settings)
-    settings.zarinpal_payment_base_url = value
-    settings.zarinpal_payment_base_url_configured = True
+    else:
+        settings.zarinpal_payment_base_url = value
+        settings.zarinpal_payment_base_url_configured = True
     await session.commit()
     await state.clear()
-    await message.answer("✅ تنظیمات مسیر پرداخت زرین‌پال ذخیره شد.")
+    await message.answer("✅ مسیر پرداخت زرین‌پال ذخیره شد.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 تنظیمات درگاه‌ها", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
+    ]))
 
 
 @router.callback_query(F.data == "paymentgateway:disable_custom_url", IsAdmin())
 async def disable_custom_url(callback: CallbackQuery, session: AsyncSession, config: Config) -> None:
     settings = await PaymentGatewaySettings.get(session)
-    if settings is None:
-        settings = PaymentGatewaySettings(id=1)
-        session.add(settings)
-    settings.zarinpal_payment_base_url = ""
-    settings.zarinpal_payment_base_url_configured = True
-    await session.commit()
-    await callback.answer("پرداخت مستقیم زرین‌پال فعال شد.", show_alert=True)
+    if settings:
+        settings.zarinpal_payment_base_url = ""
+        settings.zarinpal_payment_base_url_configured = True
+        await session.commit()
+    await callback.answer("🔴 مسیر اختصاصی غیرفعال شد.")
     await show_menu(callback, session, config)
 
 
 @router.callback_query(F.data == "paymentgateway:reset_env", IsAdmin())
 async def reset_to_env(callback: CallbackQuery, session: AsyncSession, config: Config) -> None:
     settings = await PaymentGatewaySettings.get(session)
-    if settings is None:
-        await callback.answer("در حال حاضر از .env استفاده می‌شود.", show_alert=True)
-        return
-    settings.zarinpal_payment_base_url = ""
-    settings.zarinpal_payment_base_url_configured = False
-    await session.commit()
-    await callback.answer("مقدار .env دوباره فعال شد.", show_alert=True)
+    if settings:
+        settings.zarinpal_payment_base_url = ""
+        settings.zarinpal_payment_base_url_configured = False
+        await session.commit()
+    await callback.answer("♻️ مقدار اختصاصی حذف و مسیر .env فعال شد.")
     await show_menu(callback, session, config)
 
 
 @router.callback_query(F.data == "paymentgateway:use_env", IsAdmin())
 async def use_env(callback: CallbackQuery, session: AsyncSession, config: Config) -> None:
-    await reset_to_env(callback, session, config)
+    settings = await PaymentGatewaySettings.get(session)
+    if settings:
+        settings.zarinpal_payment_base_url_configured = False
+        settings.zarinpal_payment_base_url = ""
+        await session.commit()
+    await callback.answer("🟢 مسیر .env فعال شد.")
+    await show_menu(callback, session, config)
