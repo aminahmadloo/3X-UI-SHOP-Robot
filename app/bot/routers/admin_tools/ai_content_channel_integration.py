@@ -204,7 +204,7 @@ def _patch_canonical_channel_menu() -> None:
 
 
 def _patch_channel_details() -> None:
-    """Make published-content details actually display the stored post content."""
+    """Make published-content details display stored content reliably."""
     from app.bot.routers.admin_tools import channel_management_handler as channel_management
 
     for handler in channel_management.router.callback_query.handlers:
@@ -215,20 +215,21 @@ def _patch_channel_details() -> None:
             return
         original = callback
 
-        async def wrapped(*args, **kwargs):
-            session = kwargs.get("session")
-            callback_query = kwargs.get("callback")
-            if session is None or callback_query is None:
-                return await original(*args, **kwargs)
+        async def wrapped(callback_query, session, *args, **kwargs):
             try:
                 content_id = int(callback_query.data.rsplit(":", 1)[1])
                 content = await session.get(ChannelContent, content_id)
             except (AttributeError, IndexError, ValueError, TypeError):
                 content = None
-            if not content:
-                return await original(*args, **kwargs)
 
-            status = {"draft": "📂 پیش‌نویس", "scheduled": "📅 زمان‌بندی‌شده", "published": "🟢 منتشرشده"}.get(content.status, content.status)
+            if not content:
+                return await original(callback_query, session, *args, **kwargs)
+
+            status = {
+                "draft": "📂 پیش‌نویس",
+                "scheduled": "📅 زمان‌بندی‌شده",
+                "published": "🟢 منتشرشده",
+            }.get(content.status, content.status)
             lines = [
                 f"📄 <b>پست #{content.id}</b>",
                 "",
@@ -242,27 +243,31 @@ def _patch_channel_details() -> None:
                 lines.append(f"📤 انتشار: <b>{content.published_at:%Y-%m-%d %H:%M}</b>")
             if content.scheduled_at:
                 lines.append(f"📅 زمان: <b>{content.scheduled_at:%Y-%m-%d %H:%M}</b>")
+
             if content.content_type in {"text", "photo", "video"}:
                 body = (content.body or "").strip()
                 if body:
-                    # Telegram edit_text is limited to 4096 chars. Keep the beginning
-                    # readable and expose a clear truncation marker for long posts.
                     if len(body) > 3500:
                         body = body[:3500].rstrip() + "\n\n… ادامه متن در پست کانال …"
                     lines.extend(["", "📝 <b>متن منتشرشده:</b>", body])
                 if content.content_type in {"photo", "video"}:
-                    lines.extend(["", f"🖼 رسانه: <b>{'دارد' if content.media_file_id else 'ندارد'}</b>"])
+                    lines.extend(["", f"🖼 رسانه: <b>{'دارد' if content.media_file_id else 'ندارد'}</b"])
             elif content.content_type == "poll":
                 lines.extend(["", "📊 <b>نظرسنجی:</b>", content.poll_question or "بدون سوال"])
                 if content.poll_options:
                     lines.extend([f"{i}. {option}" for i, option in enumerate(content.poll_options, 1)])
+
             buttons = content.buttons or []
             if buttons:
                 labels = [str(item.get("label") or "لینک") for item in buttons if isinstance(item, dict)]
                 if labels:
                     lines.extend(["", "🔘 <b>دکمه‌ها:</b>", " • ".join(labels)])
+
             await callback_query.answer()
-            await callback_query.message.edit_text("\n".join(lines), reply_markup=channel_management._content_menu(content))
+            await callback_query.message.edit_text(
+                "\n".join(lines),
+                reply_markup=channel_management._content_menu(content),
+            )
 
         wrapped._ai_details_patch = True
         handler.callback = wrapped
