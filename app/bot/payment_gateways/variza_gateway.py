@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
 import logging
 import os
+import re
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -34,17 +36,11 @@ class VarizaGateway(PaymentGateway):
     WEBHOOK_PATH = "/webhooks/variza"
     RETURN_PATH = "/payments/variza/return"
     DEFAULT_API_BASE_URL = "https://variza.ir/api/v1"
+    VARIZA_MAX_AMOUNT_DELTA_TOMAN = 5000
 
-    def __init__(
-        self,
-        app: Application,
-        config: Config,
-        session: async_sessionmaker,
-        storage: RedisStorage,
-        bot: Bot,
-        i18n: I18n,
-        services: ServicesContainer,
-    ) -> None:
+    def __init__(self, app: Application, config: Config, session: async_sessionmaker,
+                 storage: RedisStorage, bot: Bot, i18n: I18n,
+                 services: ServicesContainer) -> None:
         super().__init__(app, config, session, storage, bot, i18n, services)
         self.app.router.add_post(self.WEBHOOK_PATH, self.callback_handler)
         self.app.router.add_get(self.RETURN_PATH, self.return_handler)
@@ -131,35 +127,71 @@ class VarizaGateway(PaymentGateway):
         return f"toonel-vz-{slug}"
 
     @classmethod
+    def tracking_code_for_order(cls, data: SubscriptionData) -> str:
+        return f"toonel-vz-{cls._order_key(data)[:20]}"
+
+    @classmethod
     def _order_key(cls, data: SubscriptionData) -> str:
         return hashlib.sha256(data.serialize().encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _normalize_digits(value: str) -> str:
+        translation = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+        return value.translate(translation)
+
+    @classmethod
+    async def fetch_displayed_payable_toman(cls, pay_url: str) -> int | None:
+        """Read the exact amount shown on the public Variza payment page."""
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=10)) as client:
+                async with client.get(pay_url, allow_redirects=True) as response:
+                    if response.status != 200:
+                        logger.warning("Variza pay page returned HTTP %s for %s", response.status, pay_url)
+                        return None
+                    body = await response.text()
+        except Exception:
+            logger.exception("Failed to load Variza pay page %s", pay_url)
+            return None
+
+        text = html.unescape(re.sub(r"<[^>]+>", " ", body))
+        text = re.sub(r"\s+", " ", text)
+        match = re.search(
+            r"مبلغ\s+را\s+دقیق(?:اً|ا)?\s+واریز\s+کنید.*?([0-9۰-۹٠-٩][0-9۰-۹٠-٩,٬\.\s]{2,})\s*(?:ریال|﷼)",
+            text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not match:
+            logger.warning("Could not parse exact payable amount from Variza pay page %s", pay_url)
+            return None
+
+        rial_text = cls._normalize_digits(match.group(1))
+        rial_text = rial_text.replace(",", "").replace("٬", "").replace(".", "").replace(" ", "")
+        try:
+            rial = int(rial_text)
+        except ValueError:
+            return None
+        if rial <= 0 or rial % 10 != 0:
+            return None
+        return rial // 10
 
     async def _find_pending_transaction(self, data: SubscriptionData) -> Transaction | None:
         serialized = data.serialize()
         async with self.session() as db:
-            result = await db.execute(
-                select(Transaction)
-                .where(
-                    Transaction.tg_id == data.user_id,
-                    Transaction.status == TransactionStatus.PENDING,
-                    Transaction.subscription == serialized,
-                )
-                .order_by(Transaction.created_at.desc())
-            )
+            result = await db.execute(select(Transaction).where(
+                Transaction.tg_id == data.user_id,
+                Transaction.status == TransactionStatus.PENDING,
+                Transaction.subscription == serialized,
+            ).order_by(Transaction.created_at.desc()))
             return result.scalars().first()
 
     async def _find_completed_transaction(self, data: SubscriptionData) -> Transaction | None:
         serialized = data.serialize()
         async with self.session() as db:
-            result = await db.execute(
-                select(Transaction)
-                .where(
-                    Transaction.tg_id == data.user_id,
-                    Transaction.status == TransactionStatus.COMPLETED,
-                    Transaction.subscription == serialized,
-                )
-                .order_by(Transaction.created_at.desc())
-            )
+            result = await db.execute(select(Transaction).where(
+                Transaction.tg_id == data.user_id,
+                Transaction.status == TransactionStatus.COMPLETED,
+                Transaction.subscription == serialized,
+            ).order_by(Transaction.created_at.desc()))
             return result.scalars().first()
 
     @classmethod
@@ -167,62 +199,40 @@ class VarizaGateway(PaymentGateway):
         token = cls._api_key()
         if not token:
             raise RuntimeError("VARIZA_API_KEY is not configured")
-        return {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
+        return {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Accept": "application/json"}
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> tuple[int, dict[str, Any]]:
         async with ClientSession(timeout=ClientTimeout(total=20)) as client:
-            async with client.request(
-                method,
-                f"{self._api_base_url()}{path}",
-                headers=self._headers(),
-                **kwargs,
-            ) as response:
+            async with client.request(method, f"{self._api_base_url()}{path}", headers=self._headers(), **kwargs) as response:
                 body = await response.json(content_type=None)
                 return response.status, body if isinstance(body, dict) else {"raw": body}
 
     async def create_payment(self, data: SubscriptionData) -> str:
         if not self.is_available():
             raise RuntimeError("Variza is disabled or not configured")
-
         amount = self._to_toman(data.price)
-        completed = await self._find_completed_transaction(data)
-        if completed is not None:
+        if await self._find_completed_transaction(data) is not None:
             raise RuntimeError("This order has already been paid")
-
         order_key = self._order_key(data)
-        lock = self.storage.redis.lock(
-            f"payment:variza:create:{order_key}",
-            timeout=180,
-            blocking_timeout=10,
-        )
+        lock = self.storage.redis.lock(f"payment:variza:create:{order_key}", timeout=180, blocking_timeout=10)
         async with lock:
-            completed = await self._find_completed_transaction(data)
-            if completed is not None:
+            if await self._find_completed_transaction(data) is not None:
                 raise RuntimeError("This order has already been paid")
-
             existing = await self._find_pending_transaction(data)
             if existing is not None:
-                logger.info("Reusing Variza payment %s for service order %s", existing.payment_id, order_key)
                 return f"https://variza.ir/pay/{existing.payment_id}"
-
             payload: dict[str, Any] = {
                 "amount": amount,
                 "return_url": self.return_url(self.config),
-                "title": f"ToonelVPN {self.tracking_code_for_slug(order_key[:20])}",
+                "title": f"ToonelVPN {self.tracking_code_for_order(data)}",
                 "expires_in": self._expires_in(),
             }
             card_last_4 = self._card_last_4()
             if card_last_4:
                 payload["card_last_4"] = card_last_4
-
             status, response = await self._request("POST", "/pay", json=payload)
             if status != 201:
                 raise RuntimeError(f"Variza payment creation failed: HTTP {status}: {response}")
-
             slug = str(response.get("slug") or "").strip()
             pay_url = str(response.get("pay_url") or "").strip()
             response_amount = response.get("amount", amount)
@@ -230,84 +240,50 @@ class VarizaGateway(PaymentGateway):
                 raise RuntimeError("Variza returned an incomplete payment response")
             if self._to_toman(response_amount) != amount:
                 raise RuntimeError("Variza returned an unexpected payment amount")
-
             async with self.session() as db:
-                transaction = await Transaction.create(
-                    session=db,
-                    tg_id=data.user_id,
-                    subscription=data.serialize(),
-                    payment_id=slug,
-                    status=TransactionStatus.PENDING,
-                )
+                transaction = await Transaction.create(session=db, tg_id=data.user_id, subscription=data.serialize(), payment_id=slug, status=TransactionStatus.PENDING)
                 if transaction is None:
                     raise RuntimeError(f"Could not create ToonelVPN transaction for Variza {slug}")
-
             logger.info("Variza payment created: slug=%s tg_id=%s amount=%s order_key=%s", slug, data.user_id, amount, order_key)
             return pay_url
 
     async def _cancel_sibling_transactions(self, serialized: str, current_payment_id: str) -> None:
         async with self.session() as db:
-            result = await db.execute(
-                select(Transaction).where(
-                    Transaction.status == TransactionStatus.PENDING,
-                    Transaction.subscription == serialized,
-                    Transaction.payment_id != current_payment_id,
-                )
-            )
+            result = await db.execute(select(Transaction).where(
+                Transaction.status == TransactionStatus.PENDING,
+                Transaction.subscription == serialized,
+                Transaction.payment_id != current_payment_id,
+            ))
             siblings = list(result.scalars().all())
             for sibling in siblings:
                 sibling.status = TransactionStatus.CANCELED
             if siblings:
                 await db.commit()
-                logger.info("Canceled %d sibling pending transactions after Variza payment %s succeeded.", len(siblings), current_payment_id)
 
     async def handle_payment_succeeded(self, payment_id: str) -> None:
-        lock = self.storage.redis.lock(
-            f"payment:variza:{payment_id}",
-            timeout=180,
-            blocking_timeout=10,
-        )
+        lock = self.storage.redis.lock(f"payment:variza:{payment_id}", timeout=180, blocking_timeout=10)
         async with lock:
             async with self.session() as db:
                 transaction = await Transaction.get_by_id(session=db, payment_id=payment_id)
                 if transaction is None:
                     raise RuntimeError(f"Variza transaction {payment_id} was not found")
                 if transaction.status == TransactionStatus.COMPLETED:
-                    logger.info("Ignoring duplicate Variza success for %s", payment_id)
                     return
                 if transaction.status == TransactionStatus.CANCELED:
-                    logger.warning("Ignoring success for canceled Variza transaction %s", payment_id)
                     return
                 serialized = transaction.subscription
                 data = SubscriptionData.deserialize(serialized)
-
             if data.payment_kind == "wallet_topup":
                 user = await self._get_user(data.user_id)
                 if user is None:
                     raise RuntimeError(f"User {data.user_id} not found for Variza {payment_id}")
-                await self.services.wallet.credit(
-                    user_tg_id=user.tg_id,
-                    amount=int(data.price),
-                    transaction_type="topup",
-                    description="شارژ کیف پول از طریق درگاه واریزا",
-                    reference_id=f"variza:{payment_id}",
-                )
+                await self.services.wallet.credit(user_tg_id=user.tg_id, amount=int(data.price), transaction_type="topup", description="شارژ کیف پول از طریق درگاه واریزا", reference_id=f"variza:{payment_id}")
                 async with self.session() as db:
-                    await Transaction.update(
-                        session=db,
-                        payment_id=payment_id,
-                        status=TransactionStatus.COMPLETED,
-                    )
+                    await Transaction.update(session=db, payment_id=payment_id, status=TransactionStatus.COMPLETED)
                 await self._cancel_sibling_transactions(serialized, payment_id)
                 balance = await self.services.wallet.get_balance(user.tg_id)
-                await self.bot.send_message(
-                    user.tg_id,
-                    f"✅ <b>شارژ کیف پول با موفقیت انجام شد.</b>\n\n"
-                    f"💰 مبلغ شارژ: <b>{int(data.price):,} تومان</b>\n"
-                    f"💳 موجودی جدید: <b>{balance:,} تومان</b>",
-                )
+                await self.bot.send_message(user.tg_id, f"✅ <b>شارژ کیف پول با موفقیت انجام شد.</b>\n\n💰 مبلغ شارژ: <b>{int(data.price):,} تومان</b>\n💳 موجودی جدید: <b>{balance:,} تومان</b>")
                 return
-
             await self._on_payment_succeeded(payment_id)
             await self._cancel_sibling_transactions(serialized, payment_id)
 
@@ -333,35 +309,29 @@ class VarizaGateway(PaymentGateway):
     async def callback_handler(self, request: Request) -> Response:
         raw_body = await request.read()
         if not self._valid_signature(raw_body, request.headers.get("X-Webhook-Signature", "")):
-            logger.warning("Rejected Variza webhook with invalid signature")
             return Response(status=400, text="invalid signature")
-
         try:
             payload = await request.json()
         except Exception:
             return Response(status=400, text="invalid json")
         if not isinstance(payload, dict):
             return Response(status=400, text="invalid payload")
-
         event = str(payload.get("event") or request.headers.get("X-Event") or "").strip()
         slug = str(payload.get("slug") or "").strip()
         status = str(payload.get("status") or "").strip().lower()
         if event != "payment.paid" or status != "paid" or not slug:
-            logger.info("Ignoring Variza webhook event=%s status=%s slug=%s", event, status, slug)
             return Response(status=200, text="ignored")
-
         async with self.session() as db:
             transaction = await Transaction.get_by_id(session=db, payment_id=slug)
             if transaction is None:
-                logger.warning("Variza webhook for unknown slug %s", slug)
                 return Response(status=404, text="unknown payment")
             expected_amount = self._to_toman(SubscriptionData.deserialize(transaction.subscription).price)
-
         webhook_amount = payload.get("amount")
-        if webhook_amount is not None and self._to_toman(webhook_amount) != expected_amount:
-            logger.warning("Rejected Variza webhook amount mismatch slug=%s expected=%s got=%s", slug, expected_amount, webhook_amount)
-            return Response(status=400, text="amount mismatch")
-
+        if webhook_amount is not None:
+            actual_amount = self._to_toman(webhook_amount)
+            delta = actual_amount - expected_amount
+            if delta < 0 or delta > self.VARIZA_MAX_AMOUNT_DELTA_TOMAN:
+                return Response(status=400, text="amount mismatch")
         try:
             await self.handle_payment_succeeded(slug)
         except Exception:
@@ -370,12 +340,7 @@ class VarizaGateway(PaymentGateway):
         return Response(status=200, text="ok")
 
     async def return_handler(self, request: Request) -> Response:
-        return Response(
-            text=(
-                "<!doctype html><html lang='fa' dir='rtl'><meta charset='utf-8'>"
-                "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-                "<title>ToonelVPN</title><style>body{font-family:system-ui;max-width:520px;margin:60px auto;padding:20px;text-align:center}.card{border:1px solid #ddd;border-radius:18px;padding:24px}</style>"
-                "<div class='card'><h2>✅ پرداخت واریزا ثبت شد</h2><p>در صورت تأیید نهایی، سفارش شما به‌صورت خودکار تکمیل می‌شود.</p><p>می‌توانید به ربات ToonelVPN برگردید.</p></div></html>"
-            ),
-            content_type="text/html",
-        )
+        return Response(text=("<!doctype html><html lang='fa' dir='rtl'><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>ToonelVPN</title><style>body{font-family:system-ui;max-width:520px;margin:60px auto;padding:20px;text-align:center}.card{border:1px solid #ddd;border-radius:18px;padding:24px}</style>"
+            "<div class='card'><h2>✅ پرداخت واریزا ثبت شد</h2><p>در صورت تأیید نهایی، سفارش شما به‌صورت خودکار تکمیل می‌شود.</p><p>می‌توانید به ربات ToonelVPN برگردید.</p></div></html>"), content_type="text/html")
