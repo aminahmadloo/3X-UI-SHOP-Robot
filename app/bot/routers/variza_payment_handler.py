@@ -5,11 +5,13 @@ import logging
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
-from app.bot.models import SubscriptionData
-from app.bot.payment_gateways.variza_gateway import VarizaGateway
-from app.db.models import ServicePurchasePlan, Transaction, User
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.bot.models import SubscriptionData
+from app.bot.payment_gateways.variza_gateway import VarizaGateway
+from app.bot.utils.navigation import NavSubscription
+from app.db.models import ServicePurchasePlan, Transaction, User
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -21,15 +23,15 @@ def _restore_subscription(value, user_tg_id: int) -> SubscriptionData | None:
             data = SubscriptionData.deserialize(value)
         elif isinstance(value, dict):
             data = SubscriptionData(
-                state=value.get("state", "config_name"),
+                state=NavSubscription.CONFIG_NAME,
                 is_extend=bool(value.get("is_extend", False)),
                 is_change=bool(value.get("is_change", False)),
                 user_id=int(value.get("user_id", user_tg_id)),
                 devices=int(value.get("devices", 0) or 0),
                 duration=int(value.get("duration", 0) or 0),
                 price=float(value.get("price", 0) or 0),
-                original_price=float(value.get("original_price", 0) or 0),
-                discount_percent=float(value.get("discount_percent", 0) or 0),
+                original_price=int(value.get("original_price", 0) or 0),
+                discount_percent=int(value.get("discount_percent", 0) or 0),
                 discount_level_title=str(value.get("discount_level_title", "") or ""),
                 plan_id=int(value.get("plan_id", 0) or 0),
                 volume_gb=int(value.get("volume_gb", 0) or 0),
@@ -61,10 +63,7 @@ async def _resolve_subscription(
 
     result = await session.execute(
         select(Transaction)
-        .where(
-            Transaction.tg_id == user.tg_id,
-            Transaction.status == "pending",
-        )
+        .where(Transaction.tg_id == user.tg_id, Transaction.status == "pending")
         .order_by(Transaction.created_at.desc())
     )
     for transaction in result.scalars().all():
@@ -74,10 +73,7 @@ async def _resolve_subscription(
     return None
 
 
-def _invoice_text(
-    data: SubscriptionData,
-    slug: str,
-) -> str:
+def _invoice_text(data: SubscriptionData, slug: str) -> str:
     tracking_code = VarizaGateway.tracking_code_for_slug(slug)
     if data.is_extend:
         return (
@@ -95,7 +91,6 @@ def _invoice_text(
             "برای پرداخت، روی دکمه <b>«💳 پرداخت»</b> بزنید.\n"
             "پس از تأیید واریزا، تمدید سرویس به‌صورت خودکار انجام می‌شود."
         )
-
     return (
         "💳 <b>فاکتور کارت به کارت هوشمند واریزا</b>\n"
         "━━━━━━━━━━━━━━━\n"
@@ -145,7 +140,7 @@ async def create_variza_payment(
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
                     [InlineKeyboardButton(text="💳 پرداخت با درگاه واریزا", url=pay_url)],
-                    [InlineKeyboardButton(text="🔙 بازگشت به فاکتور آبان گیت", callback_data="variza:back")],
+                    [InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"variza:back:{plan_id}")],
                 ]
             ),
         )
@@ -154,15 +149,6 @@ async def create_variza_payment(
         await callback.answer("❌ خطا در ایجاد پرداخت واریزا.", show_alert=True)
 
 
-@router.callback_query(F.data == "variza:back")
-async def variza_back(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
-    await callback.message.edit_text(
-        "💳 <b>پرداخت کارت به کارت هوشمند</b>\n\n"
-        "از دکمه پرداخت موردنظر خود استفاده کنید.",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="💳 بازگشت به فاکتور", callback_data="main:menu")],
-            ]
-        ),
-    )
+@router.callback_query(F.data.regexp(r"^variza:back:\d+$"))
+async def variza_back(callback: CallbackQuery) -> None:
+    await callback.answer("لطفاً روش پرداخت موردنظر را از فاکتور قبلی انتخاب کنید.", show_alert=True)
