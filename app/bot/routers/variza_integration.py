@@ -90,13 +90,13 @@ def _renewal_payment_methods_keyboard(
 
 
 def _wallet_payment_methods_keyboard(language: str, amount: int) -> InlineKeyboardMarkup:
-    """Wallet payment methods with independent Aban and Variza card-to-card actions."""
+    """Wallet method screen; card-to-card opens the same two-gateway selector as purchase."""
     if language == "en":
-        gateway_label, back = "🏦 Bank gateway", "🔙 Back"
+        gateway_label, card_label, back = "🏦 Bank gateway", "💳 Card-to-card", "🔙 Back"
     elif language == "ru":
-        gateway_label, back = "🏦 Банковский шлюз", "🔙 Назад"
+        gateway_label, card_label, back = "🏦 Банковский шлюз", "💳 Перевод с карты на карту", "🔙 Назад"
     else:
-        gateway_label, back = "🏦 درگاه بانکی", "🔙 بازگشت"
+        gateway_label, card_label, back = "🏦 درگاه بانکی", "💳 کارت به کارت", "🔙 بازگشت"
 
     rows: list[list[InlineKeyboardButton]] = []
 
@@ -106,20 +106,55 @@ def _wallet_payment_methods_keyboard(language: str, amount: int) -> InlineKeyboa
             callback_data=f"wallet:method:gateway:{amount}:pay_zarinpal",
         )])
 
-    if _aban_configured():
+    if _aban_configured() or VarizaGateway.is_available():
         rows.append([InlineKeyboardButton(
-            text="💳 کارت به کارت آبان گیت",
-            callback_data=f"wallet:method:gateway:{amount}:pay_aban",
-        )])
-
-    if VarizaGateway.is_available():
-        rows.append([InlineKeyboardButton(
-            text="💳 کارت به کارت واریزا",
-            callback_data=f"wallet:method:gateway:{amount}:pay_variza",
+            text=card_label,
+            callback_data=f"wallet:card:choice:{amount}",
         )])
 
     rows.append([InlineKeyboardButton(text=back, callback_data=NavMain.WALLET)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _wallet_card_gateway_choice(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+) -> None:
+    parts = (callback.data or "").split(":")
+    if len(parts) != 4:
+        await callback.answer("❌ درخواست پرداخت نامعتبر است.", show_alert=True)
+        return
+
+    amount = int(parts[3])
+    if amount <= 0:
+        await callback.answer("❌ مبلغ شارژ معتبر نیست.", show_alert=True)
+        return
+
+    if await has_pending_payment(session, user.tg_id):
+        await callback.answer("⏳ یک درخواست پرداخت شما در حال بررسی است.", show_alert=True)
+        return
+
+    rows: list[list[InlineKeyboardButton]] = []
+    if _aban_configured():
+        rows.append([InlineKeyboardButton(
+            text="💳 پرداخت با درگاه آبان گیت",
+            callback_data=f"wallet:method:gateway:{amount}:pay_aban",
+        )])
+    if VarizaGateway.is_available():
+        rows.append([InlineKeyboardButton(
+            text="💳 پرداخت با درگاه واریزا",
+            callback_data=f"wallet:method:gateway:{amount}:pay_variza",
+        )])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به روش‌های پرداخت", callback_data=NavMain.WALLET)])
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "💳 <b>انتخاب درگاه پرداخت کارت به کارت هوشمند</b>\n\n"
+        f"💰 مبلغ شارژ: <b>{amount:,} تومان</b>\n\n"
+        "لطفاً یکی از درگاه‌های کارت به کارت را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
 
 
 async def _wallet_variza_payment(
@@ -187,8 +222,11 @@ def install() -> None:
     # enters the exact same gateway-choice flow already used by purchase.
     renew_service_handler._payment_methods_keyboard = _renewal_payment_methods_keyboard
 
-    # Wallet: replace only the method keyboard and add an isolated Variza callback.
+    # Wallet: replace only the method keyboard and add isolated wallet selectors.
     wallet_handler.payment_method_keyboard = _wallet_payment_methods_keyboard
+    wallet_gateway_payment.router.callback_query(
+        F.data.regexp(r"^wallet:card:choice:\d+$")
+    )(_wallet_card_gateway_choice)
     wallet_gateway_payment.router.callback_query(
         F.data.regexp(r"^wallet:method:gateway:\d+:pay_variza$")
     )(_wallet_variza_payment)
