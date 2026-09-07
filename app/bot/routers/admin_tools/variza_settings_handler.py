@@ -91,13 +91,13 @@ def _configured() -> bool:
 def _markup(aban_enabled: bool) -> InlineKeyboardMarkup:
     variza_enabled = _enabled()
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{'🟢' if aban_enabled else '🔴'} درگاه آبان گیت — {'فعال' if aban_enabled else 'غیرفعال'}", callback_data="variza_admin:toggle_aban")],
-        [InlineKeyboardButton(text=f"{'🟢' if variza_enabled else '🔴'} درگاه واریزا — {'فعال' if variza_enabled else 'غیرفعال'}", callback_data="variza_admin:toggle_variza")],
+        [InlineKeyboardButton(text=f"{'🟢' if aban_enabled else '🔴'} وضعیت آبان گیت: {'فعال' if aban_enabled else 'غیرفعال'}", callback_data="paymentgateway:aban")],
+        [InlineKeyboardButton(text=f"{'🟢' if variza_enabled else '🔴'} واریزا: {'فعال' if variza_enabled else 'غیرفعال'}", callback_data="variza_admin:toggle_variza")],
         [InlineKeyboardButton(text="🔑 API Key واریزا", callback_data="variza_admin:api")],
         [InlineKeyboardButton(text="🔐 Webhook Secret واریزا", callback_data="variza_admin:secret")],
         [InlineKeyboardButton(text="💳 تنظیم کارت مقصد", callback_data="variza_admin:card")],
         [InlineKeyboardButton(text="⏱️ تنظیم مهلت لینک", callback_data="variza_admin:expires")],
-        [InlineKeyboardButton(text="🔄 تازه‌سازی", callback_data="paymentgateway:smart_card")],
+        [InlineKeyboardButton(text="🔄 تازه‌سازی", callback_data="paymentgateway:variza")],
         [InlineKeyboardButton(text="🔙 تنظیمات درگاه‌ها", callback_data="paymentgateway:settings_back")],
     ])
 
@@ -116,22 +116,31 @@ async def _show(callback: CallbackQuery, session: AsyncSession, config: Config) 
     expires = _read_env_value("VARIZA_EXPIRES_IN", "1h")
     webhook = f"{config.bot.DOMAIN.rstrip('/')}/webhooks/variza"
     text = (
-        "💳 <b>کارت به کارت هوشمند — مدیریت درگاه‌ها</b>\n\n"
-        f"1️⃣ آبان گیت: <b>{'🟢 فعال' if aban_enabled else '🔴 غیرفعال'}</b>\n"
-        f"2️⃣ واریزا: <b>{'🟢 فعال' if _enabled() else '🔴 غیرفعال'}</b>\n\n"
+        "💳 <b>تنظیمات کارت به کارت واریزا</b>\n\n"
+        f"📡 وضعیت واریزا: <b>{'🟢 فعال' if _enabled() else '🔴 غیرفعال'}</b>\n"
         f"🔑 API Key واریزا: {_mask(api_key)}\n"
         f"🔐 Webhook Secret: {_mask(secret)}\n"
         f"💳 کارت مقصد: <code>{html.escape(card)}</code>\n"
         f"⏱️ مهلت لینک: <code>{html.escape(expires)}</code>\n"
         f"🔗 Webhook: <code>{html.escape(webhook)}</code>\n"
         f"📡 آمادگی اتصال: <b>{'🟢 آماده' if _configured() else '🔴 ابتدا API Key و Secret را تنظیم کنید'}</b>\n\n"
-        "واریزا کاملاً جدا از Factory و تنظیمات داخلی درگاه‌های دیگر اجرا می‌شود."
+        "این صفحه فقط تنظیمات اختصاصی درگاه واریزا را مدیریت می‌کند و تنظیمات آبان گیت از صفحه مستقل خودش انجام می‌شود."
     )
     await callback.message.edit_text(text, reply_markup=_markup(aban_enabled))
 
 
+@router.callback_query(F.data == "paymentgateway:variza", IsAdmin())
+async def variza_settings_menu(callback: CallbackQuery, session: AsyncSession, config: Config) -> None:
+    await _show(callback, session, config)
+
+
+@router.callback_query(F.data == "variza_admin:menu", IsAdmin())
+async def variza_settings_menu_legacy(callback: CallbackQuery, session: AsyncSession, config: Config) -> None:
+    await _show(callback, session, config)
+
+
 @router.callback_query(F.data == "paymentgateway:smart_card", IsAdmin())
-async def smart_card_menu(callback: CallbackQuery, session: AsyncSession, config: Config) -> None:
+async def smart_card_menu_legacy(callback: CallbackQuery, session: AsyncSession, config: Config) -> None:
     await _show(callback, session, config)
 
 
@@ -140,17 +149,6 @@ async def settings_back(callback: CallbackQuery, session: AsyncSession, config: 
     await callback.answer()
     from .payment_gateway_settings_handler import show_menu
     await show_menu(callback, session, config)
-
-
-@router.callback_query(F.data == "variza_admin:toggle_aban", IsAdmin())
-async def toggle_aban(callback: CallbackQuery, session: AsyncSession, config: Config) -> None:
-    item = await PaymentMethodSettings.get_by_key(session, "pay_aban")
-    if item is None:
-        await callback.answer("تنظیم آبان گیت پیدا نشد.", show_alert=True)
-        return
-    item.enabled = not item.enabled
-    await session.commit()
-    await _show(callback, session, config)
 
 
 @router.callback_query(F.data == "variza_admin:toggle_variza", IsAdmin())
