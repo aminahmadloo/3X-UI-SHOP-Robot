@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import logging
 import os
-import uuid
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -27,12 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class VarizaGateway(PaymentGateway):
-    """Fully isolated Variza card-to-card smart gateway.
-
-    The gateway intentionally does not register itself in GatewayFactory. It is
-    invoked only from the smart card-to-card payment UI, so existing gateway
-    routing remains untouched.
-    """
+    """Fully isolated Variza card-to-card smart gateway."""
 
     name = "💳 پرداخت با درگاه واریزا"
     currency = Currency.TOMAN
@@ -154,6 +148,20 @@ class VarizaGateway(PaymentGateway):
             )
             return result.scalars().first()
 
+    async def _find_completed_transaction(self, data: SubscriptionData) -> Transaction | None:
+        serialized = data.serialize()
+        async with self.session() as db:
+            result = await db.execute(
+                select(Transaction)
+                .where(
+                    Transaction.tg_id == data.user_id,
+                    Transaction.status == TransactionStatus.COMPLETED,
+                    Transaction.subscription == serialized,
+                )
+                .order_by(Transaction.created_at.desc())
+            )
+            return result.scalars().first()
+
     @classmethod
     def _headers(cls) -> dict[str, str]:
         token = cls._api_key()
@@ -181,6 +189,10 @@ class VarizaGateway(PaymentGateway):
             raise RuntimeError("Variza is disabled or not configured")
 
         amount = self._to_toman(data.price)
+        completed = await self._find_completed_transaction(data)
+        if completed is not None:
+            raise RuntimeError("This order has already been paid")
+
         order_key = self._order_key(data)
         lock = self.storage.redis.lock(
             f"payment:variza:create:{order_key}",
@@ -188,11 +200,14 @@ class VarizaGateway(PaymentGateway):
             blocking_timeout=10,
         )
         async with lock:
+            completed = await self._find_completed_transaction(data)
+            if completed is not None:
+                raise RuntimeError("This order has already been paid")
+
             existing = await self._find_pending_transaction(data)
             if existing is not None:
-                slug = existing.payment_id
-                logger.info("Reusing Variza payment %s for service order %s", slug, order_key)
-                return f"https://variza.ir/pay/{slug}"
+                logger.info("Reusing Variza payment %s for service order %s", existing.payment_id, order_key)
+                return f"https://variza.ir/pay/{existing.payment_id}"
 
             payload: dict[str, Any] = {
                 "amount": amount,
@@ -206,9 +221,7 @@ class VarizaGateway(PaymentGateway):
 
             status, response = await self._request("POST", "/pay", json=payload)
             if status != 201:
-                raise RuntimeError(
-                    f"Variza payment creation failed: HTTP {status}: {response}"
-                )
+                raise RuntimeError(f"Variza payment creation failed: HTTP {status}: {response}")
 
             slug = str(response.get("slug") or "").strip()
             pay_url = str(response.get("pay_url") or "").strip()
@@ -229,14 +242,24 @@ class VarizaGateway(PaymentGateway):
                 if transaction is None:
                     raise RuntimeError(f"Could not create ToonelVPN transaction for Variza {slug}")
 
-            logger.info(
-                "Variza payment created: slug=%s tg_id=%s amount=%s order_key=%s",
-                slug,
-                data.user_id,
-                amount,
-                order_key,
-            )
+            logger.info("Variza payment created: slug=%s tg_id=%s amount=%s order_key=%s", slug, data.user_id, amount, order_key)
             return pay_url
+
+    async def _cancel_sibling_transactions(self, serialized: str, current_payment_id: str) -> None:
+        async with self.session() as db:
+            result = await db.execute(
+                select(Transaction).where(
+                    Transaction.status == TransactionStatus.PENDING,
+                    Transaction.subscription == serialized,
+                    Transaction.payment_id != current_payment_id,
+                )
+            )
+            siblings = list(result.scalars().all())
+            for sibling in siblings:
+                sibling.status = TransactionStatus.CANCELED
+            if siblings:
+                await db.commit()
+                logger.info("Canceled %d sibling pending transactions after Variza payment %s succeeded.", len(siblings), current_payment_id)
 
     async def handle_payment_succeeded(self, payment_id: str) -> None:
         lock = self.storage.redis.lock(
@@ -255,7 +278,8 @@ class VarizaGateway(PaymentGateway):
                 if transaction.status == TransactionStatus.CANCELED:
                     logger.warning("Ignoring success for canceled Variza transaction %s", payment_id)
                     return
-                data = SubscriptionData.deserialize(transaction.subscription)
+                serialized = transaction.subscription
+                data = SubscriptionData.deserialize(serialized)
 
             if data.payment_kind == "wallet_topup":
                 user = await self._get_user(data.user_id)
@@ -274,6 +298,7 @@ class VarizaGateway(PaymentGateway):
                         payment_id=payment_id,
                         status=TransactionStatus.COMPLETED,
                     )
+                await self._cancel_sibling_transactions(serialized, payment_id)
                 balance = await self.services.wallet.get_balance(user.tg_id)
                 await self.bot.send_message(
                     user.tg_id,
@@ -284,6 +309,7 @@ class VarizaGateway(PaymentGateway):
                 return
 
             await self._on_payment_succeeded(payment_id)
+            await self._cancel_sibling_transactions(serialized, payment_id)
 
     async def _get_user(self, tg_id: int) -> User | None:
         async with self.session() as db:
@@ -301,17 +327,12 @@ class VarizaGateway(PaymentGateway):
         secret = cls._webhook_secret()
         if not secret or not signature:
             return False
-        expected = "sha256=" + hmac.new(
-            secret.encode("utf-8"), raw_body, hashlib.sha256
-        ).hexdigest()
+        expected = "sha256=" + hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected, signature.strip())
 
     async def callback_handler(self, request: Request) -> Response:
         raw_body = await request.read()
-        if not self._valid_signature(
-            raw_body,
-            request.headers.get("X-Webhook-Signature", ""),
-        ):
+        if not self._valid_signature(raw_body, request.headers.get("X-Webhook-Signature", "")):
             logger.warning("Rejected Variza webhook with invalid signature")
             return Response(status=400, text="invalid signature")
 
@@ -338,12 +359,7 @@ class VarizaGateway(PaymentGateway):
 
         webhook_amount = payload.get("amount")
         if webhook_amount is not None and self._to_toman(webhook_amount) != expected_amount:
-            logger.warning(
-                "Rejected Variza webhook amount mismatch slug=%s expected=%s got=%s",
-                slug,
-                expected_amount,
-                webhook_amount,
-            )
+            logger.warning("Rejected Variza webhook amount mismatch slug=%s expected=%s got=%s", slug, expected_amount, webhook_amount)
             return Response(status=400, text="amount mismatch")
 
         try:
@@ -358,12 +374,8 @@ class VarizaGateway(PaymentGateway):
             text=(
                 "<!doctype html><html lang='fa' dir='rtl'><meta charset='utf-8'>"
                 "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-                "<title>ToonelVPN</title><style>body{font-family:system-ui;max-width:520px;margin:60px auto;padding:20px;text-align:center}"
-                ".card{border:1px solid #ddd;border-radius:18px;padding:24px}</style>"
-                "<div class='card'><h2>✅ پرداخت واریزا ثبت شد</h2>"
-                "<p>در صورت تأیید نهایی، سفارش شما به‌صورت خودکار تکمیل می‌شود.</p>"
-                "<p>می‌توانید به ربات ToonelVPN برگردید.</p></div>"
-                "</html>"
+                "<title>ToonelVPN</title><style>body{font-family:system-ui;max-width:520px;margin:60px auto;padding:20px;text-align:center}.card{border:1px solid #ddd;border-radius:18px;padding:24px}</style>"
+                "<div class='card'><h2>✅ پرداخت واریزا ثبت شد</h2><p>در صورت تأیید نهایی، سفارش شما به‌صورت خودکار تکمیل می‌شود.</p><p>می‌توانید به ربات ToonelVPN برگردید.</p></div></html>"
             ),
             content_type="text/html",
         )
