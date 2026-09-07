@@ -115,6 +115,7 @@ def gateway_choice_markup(plan_id: int) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text="💳 پرداخت با درگاه آبان گیت", callback_data=f"cardgateway:aban:{plan_id}")]]
     if VarizaGateway.is_available():
         rows.append([InlineKeyboardButton(text="💳 پرداخت با درگاه واریزا", callback_data=f"variza:pay:{plan_id}")])
+    rows.append([InlineKeyboardButton(text="🔙 تغییر روش پرداخت", callback_data=f"mp_back:{plan_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -139,12 +140,14 @@ def _aban_invoice_text(data: SubscriptionData, invoice_id: str, order_id: str, p
     )
 
 
-def _variza_invoice_text(data: SubscriptionData, slug: str, payable_toman: int | None) -> str:
+def _variza_invoice_text(
+    data: SubscriptionData,
+    slug: str,
+) -> str:
     tracking_code = VarizaGateway.tracking_code_for_order(data)
     amount_line = (
-        f"مبلغ قابل پرداخت: <code>{payable_toman:,.0f}</code> تومان"
-        if payable_toman is not None
-        else "مبلغ قابل پرداخت: <b>مبلغ درج‌شده در صفحه واریزا</b>"
+        "مبلغ قابل واریز: "
+        "<b>دقیقاً مطابق مبلغ نمایش‌داده‌شده در صفحه واریزا</b>"
     )
     volume_label = "حجم افزوده" if data.is_extend else "حجم"
     duration_label = "زمان افزوده" if data.is_extend else "مدت"
@@ -226,16 +229,27 @@ async def legacy_aban_payment_selector(callback: CallbackQuery, user: User, stat
 
 
 @router.callback_query(F.data.regexp(r"^cardgateway:aban:\d+$"))
-async def choose_aban_gateway(callback: CallbackQuery, user: User, state: FSMContext, session: AsyncSession, aban_gateway: AbanGateway) -> None:
+async def choose_aban_gateway(
+    callback: CallbackQuery,
+    user: User,
+    state: FSMContext,
+    session: AsyncSession,
+    gateway_factory,
+) -> None:
     plan_id = int((callback.data or "").rsplit(":", 1)[-1])
     data = await _resolve_subscription(user, plan_id, state, session)
     if data is None:
         await callback.answer("❌ اطلاعات سفارش منقضی شده است.", show_alert=True)
         return
+
     try:
-        pay_url = await aban_gateway.create_payment(data)
+        gateway = gateway_factory.get_gateway("pay_aban")
+        if not isinstance(gateway, AbanGateway):
+            raise RuntimeError("Configured pay_aban gateway is not an AbanGateway")
+
+        pay_url = await gateway.create_payment(data)
         invoice_id = pay_url.rstrip("/").rsplit("/", 1)[-1]
-        await _show_aban_invoice(callback, data, aban_gateway, invoice_id)
+        await _show_aban_invoice(callback, data, gateway, invoice_id)
     except Exception as exc:
         logger.exception("Aban payment creation failed for user %s: %s", user.tg_id, exc)
         await callback.answer("❌ خطا در ایجاد پرداخت آبان گیت.", show_alert=True)
@@ -272,10 +286,10 @@ async def create_variza_payment(callback: CallbackQuery, user: User, state: FSMC
     try:
         pay_url = await variza_gateway.create_payment(data)
         slug = pay_url.rstrip("/").rsplit("/", 1)[-1]
-        payable_toman = await VarizaGateway.fetch_displayed_payable_toman(pay_url)
+
         await callback.answer()
         await callback.message.edit_text(
-            _variza_invoice_text(data, slug, payable_toman),
+            _variza_invoice_text(data, slug),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="💳 پرداخت", url=pay_url)],
                 [InlineKeyboardButton(text="🔙 انتخاب درگاه دیگر", callback_data=f"cardgateway:choice:{plan_id}")],
