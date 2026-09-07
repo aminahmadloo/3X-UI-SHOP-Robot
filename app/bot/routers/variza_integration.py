@@ -17,7 +17,7 @@ from app.bot.routers.wallet import gateway_payment as wallet_gateway_payment
 from app.bot.routers.wallet import handler as wallet_handler
 from app.bot.routers.wallet.handler import has_pending_payment
 from app.bot.utils.navigation import NavMain, NavSubscription
-from app.db.models import User
+from app.db.models import PaymentMethodSettings, User, WalletTopupAmount
 
 
 def _pay_keyboard_with_variza(pay_url: str, callback_data):
@@ -58,29 +58,37 @@ def _zarinpal_enabled() -> bool:
     }
 
 
+async def _zarinpal_visible(session: AsyncSession) -> bool:
+    """Return the admin-configured customer visibility for ZarinPal.
+
+    The admin payment-method screen stores visibility in PaymentMethodSettings;
+    the environment flag alone is not the source of truth for customer display.
+    """
+    method = await PaymentMethodSettings.get_by_key(session, "pay_zarinpal")
+    return bool(method and method.enabled and _zarinpal_enabled())
+
+
 def _renewal_payment_methods_keyboard(
     subscription_id: int,
     plan_id: int,
     price: int,
     gateway_factory,
+    *,
+    zarinpal_visible: bool,
 ) -> InlineKeyboardMarkup:
-    """Renewal payment methods with the same smart card gateway choice as purchase."""
+    """Renewal payment methods with admin-controlled ZarinPal visibility."""
     rows: list[list[InlineKeyboardButton]] = []
 
-    # Respect the same ZarinPal feature flag used by the payment gateway factory.
-    # This prevents a stale/registered gateway from leaking into the renewal UI.
     for gateway in gateway_factory.get_gateways():
         if gateway.callback == "pay_aban":
             continue
-        if gateway.callback == "pay_zarinpal" and not _zarinpal_enabled():
+        if gateway.callback == "pay_zarinpal" and not zarinpal_visible:
             continue
         rows.append([InlineKeyboardButton(
             text=f"🏦 {gateway.name} | {price:,} تومان",
             callback_data=f"{renew_service_handler.GATEWAY_PREFIX}{subscription_id}:{plan_id}:{gateway.callback}",
         )])
 
-    # The smart card-to-card entry intentionally opens the existing purchase
-    # gateway selector, which then offers Aban and Variza independently.
     if _aban_configured() or VarizaGateway.is_available():
         rows.append([InlineKeyboardButton(
             text=f"💳 کارت به کارت | {price:,} تومان",
@@ -99,8 +107,13 @@ def _renewal_payment_methods_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _wallet_payment_methods_keyboard(language: str, amount: int) -> InlineKeyboardMarkup:
-    """Wallet method screen; card-to-card opens the same two-gateway selector as purchase."""
+def _wallet_payment_methods_keyboard(
+    language: str,
+    amount: int,
+    *,
+    zarinpal_visible: bool,
+) -> InlineKeyboardMarkup:
+    """Wallet method screen; visibility follows the admin payment-method setting."""
     if language == "en":
         gateway_label, card_label, back = "🏦 Bank gateway", "💳 Card-to-card", "🔙 Back"
     elif language == "ru":
@@ -110,7 +123,7 @@ def _wallet_payment_methods_keyboard(language: str, amount: int) -> InlineKeyboa
 
     rows: list[list[InlineKeyboardButton]] = []
 
-    if _zarinpal_enabled():
+    if zarinpal_visible:
         rows.append([InlineKeyboardButton(
             text=gateway_label,
             callback_data=f"wallet:method:gateway:{amount}",
@@ -245,17 +258,111 @@ async def _wallet_variza_payment(
     )
 
 
+async def _renewal_payment_methods(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    services,
+    state: FSMContext,
+    gateway_factory,
+) -> None:
+    parts = (callback.data or "").split(":")
+    if len(parts) != 4:
+        await callback.answer("❌ درخواست تمدید نامعتبر است.", show_alert=True)
+        return
+
+    subscription_id = int(parts[2])
+    plan_id = int(parts[3])
+    resolved = await renew_service_handler._resolve_renewal_payment_data(
+        session, user, subscription_id, plan_id, services
+    )
+    if resolved is None:
+        await callback.answer("❌ سرویس یا پلن اصلی دیگر معتبر نیست.", show_alert=True)
+        return
+
+    subscription, plan, data = resolved
+    await state.update_data(subscription_data=data.serialize())
+    visible = await _zarinpal_visible(session)
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "💳 <b>انتخاب روش پرداخت تمدید سرویس</b>\n\n"
+        f"🟢 <b>سرویس:</b> <code>{subscription.config_name}</code>\n\n"
+        f"📦 حجم افزوده: <b>{plan.volume_gb} GB</b>\n"
+        f"📅 زمان افزوده: <b>{plan.duration_days} روز</b>\n"
+        f"💰 مبلغ: <b>{data.price:,} تومان</b>\n\n"
+        "روش پرداخت را انتخاب کنید:",
+        reply_markup=_renewal_payment_methods_keyboard(
+            subscription.id,
+            plan.id,
+            int(data.price),
+            gateway_factory,
+            zarinpal_visible=visible,
+        ),
+    )
+
+
+async def _wallet_topup_payment_methods(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    config,
+    state: FSMContext,
+) -> None:
+    amount_id = int((callback.data or "").rsplit(":", 1)[1])
+    item = await WalletTopupAmount.get(session, amount_id)
+    if not item or not item.is_active:
+        await callback.answer("❌ این مبلغ دیگر فعال نیست.", show_alert=True)
+        return
+
+    if await has_pending_payment(session, user.tg_id):
+        await callback.answer("⏳ یک درخواست پرداخت شما در حال بررسی است. لطفاً منتظر بمانید.", show_alert=True)
+        return
+
+    await state.clear()
+    await state.update_data(card_payment_amount=item.amount)
+    visible = await _zarinpal_visible(session)
+
+    await callback.answer()
+    await callback.message.edit_text(
+        wallet_handler.payment_method_text(user.language_code, item.amount),
+        reply_markup=_wallet_payment_methods_keyboard(
+            user.language_code,
+            item.amount,
+            zarinpal_visible=visible,
+        ),
+    )
+
+
+def _replace_router_handler(router, callback_name: str, replacement) -> None:
+    for handler in router.callback_query.handlers:
+        if getattr(handler.callback, "__name__", "") == callback_name:
+            handler.callback = replacement
+            return
+    raise RuntimeError(f"Unable to replace router callback: {callback_name}")
+
+
 def install() -> None:
     # Existing purchase flow: untouched; this preserves its current Aban + Variza UI.
     managed_payment_compat_handler.pay_keyboard = _pay_keyboard_with_variza
     payment_handler.pay_keyboard = _pay_keyboard_with_variza
 
-    # Renewal: replace only its payment-method keyboard. The card-to-card action
-    # enters the exact same gateway-choice flow already used by purchase.
-    renew_service_handler._payment_methods_keyboard = _renewal_payment_methods_keyboard
+    # Renewal: read the persisted admin visibility setting at the moment the
+    # payment-method screen is opened. Purchase flow is not touched.
+    _replace_router_handler(
+        renew_service_handler.router,
+        "payment_methods",
+        _renewal_payment_methods,
+    )
 
-    # Wallet: replace only the method keyboard and add isolated wallet selectors.
-    wallet_handler.payment_method_keyboard = _wallet_payment_methods_keyboard
+    # Wallet: read the persisted admin visibility setting at the moment the
+    # top-up payment-method screen is opened. This avoids relying on stale env state.
+    _replace_router_handler(
+        wallet_handler.router,
+        "callback_wallet_topup",
+        _wallet_topup_payment_methods,
+    )
+
     wallet_gateway_payment.router.callback_query(
         F.data.regexp(r"^wallet:card:choice:\d+$")
     )(_wallet_card_gateway_choice)
