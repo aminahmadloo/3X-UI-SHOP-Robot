@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ServicesContainer, SubscriptionData
 from app.bot.payment_gateways import GatewayFactory
+from app.bot.payment_gateways.variza_gateway import VarizaGateway
+from app.bot.routers.variza_payment_handler import gateway_choice_markup, gateway_choice_text
 from app.bot.utils.formatting import format_subscription_period
 from app.bot.utils.navigation import NavSubscription
 from app.db.models import ServicePurchasePlan, User
@@ -75,6 +77,15 @@ async def callback_payment_method_selected(
             if not invoice_id or not order_id or payable_toman is None:
                 raise RuntimeError("AbanGateway returned incomplete invoice details")
 
+            if VarizaGateway.is_available():
+                # The shared screen is provider-neutral. The provider-specific
+                # invoice is opened only after the customer chooses Aban or Variza.
+                await callback.message.edit_text(
+                    gateway_choice_text(callback_data, payable_toman),
+                    reply_markup=gateway_choice_markup(invoice_id, callback_data.plan_id),
+                )
+                return
+
             if callback_data.is_extend:
                 renewal_plan = None
                 if callback_data.plan_id:
@@ -112,6 +123,9 @@ async def callback_payment_method_selected(
                     "━━━━━━━━━━━━━━━\n"
                     f"کد پیگیری: <code>{order_id}</code>\n"
                     f"شماره فاکتور آبان گیت: <code>{invoice_id}</code>\n"
+                    f"نام کانفیگ: <code>{callback_data.config_name}</code>\n"
+                    f"حجم: <code>{callback_data.volume_gb} گیگ</code>\n"
+                    f"مدت: <code>{callback_data.duration} روز</code>\n"
                     f"مبلغ سفارش: <code>{price:,.0f}</code> تومان\n"
                     f"مبلغ قابل پرداخت: <code>{float(payable_toman):,.0f}</code> تومان\n"
                     "مهلت پرداخت: <b>طبق زمان اعلام‌شده در صفحه آبان گیت</b>\n"
@@ -120,9 +134,6 @@ async def callback_payment_method_selected(
                     "پس از تأیید آبان گیت، شارژ یا سفارش شما به‌صورت خودکار انجام می‌شود."
                 )
         elif callback_data.is_extend:
-            # Do not use the legacy i18n renewal message here. Some deployed
-            # locale catalogs still contain the old short payment text.
-            # Renewal must always expose the full order details.
             text = (
                 "🏦 <b>پرداخت تمدید سرویس</b>\n\n"
                 f"📦 <b>حجم افزوده:</b> {volume_gb} GB\n"
