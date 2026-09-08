@@ -21,32 +21,18 @@ class PaymentMethodSettings(Base):
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=100, index=True)
 
     @classmethod
-    async def get_by_key(
-        cls,
-        session: AsyncSession,
-        method_key: str,
-    ) -> Self | None:
+    async def get_by_key(cls, session: AsyncSession, method_key: str) -> Self | None:
         result = await session.execute(select(cls).where(cls.method_key == method_key))
         return result.scalar_one_or_none()
 
     @classmethod
-    async def ensure_defaults(
-        cls,
-        session: AsyncSession,
-        gateways: Iterable[object] = (),
-    ) -> list[Self]:
-        """Ensure built-in methods and registered gateways are manageable.
-
-        AbanGateway is seeded even before its credentials are configured so the
-        admin can prepare its visibility setting in advance. Unconfigured
-        gateways are never rendered to customers because the customer keyboard
-        only renders registered gateway instances.
-        """
+    async def ensure_defaults(cls, session: AsyncSession, gateways: Iterable[object] = ()) -> list[Self]:
         defaults: list[tuple[str, str, int]] = [
             ("pay_zarinpal", "🏦 زرین‌پال", 10),
             ("mp_card", "💳 کارت به کارت", 20),
             ("mp_wallet", "💰 کیف پول", 30),
             ("pay_aban", "💳 پرداخت خودکار کارت به کارت", 40),
+            ("pay_blupal", "💳 کارت به کارت هوشمند بلوپال", 50),
         ]
 
         for gateway in gateways:
@@ -55,51 +41,35 @@ class PaymentMethodSettings(Base):
             callback = str(callback or "").strip()
             if not callback:
                 continue
-
             name = str(getattr(gateway, "name", callback) or callback)
             if not any(key == callback for key, _, _ in defaults):
                 defaults.append((callback, name, 100 + len(defaults)))
 
         existing = {
             item.method_key: item
-            for item in (
-                await session.execute(select(cls).order_by(cls.sort_order, cls.id))
-            ).scalars().all()
+            for item in (await session.execute(select(cls).order_by(cls.sort_order, cls.id))).scalars().all()
         }
 
         for key, name, sort_order in defaults:
             item = existing.get(key)
             if item is None:
-                item = cls(
-                    method_key=key,
-                    display_name=name,
-                    enabled=True,
-                    sort_order=sort_order,
-                )
+                item = cls(method_key=key, display_name=name, enabled=True, sort_order=sort_order)
                 session.add(item)
                 existing[key] = item
-            elif key in {"pay_zarinpal", "pay_aban"} and name and item.display_name != name:
+            elif key in {"pay_zarinpal", "pay_aban", "pay_blupal"} and name and item.display_name != name:
                 item.display_name = name
 
         await session.flush()
         return sorted(existing.values(), key=lambda item: (item.sort_order, item.id))
 
     @classmethod
-    async def get_enabled_keys(
-        cls,
-        session: AsyncSession,
-        gateways: Iterable[object] = (),
-    ) -> set[str]:
+    async def get_enabled_keys(cls, session: AsyncSession, gateways: Iterable[object] = ()) -> set[str]:
         items = await cls.ensure_defaults(session, gateways)
         await session.commit()
         return {item.method_key for item in items if item.enabled}
 
     @classmethod
-    async def get_manageable(
-        cls,
-        session: AsyncSession,
-        gateways: Iterable[object] = (),
-    ) -> list[Self]:
+    async def get_manageable(cls, session: AsyncSession, gateways: Iterable[object] = ()) -> list[Self]:
         items = await cls.ensure_defaults(session, gateways)
         await session.commit()
         return items
