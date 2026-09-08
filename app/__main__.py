@@ -6,6 +6,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.types import MenuButtonDefault
 from aiogram.utils.i18n import I18n
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp.web import Application, _run_app
@@ -56,9 +57,16 @@ async def on_startup(
     current_webhook = await bot.get_webhook_info()
     logging.info(f"Current webhook URL: {current_webhook.url}")
 
-    # Mini App menu button is intentionally not configured here.
-    # Telegram/BotFather controls the native chat menu button so that
-    # enabling/disabling it does not require a deployment or bot restart.
+    # Clear any legacy per-admin Mini App menu-button override.
+    # BotFather remains the source of truth for the bot-wide menu button.
+    for admin_id in config.bot.ADMINS:
+        try:
+            await bot.set_chat_menu_button(
+                chat_id=int(admin_id),
+                menu_button=MenuButtonDefault(),
+            )
+        except Exception:
+            logging.exception("Failed to reset Mini App menu button for admin %s", admin_id)
 
     await services.notification.notify_developer(BOT_STARTED_TAG)
     logging.info("Bot started.")
@@ -98,77 +106,3 @@ async def main() -> None:
         path=DEFAULT_LOCALES_DIR,
         default_locale=DEFAULT_LANGUAGE,
         domain=I18N_DOMAIN,
-    )
-    I18n.set_current(i18n)
-    services_container = await services.initialize(config=config, session=db.session, bot=bot)
-    await services_container.server_pool.sync_servers()
-    gateway_factory = GatewayFactory()
-    gateway_factory.register_gateways(
-        app=app,
-        config=config,
-        session=db.session,
-        storage=storage,
-        bot=bot,
-        i18n=i18n,
-        services=services_container,
-    )
-
-    # Variza is deliberately isolated from GatewayFactory. Existing gateway
-    # registration, routing and visibility continue to work unchanged.
-    variza_gateway = VarizaGateway(
-        app=app,
-        config=config,
-        session=db.session,
-        storage=storage,
-        bot=bot,
-        i18n=i18n,
-        services=services_container,
-    )
-
-    dispatcher = Dispatcher(
-        db=db,
-        storage=storage,
-        config=config,
-        bot=bot,
-        services=services_container,
-        gateway_factory=gateway_factory,
-        variza_gateway=variza_gateway,
-        redis=storage.redis,
-        i18n=i18n,
-    )
-    dispatcher.startup.register(on_startup)
-    dispatcher.shutdown.register(on_shutdown)
-    await MaintenanceMiddleware.load_from_database(db.session)
-    middlewares.register(dispatcher=dispatcher, i18n=i18n, session=db.session)
-    filters.register(
-        dispatcher=dispatcher,
-        developer_id=config.bot.DEV_ID,
-        admins_ids=config.bot.ADMINS,
-    )
-    routers.include(app=app, dispatcher=dispatcher)
-    register_mini_app(
-        app=app,
-        db=db,
-        bot_token=config.bot.TOKEN,
-        admin_ids=config.bot.ADMINS,
-        services=services_container,
-    )
-    register_admin_management(
-        app=app,
-        db=db,
-        bot_token=config.bot.TOKEN,
-        admin_ids=config.bot.ADMINS,
-    )
-    await commands.setup(bot=bot)
-    webhook_requests_handler = SimpleRequestHandler(dispatcher=dispatcher, bot=bot)
-    webhook_requests_handler.register(app, path=TELEGRAM_WEBHOOK)
-    setup_application(app, dispatcher, bot=bot)
-    await _run_app(
-        app,
-        host=DEFAULT_BOT_HOST,
-        port=config.bot.PORT,
-    )
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
