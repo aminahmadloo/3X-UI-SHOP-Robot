@@ -7,6 +7,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.bot.payment_gateways.blupal_gateway import BluPalGateway
 from app.bot.routers import managed_card_payment
+from app.bot.routers import blupal_smart_card_payment
 from app.bot.routers.subscription import keyboard as subscription_keyboard
 from app.bot.utils.navigation import NavMain
 
@@ -44,6 +45,12 @@ def _enabled(key: str) -> bool:
         return True
 
 
+def _smart_wallet_available() -> bool:
+    aban_configured = bool(os.getenv("ABAN_GATEWAY_TOKEN", "").strip() and os.getenv("ABAN_GATEWAY_WEBHOOK_SECRET", "").strip())
+    blupal_configured = bool(os.getenv("BLUPAL_API_KEY", "").strip())
+    return (aban_configured and _enabled("pay_aban")) or (blupal_configured and _enabled("pay_blupal"))
+
+
 def _traffic_keyboard(subscription_id: int, plan_id: int, price_toman: int, gateways) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     if _enabled("mp_card"):
@@ -66,3 +73,4 @@ def _traffic_keyboard(subscription_id: int, plan_id: int, price_toman: int, gate
 subscription_keyboard.managed_payment_method_keyboard_traffic = _traffic_keyboard
 managed_card_payment.managed_payment_method_keyboard = subscription_keyboard.managed_payment_method_keyboard
 managed_card_payment.managed_payment_method_keyboard_renewal = subscription_keyboard.managed_payment_method_keyboard_renewal
+blupal_smart_card_payment._wallet_smart_configured_from_env = _smart_wallet_available
