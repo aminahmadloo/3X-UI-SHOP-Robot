@@ -86,11 +86,33 @@ def join_keyboard(channels: list[dict[str, Any]]) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def _missing_message(channels: list[dict[str, Any]]) -> str:
+    lines = [
+        "❌ <b>عضویت شما هنوز کامل نشده است.</b>",
+        "",
+        "برای ورود به ربات، ابتدا باید در موارد زیر عضو شوید:",
+        "",
+    ]
+    for channel in channels:
+        lines.append(f"📢 <b>{channel['title']}</b>")
+    lines.extend([
+        "",
+        "پس از عضویت در همه موارد بالا، دوباره روی «✅ بررسی عضویت» بزنید.",
+    ])
+    return "\n".join(lines)
+
+
 async def show_join_message(target: Message | CallbackQuery, channels: list[dict[str, Any]]) -> None:
     if isinstance(target, CallbackQuery):
         if target.message:
-            await target.message.edit_text(_MESSAGE, reply_markup=join_keyboard(channels))
-        await target.answer("ابتدا در همه کانال‌ها عضو شوید.", show_alert=True)
+            try:
+                await target.message.edit_text(
+                    _missing_message(channels),
+                    reply_markup=join_keyboard(channels),
+                )
+            except Exception:
+                logger.exception("Failed to update force-join message")
+        await target.answer("❌ هنوز در همه کانال‌های الزامی عضو نشده‌اید.", show_alert=True)
     else:
         await target.answer(_MESSAGE, reply_markup=join_keyboard(channels))
 
@@ -102,10 +124,6 @@ class ForceJoinMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        # Dispatcher update middleware receives an aiogram Update wrapper.
-        # The actual Message/CallbackQuery is available as Update.event.
-        # Using the wrapper directly makes event.chat/from_user unavailable and
-        # silently bypasses force-join, which is especially visible on /start.
         telegram_event = getattr(event, "event", None) or event
 
         user = getattr(telegram_event, "from_user", None)
@@ -132,8 +150,6 @@ class ForceJoinMiddleware(BaseMiddleware):
         if not channels:
             return await handler(event, data)
 
-        # The dedicated verification callback must reach its handler so it can
-        # re-check membership and open the normal main menu on success.
         if getattr(telegram_event, "data", None) == "forcejoin:check":
             return await handler(event, data)
 
