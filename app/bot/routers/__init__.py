@@ -14,6 +14,7 @@ from . import (
     main_menu,
     managed_card_payment,
     misc,
+    my_services,
     payment_method_visibility,
     profile,
     referral,
