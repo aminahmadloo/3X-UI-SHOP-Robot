@@ -14,7 +14,6 @@ from . import (
     main_menu,
     managed_card_payment,
     misc,
-    my_services,
     payment_method_visibility,
     profile,
     referral,
@@ -32,7 +31,6 @@ from .admin_tools.gift_promocode_handler import router as gift_promocode_router
 from .admin_tools.gift_reports_handler import router as gift_reports_router
 from .admin_tools.multi_card_settings_handler import router as multi_card_settings_router
 from .admin_tools.payment_gateway_settings_handler import router as payment_gateway_settings_router
-from .admin_tools.variza_settings_handler import router as variza_settings_router
 from .admin_tools.wallet_amounts_handler import router as wallet_amounts_router
 from .admin_tools.service_purchase_management_menu_handler import router as service_purchase_management_menu_router
 from .admin_tools.dynamic_service_period_handler import router as dynamic_service_period_router
@@ -69,12 +67,9 @@ from .special_offer_handler import router as special_offer_router
 from .special_offer_runtime_fixes import router as special_offer_runtime_fixes_router
 from .special_offer_input_guard import router as special_offer_input_guard_router
 from .special_offer_campaign_rename_v2 import router as special_offer_campaign_rename_router
-from .variza_payment_handler import router as variza_payment_router
 
 from . import payment_method_visibility as _payment_method_visibility
-from . import variza_integration as _variza_integration
-
-_variza_integration.install()
+from . import payment_method_runtime_integration as _payment_method_runtime_integration
 
 
 def include(app: Application, dispatcher: Dispatcher) -> None:
@@ -113,7 +108,6 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         dynamic_service_purchase_router,
         subscription.renewal_handler.router,
         subscription.subscription_handler.router,
-        variza_payment_router,
         subscription.payment_handler.router,
         subscription.promocode_handler.router,
         subscription.trial_handler.router,
@@ -157,7 +151,6 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         card_payment_router,
         multi_card_settings_router,
         card_settings_router,
-        variza_settings_router,
         payment_gateway_settings_router,
         wallet_amounts_router,
     )
