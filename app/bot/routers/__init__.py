@@ -124,7 +124,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         subscription.promocode_handler.router,
         subscription.trial_handler.router,
         subscription.wallet_payment.router,
-        service_purchase_management_menu_handler.router if False else service_purchase_management_menu_router,
+        service_purchase_management_menu_router,
         managed_payment_compat_router,
         dynamic_renewal_admin_router,
         dynamic_service_period_router,
