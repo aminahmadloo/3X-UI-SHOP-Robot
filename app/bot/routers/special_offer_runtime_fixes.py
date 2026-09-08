@@ -7,7 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters import IsAdmin
-from app.db.models import ServicePurchasePlan, SpecialOfferCampaign, SpecialOfferCampaignPlan
+from app.bot.models import ServicesContainer
+from app.bot.services.customer_level import get_discounted_plan_price
+from app.db.models import ServicePurchasePlan, SpecialOfferCampaign, SpecialOfferCampaignPlan, User
 
 from . import special_offer_handler as special_offer
 
@@ -56,6 +58,71 @@ special_offer.add_special_offer_buttons = _safe_add_special_offer_buttons
 special_offer._campaign_has_active_offers = _safe_campaign_has_active_offers
 special_offer._campaign_offers = _safe_campaign_offers
 special_offer._all_manageable_plans = _safe_all_manageable_plans
+
+
+@router.callback_query(F.data.regexp(r"^special_offer:plan:\d+:\d+$"))
+async def callback_special_offer_purchase_with_customer_discount(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
+    """Preserve the campaign price as the base and apply the customer-level discount."""
+    _, _, campaign_id_raw, plan_id_raw = callback.data.split(":")
+    campaign_id = int(campaign_id_raw)
+    plan_id = int(plan_id_raw)
+
+    campaign = await SpecialOfferCampaign.get(session, campaign_id)
+    plan = await ServicePurchasePlan.get(session, plan_id)
+    offer = await SpecialOfferCampaignPlan.get(session, campaign_id, plan_id)
+
+    if (
+        not campaign
+        or not campaign.is_active
+        or not plan
+        or plan.is_custom
+        or not offer
+        or not offer.is_active
+        or offer.special_price_toman <= 0
+    ):
+        await callback.answer("این فروش ویژه دیگر فعال نیست.", show_alert=True)
+        return
+
+    await special_offer._start_plan_purchase(
+        event=callback,
+        user=user,
+        session=session,
+        state=state,
+        services=services,
+        plan=plan,
+    )
+
+    data = await state.get_data()
+    packed = data.get("subscription_data")
+    if not isinstance(packed, dict):
+        return
+
+    special_price = int(offer.special_price_toman)
+    customer_level, _, discounted_special_price = await get_discounted_plan_price(
+        session,
+        user.tg_id,
+        special_price,
+    )
+    discount_percent = int(getattr(customer_level, "discount_percent", 0) or 0)
+    discount_level_title = str(getattr(customer_level, "title", "") or "")
+
+    await state.update_data(
+        subscription_data={
+            **packed,
+            "price": discounted_special_price,
+            "original_price": special_price,
+            "discount_percent": discount_percent,
+            "discount_level_title": discount_level_title,
+            "special_offer": True,
+            "special_offer_campaign_id": campaign.id,
+        }
+    )
 
 
 @router.callback_query(F.data == "service_purchase:special_products", IsAdmin())

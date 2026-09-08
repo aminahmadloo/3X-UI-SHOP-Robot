@@ -72,16 +72,7 @@ def _write_env_value(name: str, value: str) -> None:
     if not found:
         output.append(f"{name}={value}\n")
 
-    # .env is a Docker bind mount; write directly so the host .env is updated.
     ENV_FILE.write_text("".join(output), encoding="utf-8")
-
-
-def _mask_secret(value: str) -> str:
-    if not value:
-        return "<i>تنظیم نشده</i>"
-    if len(value) <= 8:
-        return "••••••••"
-    return f"{html.escape(value[:4])}••••••••{html.escape(value[-4:])}"
 
 
 def menu_markup(settings: PaymentGatewaySettings | None) -> InlineKeyboardMarkup:
@@ -100,10 +91,6 @@ def menu_markup(settings: PaymentGatewaySettings | None) -> InlineKeyboardMarkup
     rows.append([InlineKeyboardButton(
         text="💳 تنظیمات کارت به کارت آبان گیت",
         callback_data="paymentgateway:aban",
-    )])
-    rows.append([InlineKeyboardButton(
-        text="💳 تنظیمات کارت به کارت واریزا",
-        callback_data="paymentgateway:variza",
     )])
     rows.append([InlineKeyboardButton(text="👁️ مدیریت نمایش روش‌های پرداخت", callback_data="paymentgateway:methods")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavAdminTools.MAIN)])
@@ -181,7 +168,7 @@ async def show_menu(callback: CallbackQuery, session: AsyncSession, config: Conf
         f"وضعیت مسیر سفارشی: <b>{custom_status}</b>\n\n"
         "💳 <b>پرداخت خودکار کارت به کارت</b>\n"
         f"وضعیت اتصال آبان گیت: <b>{aban_status}</b>\n"
-        "تنظیمات آبان و واریزا از مسیرهای مستقل مدیریت می‌شوند."
+        "تنظیمات آبان گیت از مسیر مستقل مدیریت می‌شود."
     )
     await callback.message.edit_text(text, reply_markup=menu_markup(settings))
 
