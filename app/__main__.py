@@ -6,6 +6,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.types import MenuButtonDefault
 from aiogram.utils.i18n import I18n
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp.web import Application, _run_app
@@ -56,9 +57,16 @@ async def on_startup(
     current_webhook = await bot.get_webhook_info()
     logging.info(f"Current webhook URL: {current_webhook.url}")
 
-    # Mini App menu button is intentionally not configured here.
-    # Telegram/BotFather controls the native chat menu button so that
-    # enabling/disabling it does not require a deployment or bot restart.
+    # Reset legacy per-admin menu-button overrides so the bot-wide
+    # BotFather setting is authoritative for both admins and regular users.
+    for admin_id in config.bot.ADMINS:
+        try:
+            await bot.set_chat_menu_button(
+                chat_id=int(admin_id),
+                menu_button=MenuButtonDefault(),
+            )
+        except Exception:
+            logging.exception("Failed to reset Mini App menu button for admin %s", admin_id)
 
     await services.notification.notify_developer(BOT_STARTED_TAG)
     logging.info("Bot started.")
