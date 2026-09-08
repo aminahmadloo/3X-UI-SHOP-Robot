@@ -32,6 +32,7 @@ from .admin_tools.gift_promocode_handler import router as gift_promocode_router
 from .admin_tools.gift_reports_handler import router as gift_reports_router
 from .admin_tools.multi_card_settings_handler import router as multi_card_settings_router
 from .admin_tools.payment_gateway_settings_handler import router as payment_gateway_settings_router
+from .admin_tools.blupal_settings_handler import router as blupal_settings_router
 from .admin_tools.variza_settings_handler import router as variza_settings_router
 from .admin_tools.wallet_amounts_handler import router as wallet_amounts_router
 from .admin_tools.service_purchase_management_menu_handler import router as service_purchase_management_menu_router
@@ -133,7 +134,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         env_settings_enhancer_router,
         env_settings_router,
         test_account_settings_router,
-        advertising_management_extra_handler.router if False else advertising_management_extra_router,
+        advertising_management_extra_router,
         advertising_management_callbacks_fix_router,
         advertising_management_router,
         advertising_publication_status_router,
@@ -163,5 +164,6 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         card_settings_router,
         variza_settings_router,
         payment_gateway_settings_router,
+        blupal_settings_router,
         wallet_amounts_router,
     )
