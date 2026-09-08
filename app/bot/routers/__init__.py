@@ -8,7 +8,6 @@ from . import (
     admin_tools,
     advertising,
     commands,
-    custom_service,
     custom_service_card_payment,
     download,
     main_menu,
@@ -76,6 +75,7 @@ from .blupal_smart_card_payment import router as blupal_smart_card_payment_route
 from . import payment_method_visibility as _payment_method_visibility
 from . import variza_integration as _variza_integration
 from . import blupal_smart_card_payment as _blupal_smart_card_payment
+from . import blupal_smart_card_compat as _blupal_smart_card_compat
 
 _variza_integration.install()
 _blupal_smart_card_payment.install()
