@@ -1,4 +1,5 @@
 from app.bot.routers.payment_method_runtime_integration import _wallet_payment_methods_keyboard
+from app.bot.utils.navigation import NavMain
 
 
 def _callback_data(markup):
@@ -30,4 +31,4 @@ def test_wallet_topup_hides_card_to_card_when_aban_is_not_visible():
     callbacks = _callback_data(markup)
 
     assert "wallet:method:card:350000" not in callbacks
-    assert callbacks == ["NavMain.WALLET"] if False else callbacks
+    assert NavMain.WALLET in callbacks
