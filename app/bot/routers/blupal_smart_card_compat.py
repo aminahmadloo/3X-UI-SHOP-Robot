@@ -51,6 +51,22 @@ def _smart_wallet_available() -> bool:
     return (aban_configured and _enabled("pay_aban")) or (blupal_configured and _enabled("pay_blupal"))
 
 
+def _wallet_keyboard(language: str, amount: int) -> InlineKeyboardMarkup:
+    if language == "en":
+        bank_label, smart_label, back = "🏦 Bank gateway", "💳 Smart card-to-card", "🔙 Back"
+    elif language == "ru":
+        bank_label, smart_label, back = "🏦 Банковский шлюз", "💳 Умная оплата с карты на карту", "🔙 Назад"
+    else:
+        bank_label, smart_label, back = "🏦 درگاه بانکی", "💳 پرداخت کارت به کارت هوشمند", "🔙 بازگشت"
+    rows: list[list[InlineKeyboardButton]] = []
+    if os.getenv("SHOP_PAYMENT_ZARINPAL_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"} and _enabled("pay_zarinpal"):
+        rows.append([InlineKeyboardButton(text=bank_label, callback_data=f"wallet:method:gateway:{amount}:pay_zarinpal")])
+    if _smart_wallet_available():
+        rows.append([InlineKeyboardButton(text=smart_label, callback_data=f"smartcard:choose:wallet:{amount}")])
+    rows.append([InlineKeyboardButton(text=back, callback_data=NavMain.WALLET)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def _traffic_keyboard(subscription_id: int, plan_id: int, price_toman: int, gateways) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     if _enabled("mp_card"):
@@ -74,3 +90,4 @@ subscription_keyboard.managed_payment_method_keyboard_traffic = _traffic_keyboar
 managed_card_payment.managed_payment_method_keyboard = subscription_keyboard.managed_payment_method_keyboard
 managed_card_payment.managed_payment_method_keyboard_renewal = subscription_keyboard.managed_payment_method_keyboard_renewal
 blupal_smart_card_payment._wallet_smart_configured_from_env = _smart_wallet_available
+blupal_smart_card_payment._wallet_keyboard = _wallet_keyboard
