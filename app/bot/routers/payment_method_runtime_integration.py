@@ -33,6 +33,13 @@ async def _zarinpal_visible(session: AsyncSession) -> bool:
     return bool(method and method.enabled and _zarinpal_enabled())
 
 
+async def _aban_visible(session: AsyncSession) -> bool:
+    if not _aban_configured():
+        return False
+    method = await PaymentMethodSettings.get_by_key(session, "pay_aban")
+    return bool(method and method.enabled)
+
+
 def _renewal_payment_methods_keyboard(
     subscription_id: int,
     plan_id: int,
@@ -84,27 +91,28 @@ def _wallet_payment_methods_keyboard(
     amount: int,
     *,
     zarinpal_visible: bool,
+    aban_visible: bool,
 ) -> InlineKeyboardMarkup:
     if language == "en":
-        gateway_label, card_label, back = "🏦 Bank gateway", "💳 Card-to-card", "🔙 Back"
+        gateway_label, aban_label, back = "🏦 Bank gateway", "💳 Smart card-to-card", "🔙 Back"
     elif language == "ru":
-        gateway_label, card_label, back = "🏦 Банковский шлюз", "💳 Перевод с карты на карту", "🔙 Назад"
+        gateway_label, aban_label, back = "🏦 Банковский шлюз", "💳 Умный перевод с карты на карту", "🔙 Назад"
     else:
-        gateway_label, card_label, back = "🏦 درگاه بانکی", "💳 کارت به کارت", "🔙 بازگشت"
+        gateway_label, aban_label, back = "🏦 درگاه بانکی", "💳 پرداخت خودکار کارت به کارت", "🔙 بازگشت"
 
     rows: list[list[InlineKeyboardButton]] = []
     if zarinpal_visible:
         rows.append([
             InlineKeyboardButton(
                 text=gateway_label,
-                callback_data=f"wallet:method:gateway:{amount}",
+                callback_data=f"wallet:method:gateway:{amount}:pay_zarinpal",
             )
         ])
-    if _aban_configured():
+    if aban_visible:
         rows.append([
             InlineKeyboardButton(
-                text=card_label,
-                callback_data=f"wallet:method:card:{amount}",
+                text=aban_label,
+                callback_data=f"wallet:method:gateway:{amount}:pay_aban",
             )
         ])
     rows.append([InlineKeyboardButton(text=back, callback_data=NavMain.WALLET)])
@@ -169,12 +177,13 @@ async def _wallet_topup_payment_methods(
         return
 
     if await has_pending_payment(session, user.tg_id):
-        await callback.answer("⏳ یک درخواست پرداخت شما در حال بررسی است. لطفاً منتظر بمانید.", show_alert=True)
+        await callback.answer("⏳ یک درخواست پرداخت شما در حال بررسی است. لطفاً ابتدا همان درخواست را تعیین تکلیف کنید.", show_alert=True)
         return
 
     await state.clear()
     await state.update_data(card_payment_amount=item.amount)
     visible = await _zarinpal_visible(session)
+    aban_visible = await _aban_visible(session)
 
     await callback.answer()
     await callback.message.edit_text(
@@ -183,6 +192,7 @@ async def _wallet_topup_payment_methods(
             user.language_code,
             item.amount,
             zarinpal_visible=visible,
+            aban_visible=aban_visible,
         ),
     )
 
