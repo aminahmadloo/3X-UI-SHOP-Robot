@@ -70,11 +70,14 @@ from .special_offer_runtime_fixes import router as special_offer_runtime_fixes_r
 from .special_offer_input_guard import router as special_offer_input_guard_router
 from .special_offer_campaign_rename_v2 import router as special_offer_campaign_rename_router
 from .variza_payment_handler import router as variza_payment_router
+from .blupal_smart_card_payment import router as blupal_smart_card_payment_router
 
 from . import payment_method_visibility as _payment_method_visibility
 from . import variza_integration as _variza_integration
+from . import blupal_smart_card_payment as _blupal_smart_card_payment
 
 _variza_integration.install()
+_blupal_smart_card_payment.install()
 
 
 def include(app: Application, dispatcher: Dispatcher) -> None:
@@ -85,6 +88,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         force_join_router,
         advertising.router,
         commands.router,
+        blupal_smart_card_payment_router,
         multi_card_wallet_receipt_router,
         multi_card_service_receipt_router,
         managed_card_payment.router,
@@ -129,7 +133,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         env_settings_enhancer_router,
         env_settings_router,
         test_account_settings_router,
-        advertising_management_extra_router,
+        advertising_management_extra_handler.router if False else advertising_management_extra_router,
         advertising_management_callbacks_fix_router,
         advertising_management_router,
         advertising_publication_status_router,
