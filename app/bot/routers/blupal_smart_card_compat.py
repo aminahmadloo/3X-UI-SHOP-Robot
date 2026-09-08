@@ -9,6 +9,7 @@ from app.bot.payment_gateways.blupal_gateway import BluPalGateway
 from app.bot.routers import managed_card_payment
 from app.bot.routers import blupal_smart_card_payment
 from app.bot.routers.subscription import keyboard as subscription_keyboard
+from app.bot.routers.subscription import subscription_handler
 from app.bot.utils.navigation import NavMain
 
 
@@ -81,12 +82,14 @@ def _traffic_keyboard(subscription_id: int, plan_id: int, price_toman: int, gate
             text=f"{gateway.name} | {price_toman:,} {gateway.currency.symbol}",
             callback_data=f"mp:{key}:{plan_id}",
         )])
-    rows.append([InlineKeyboardButton(text="🔙 تغییر حجم", callback_data=f"traffic:add:{subscription_id}")])
+    rows.append([InlineKeyboardButton(text="🔙 تغییر حجم", callback_data=f"traffic:add:{subscription_id}"))
     rows.append([InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 subscription_keyboard.managed_payment_method_keyboard_traffic = _traffic_keyboard
+subscription_handler.managed_payment_method_keyboard = subscription_keyboard.managed_payment_method_keyboard
+subscription_handler.payment_method_keyboard = subscription_keyboard.payment_method_keyboard
 managed_card_payment.managed_payment_method_keyboard = subscription_keyboard.managed_payment_method_keyboard
 managed_card_payment.managed_payment_method_keyboard_renewal = subscription_keyboard.managed_payment_method_keyboard_renewal
 blupal_smart_card_payment._wallet_smart_configured_from_env = _smart_wallet_available
