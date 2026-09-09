@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import os
@@ -103,12 +104,41 @@ class BluPalGateway(PaymentGateway):
         return value
 
     async def get_invoice(self, invoice_id: str) -> dict[str, Any]:
-        status, body = await self._request("GET", f"/v1/invoices/{invoice_id}")
-        if status != 200 or body.get("success") is False:
-            raise RuntimeError(
-                f"BluPal invoice lookup failed: HTTP {status}, code={self._error_code(body)}"
+        """Fetch an invoice, tolerating the provider's short post-creation race.
+
+        BluPal can return the newly-created invoice from the create endpoint
+        before the read endpoint is ready. The smart-card purchase handler
+        immediately reads the invoice to render the final amount/card details,
+        so a transient 404 otherwise becomes the misleading generic
+        "invoice creation failed" message. Retry only transient 404/5xx
+        responses; persistent failures still raise normally.
+        """
+        last_status = 0
+        last_body: dict[str, Any] = {}
+        for attempt in range(3):
+            status, body = await self._request("GET", f"/v1/invoices/{invoice_id}")
+            last_status = status
+            last_body = body
+            if status == 200 and body.get("success") is not False:
+                return body
+
+            transient = status == 404 or 500 <= status < 600
+            if not transient or attempt == 2:
+                break
+
+            delay = 0.35 * (attempt + 1)
+            logger.info(
+                "BluPal invoice lookup retry: invoice=%s status=%s attempt=%s delay=%.2fs",
+                invoice_id,
+                status,
+                attempt + 1,
+                delay,
             )
-        return body
+            await asyncio.sleep(delay)
+
+        raise RuntimeError(
+            f"BluPal invoice lookup failed: HTTP {last_status}, code={self._error_code(last_body)}"
+        )
 
     async def _find_pending_transaction(self, data: SubscriptionData) -> Transaction | None:
         serialized = data.serialize()
@@ -202,7 +232,7 @@ class BluPalGateway(PaymentGateway):
         amount_rial = self._to_rial(data.price)
         order_key = data.serialize()
         lock = self.storage.redis.lock(
-            f"payment:blupal:create:{data.user_id}:{hashlib.sha256(order_key.encode("utf-8")).hexdigest()}",
+            f"payment:blupal:create:{data.user_id}:{hashlib.sha256(order_key.encode(\"utf-8\")).hexdigest()}",
             timeout=180,
             blocking_timeout=10,
         )
