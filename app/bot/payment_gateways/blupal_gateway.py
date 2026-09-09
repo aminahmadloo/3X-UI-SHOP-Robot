@@ -232,7 +232,7 @@ class BluPalGateway(PaymentGateway):
         amount_rial = self._to_rial(data.price)
         order_key = data.serialize()
         lock = self.storage.redis.lock(
-            f"payment:blupal:create:{data.user_id}:{hashlib.sha256(order_key.encode(\"utf-8\")).hexdigest()}",
+            f"payment:blupal:create:{data.user_id}:{hashlib.sha256(order_key.encode('utf-8')).hexdigest()}",
             timeout=180,
             blocking_timeout=10,
         )
