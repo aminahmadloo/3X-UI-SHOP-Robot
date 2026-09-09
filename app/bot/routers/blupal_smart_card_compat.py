@@ -27,6 +27,12 @@ async def _blupal_success(self: BluPalGateway, payment_id: str) -> None:
         data = SubscriptionData.deserialize(transaction.subscription)
 
     if data.payment_kind == "wallet_topup":
+        # Wallet top-ups must pass exactly the same remote verification
+        # boundary as service payments before any balance is credited.
+        invoice = await self.get_invoice(payment_id)
+        if str(invoice.get("status") or "").strip().upper() != "PAID":
+            raise RuntimeError(f"BluPal invoice {payment_id} is not PAID")
+        await self._verify_invoice_matches_transaction(transaction, invoice)
         await self.credit_wallet(payment_id)
         return
 

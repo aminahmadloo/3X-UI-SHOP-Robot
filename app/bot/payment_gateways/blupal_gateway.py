@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from decimal import Decimal, InvalidOperation
@@ -167,6 +168,33 @@ class BluPalGateway(PaymentGateway):
                 f"BluPal invoice {transaction.payment_id} final amount is invalid"
             )
 
+    @staticmethod
+    def _validate_created_invoice_response(
+        response: dict[str, Any], expected_rial: int
+    ) -> tuple[str, str, int]:
+        invoice_id = str(response.get("invoice_id") or "").strip()
+        payment_url = str(response.get("payment_link") or "").strip()
+
+        try:
+            remote_amount = int(response.get("amount") or 0)
+            final_amount = int(response.get("final_amount") or 0)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("BluPal returned invalid invoice amounts") from exc
+
+        if not invoice_id.isdigit() or not payment_url:
+            raise RuntimeError("BluPal returned an incomplete invoice")
+
+        if remote_amount != expected_rial:
+            raise RuntimeError(
+                f"BluPal returned an unexpected invoice amount: "
+                f"expected={expected_rial}, remote={remote_amount}"
+            )
+
+        if final_amount < remote_amount or final_amount > remote_amount + 999:
+            raise RuntimeError("BluPal returned an invalid final invoice amount")
+
+        return invoice_id, payment_url, final_amount
+
     async def create_payment(self, data: SubscriptionData) -> str:
         if not self.is_configured():
             raise RuntimeError("BluPal is not configured")
@@ -174,7 +202,7 @@ class BluPalGateway(PaymentGateway):
         amount_rial = self._to_rial(data.price)
         order_key = data.serialize()
         lock = self.storage.redis.lock(
-            f"payment:blupal:create:{data.user_id}:{hash(order_key)}",
+            f"payment:blupal:create:{data.user_id}:{hashlib.sha256(order_key.encode("utf-8")).hexdigest()}",
             timeout=180,
             blocking_timeout=10,
         )
@@ -192,11 +220,9 @@ class BluPalGateway(PaymentGateway):
                     f"BluPal invoice creation failed: HTTP {status}, code={self._error_code(response)}"
                 )
 
-            invoice_id = str(response.get("invoice_id") or "").strip()
-            payment_url = str(response.get("payment_link") or "").strip()
-            final_amount = int(response.get("final_amount") or 0)
-            if not invoice_id or not payment_url or final_amount < amount_rial:
-                raise RuntimeError("BluPal returned an incomplete invoice")
+            invoice_id, payment_url, final_amount = self._validate_created_invoice_response(
+                response, amount_rial
+            )
 
             async with self.session() as db:
                 transaction = await Transaction.create(
