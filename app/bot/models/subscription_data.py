@@ -15,6 +15,8 @@ class SubscriptionData(CallbackData, prefix="subscription"):
     duration: int = 0
     price: float = 0
     original_price: int = 0
+    base_plan_price: int = 0
+    special_offer: bool = False
     discount_percent: int = 0
     discount_level_title: str = ""
     plan_id: int = 0
@@ -48,6 +50,8 @@ class SubscriptionData(CallbackData, prefix="subscription"):
                 "duration": self.duration,
                 "price": self.price,
                 "original_price": self.original_price,
+                  "base_plan_price": self.base_plan_price,
+                  "special_offer": self.special_offer,
                 "discount_percent": self.discount_percent,
                 "discount_level_title": self.discount_level_title,
                 "plan_id": self.plan_id,
@@ -84,6 +88,8 @@ class SubscriptionData(CallbackData, prefix="subscription"):
             duration=payload.get("duration", 0),
             price=payload.get("price", 0),
             original_price=payload.get("original_price", 0),
+              base_plan_price=payload.get("base_plan_price", 0),
+              special_offer=payload.get("special_offer", False),
             discount_percent=payload.get("discount_percent", 0),
             discount_level_title=payload.get("discount_level_title", ""),
             plan_id=payload.get("plan_id", 0),

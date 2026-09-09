@@ -242,6 +242,8 @@ async def callback_subscription_back_to_config_name(
         duration=packed.get("duration", 0),
         price=packed.get("price", 0),
         original_price=packed.get("original_price", 0),
+        base_plan_price=packed.get("base_plan_price", 0),
+        special_offer=packed.get("special_offer", False),
         discount_percent=packed.get("discount_percent", 0),
         discount_level_title=packed.get("discount_level_title", ""),
         plan_id=packed.get("plan_id", 0),
@@ -505,6 +507,8 @@ async def callback_config_name_auto(
         duration=packed.get("duration", 0),
         price=packed.get("price", 0),
         original_price=packed.get("original_price", 0),
+        base_plan_price=packed.get("base_plan_price", 0),
+        special_offer=packed.get("special_offer", False),
         discount_percent=packed.get("discount_percent", 0),
         discount_level_title=packed.get("discount_level_title", ""),
         plan_id=packed.get("plan_id", 0),
@@ -523,9 +527,15 @@ async def callback_config_name_auto(
         "💳 <b>انتخاب روش پرداخت</b>\n\n"
         f"📝 نام کانفیگ: <code>{callback_data.config_name}</code>\n"
         f"💾 پلن: <b>{callback_data.volume_gb}GB | {callback_data.duration} روز</b>\n"
-        f"💰 مبلغ پلن انتخابی: <b>{int(callback_data.original_price):,}".replace(",", ".") + " تومان</b>\n"
-        f"🎁 تخفیف {callback_data.discount_level_title or 'سطح پایه'}: <b>{callback_data.discount_percent}%</b>\n"
-        f"💳 مبلغ قابل پرداخت: <b>{int(callback_data.price):,}".replace(",", ".") + " تومان</b>\n\n"
+        + (
+            f"💰 مبلغ پلن عادی: <b>{int(callback_data.base_plan_price):,}".replace(",", ".") + " تومان</b>\n"
+            f"🔥 قیمت فروش ویژه: <b>{int(callback_data.original_price):,}".replace(",", ".") + " تومان</b>\n"
+            if callback_data.special_offer
+            else
+            f"💰 مبلغ پلن انتخابی: <b>{int(callback_data.original_price):,}".replace(",", ".") + " تومان</b>\n"
+        )
+        + f"🎁 تخفیف {callback_data.discount_level_title or 'سطح پایه'}: <b>{callback_data.discount_percent}%</b>\n"
+        + f"💳 مبلغ قابل پرداخت: <b>{int(callback_data.price):,}".replace(",", ".") + " تومان</b>\n\n"
         "روش پرداخت را انتخاب کنید:",
         reply_markup=managed_payment_method_keyboard(
             callback_data.plan_id,
@@ -604,6 +614,8 @@ async def message_config_name(
         duration=packed.get("duration", 0),
         price=packed.get("price", 0),
         original_price=packed.get("original_price", 0),
+        base_plan_price=packed.get("base_plan_price", 0),
+        special_offer=packed.get("special_offer", False),
         discount_percent=packed.get("discount_percent", 0),
         discount_level_title=packed.get("discount_level_title", ""),
         plan_id=packed.get("plan_id", 0),
@@ -631,9 +643,15 @@ async def message_config_name(
         "💳 <b>انتخاب روش پرداخت</b>\n\n"
         f"📝 نام کانفیگ: <code>{callback_data.config_name}</code>\n"
         f"💾 پلن: <b>{callback_data.volume_gb}GB | {callback_data.duration} روز</b>\n"
-        f"💰 مبلغ پلن انتخابی: <b>{int(callback_data.original_price):,}".replace(",", ".") + " تومان</b>\n"
-        f"🎁 تخفیف {callback_data.discount_level_title or 'سطح پایه'}: <b>{callback_data.discount_percent}%</b>\n"
-        f"💳 مبلغ قابل پرداخت: <b>{int(callback_data.price):,}".replace(",", ".") + " تومان</b>\n\n"
+        + (
+            f"💰 مبلغ پلن عادی: <b>{int(callback_data.base_plan_price):,}".replace(",", ".") + " تومان</b>\n"
+            f"🔥 قیمت فروش ویژه: <b>{int(callback_data.original_price):,}".replace(",", ".") + " تومان</b>\n"
+            if callback_data.special_offer
+            else
+            f"💰 مبلغ پلن انتخابی: <b>{int(callback_data.original_price):,}".replace(",", ".") + " تومان</b>\n"
+        )
+        + f"🎁 تخفیف {callback_data.discount_level_title or 'سطح پایه'}: <b>{callback_data.discount_percent}%</b>\n"
+        + f"💳 مبلغ قابل پرداخت: <b>{int(callback_data.price):,}".replace(",", ".") + " تومان</b>\n\n"
         "روش پرداخت را انتخاب کنید:",
         reply_markup=managed_payment_method_keyboard(
             callback_data.plan_id,
@@ -680,6 +698,8 @@ async def callback_managed_payment(
         duration=packed.get("duration", 0),
         price=packed.get("price", 0),
         original_price=packed.get("original_price", 0),
+        base_plan_price=packed.get("base_plan_price", 0),
+        special_offer=packed.get("special_offer", False),
         discount_percent=packed.get("discount_percent", 0),
         discount_level_title=packed.get("discount_level_title", ""),
         plan_id=packed.get("plan_id", 0),
@@ -786,6 +806,8 @@ async def callback_managed_payment_back(
         duration=packed.get("duration", 0),
         price=packed.get("price", 0),
         original_price=packed.get("original_price", 0),
+        base_plan_price=packed.get("base_plan_price", 0),
+        special_offer=packed.get("special_offer", False),
         discount_percent=packed.get("discount_percent", 0),
         discount_level_title=packed.get("discount_level_title", ""),
         plan_id=packed.get("plan_id", 0),
