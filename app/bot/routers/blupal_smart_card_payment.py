@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import logging
 import os
 import sqlite3
 from typing import Any
@@ -26,6 +27,7 @@ from app.bot.utils.navigation import NavMain, NavSubscription
 from app.db.models import PaymentMethodSettings, ServicePurchasePlan, User
 
 router = Router(name=__name__)
+logger = logging.getLogger(__name__)
 
 SMART_PARENT_KEY = "mp_smart_card"
 SMART_ABAN_KEY = "pay_aban"
@@ -332,12 +334,42 @@ async def pay_subscription_smart_card(callback: CallbackQuery, user: User, state
         await callback.answer("❌ این درگاه در حال حاضر فعال نیست.", show_alert=True)
         return
     try:
+        logger.info(
+            "SMARTCARD_DIAG create_payment:start flow=purchase provider=%s user=%s",
+            provider,
+            user.tg_id,
+        )
         pay_url = await gateway.create_payment(subscription_data)
+        logger.info(
+            "SMARTCARD_DIAG create_payment:done flow=purchase provider=%s user=%s pay_url_present=%s",
+            provider,
+            user.tg_id,
+            bool(pay_url),
+        )
         invoice_id = _invoice_id(pay_url)
+        logger.info(
+            "SMARTCARD_DIAG invoice_id provider=%s user=%s invoice_id=%s",
+            provider,
+            user.tg_id,
+            invoice_id or "<empty>",
+        )
         if not invoice_id:
             raise RuntimeError("Invalid payment URL")
         if provider == SMART_ABAN_KEY:
+            logger.info(
+                "SMARTCARD_DIAG get_invoice:start flow=purchase provider=%s user=%s invoice_id=%s",
+                provider,
+                user.tg_id,
+                invoice_id,
+            )
             invoice = await gateway._get_invoice(invoice_id)  # type: ignore[attr-defined]
+            logger.info(
+                "SMARTCARD_DIAG get_invoice:done flow=purchase provider=%s user=%s invoice_id=%s invoice_type=%s",
+                provider,
+                user.tg_id,
+                invoice_id,
+                type(invoice).__name__,
+            )
             order_id = str(invoice.get("order_id") or invoice_id)
             payable = invoice.get("payable_toman")
             if payable is None:
@@ -356,7 +388,20 @@ async def pay_subscription_smart_card(callback: CallbackQuery, user: User, state
                 "برای پرداخت روی دکمه «💳 پرداخت» بزنید."
             )
         else:
+            logger.info(
+                "SMARTCARD_DIAG get_invoice:start flow=purchase provider=%s user=%s invoice_id=%s",
+                provider,
+                user.tg_id,
+                invoice_id,
+            )
             invoice = await gateway.get_invoice(invoice_id)  # type: ignore[attr-defined]
+            logger.info(
+                "SMARTCARD_DIAG get_invoice:done flow=purchase provider=%s user=%s invoice_id=%s invoice_type=%s",
+                provider,
+                user.tg_id,
+                invoice_id,
+                type(invoice).__name__,
+            )
             final_rial = int(invoice.get("final_amount") or 0)
             final_toman = final_rial / 10
             card_number = str(invoice.get("card_number") or "").strip()
@@ -381,6 +426,12 @@ async def pay_subscription_smart_card(callback: CallbackQuery, user: User, state
             ]),
         )
     except Exception:
+        logger.exception(
+            "SMARTCARD_DIAG exception flow=purchase provider=%s user=%s invoice_id=%s",
+            provider,
+            user.tg_id,
+            locals().get("invoice_id", "<not-set>"),
+        )
         await callback.answer("❌ ایجاد فاکتور پرداخت انجام نشد. لطفاً درگاه دیگری را انتخاب کنید.", show_alert=True)
 
 
@@ -424,9 +475,39 @@ async def pay_renewal_smart_card(callback: CallbackQuery, user: User, session: A
         await callback.answer("❌ این درگاه در حال حاضر فعال نیست.", show_alert=True)
         return
     try:
+        logger.info(
+            "SMARTCARD_DIAG create_payment:start provider=%s user=%s",
+            provider,
+            user.tg_id,
+        )
         pay_url = await gateway.create_payment(data)
+        logger.info(
+            "SMARTCARD_DIAG create_payment:done provider=%s user=%s pay_url_present=%s",
+            provider,
+            user.tg_id,
+            bool(pay_url),
+        )
         invoice_id = _invoice_id(pay_url)
+        logger.info(
+            "SMARTCARD_DIAG invoice_id provider=%s user=%s invoice_id=%s",
+            provider,
+            user.tg_id,
+            invoice_id or "<empty>",
+        )
+        logger.info(
+            "SMARTCARD_DIAG get_invoice:start provider=%s user=%s invoice_id=%s",
+            provider,
+            user.tg_id,
+            invoice_id or "<empty>",
+        )
         invoice = await gateway._get_invoice(invoice_id) if provider == SMART_ABAN_KEY else await gateway.get_invoice(invoice_id)  # type: ignore[attr-defined]
+        logger.info(
+            "SMARTCARD_DIAG get_invoice:done provider=%s user=%s invoice_id=%s invoice_type=%s",
+            provider,
+            user.tg_id,
+            invoice_id or "<empty>",
+            type(invoice).__name__,
+        )
         if provider == SMART_ABAN_KEY:
             payable = invoice.get("payable_toman") or data.price
             text = (
@@ -453,6 +534,12 @@ async def pay_renewal_smart_card(callback: CallbackQuery, user: User, session: A
             [InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU)],
         ]))
     except Exception:
+        logger.exception(
+            "SMARTCARD_DIAG exception flow=renewal provider=%s user=%s invoice_id=%s",
+            provider,
+            user.tg_id,
+            locals().get("invoice_id", "<not-set>"),
+        )
         await callback.answer("❌ ایجاد فاکتور تمدید انجام نشد. لطفاً درگاه دیگری را انتخاب کنید.", show_alert=True)
 
 
@@ -495,9 +582,39 @@ async def pay_wallet_smart_card(callback: CallbackQuery, user: User, gateway_fac
         payment_kind="wallet_topup",
     )
     try:
+        logger.info(
+            "SMARTCARD_DIAG create_payment:start provider=%s user=%s",
+            provider,
+            user.tg_id,
+        )
         pay_url = await gateway.create_payment(data)
+        logger.info(
+            "SMARTCARD_DIAG create_payment:done provider=%s user=%s pay_url_present=%s",
+            provider,
+            user.tg_id,
+            bool(pay_url),
+        )
         invoice_id = _invoice_id(pay_url)
+        logger.info(
+            "SMARTCARD_DIAG invoice_id provider=%s user=%s invoice_id=%s",
+            provider,
+            user.tg_id,
+            invoice_id or "<empty>",
+        )
+        logger.info(
+            "SMARTCARD_DIAG get_invoice:start provider=%s user=%s invoice_id=%s",
+            provider,
+            user.tg_id,
+            invoice_id or "<empty>",
+        )
         invoice = await gateway._get_invoice(invoice_id) if provider == SMART_ABAN_KEY else await gateway.get_invoice(invoice_id)  # type: ignore[attr-defined]
+        logger.info(
+            "SMARTCARD_DIAG get_invoice:done provider=%s user=%s invoice_id=%s invoice_type=%s",
+            provider,
+            user.tg_id,
+            invoice_id or "<empty>",
+            type(invoice).__name__,
+        )
         if provider == SMART_ABAN_KEY:
             payable = invoice.get("payable_toman") or amount
             text = (
@@ -519,6 +636,12 @@ async def pay_wallet_smart_card(callback: CallbackQuery, user: User, gateway_fac
             [InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavMain.WALLET)],
         ]))
     except Exception:
+        logger.exception(
+            "SMARTCARD_DIAG exception flow=wallet provider=%s user=%s invoice_id=%s",
+            provider,
+            user.tg_id,
+            locals().get("invoice_id", "<not-set>"),
+        )
         await callback.answer("❌ ایجاد فاکتور شارژ انجام نشد. لطفاً درگاه دیگری را انتخاب کنید.", show_alert=True)
 
 
