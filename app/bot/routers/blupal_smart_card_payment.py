@@ -511,9 +511,23 @@ async def pay_wallet_smart_card(callback: CallbackQuery, user: User, gateway_fac
 # remain registered and their own handlers are not modified.
 def install() -> None:
     subscription_handler.payment_method_keyboard = _purchase_top_level
-    subscription_handler.managed_payment_method_keyboard = _managed_keyboard
+    subscription_handler.managed_payment_method_keyboard = (
+        lambda p, price, gateways: _managed_keyboard(
+            p,
+            price,
+            gateways,
+            f"subscription_back_config_name:{p}",
+        )
+    )
     subscription_keyboard.payment_method_keyboard = _purchase_top_level
-    subscription_keyboard.managed_payment_method_keyboard = _managed_keyboard
+    subscription_keyboard.managed_payment_method_keyboard = (
+        lambda p, price, gateways: _managed_keyboard(
+            p,
+            price,
+            gateways,
+            f"subscription_back_config_name:{p}",
+        )
+    )
     subscription_keyboard.managed_payment_method_keyboard_traffic = lambda sid, p, price, gateways: _managed_keyboard(p, price, gateways, f"traffic:add:{sid}")
     subscription_keyboard.managed_payment_method_keyboard_renewal = lambda p, price, gateways: _managed_keyboard(p, price, gateways, f"renewal:service:{p}")
     wallet_handler.payment_method_keyboard = _wallet_keyboard

@@ -94,7 +94,6 @@ def _traffic_keyboard(subscription_id: int, plan_id: int, price_toman: int, gate
 
 
 subscription_keyboard.managed_payment_method_keyboard_traffic = _traffic_keyboard
-subscription_handler.managed_payment_method_keyboard = subscription_keyboard.managed_payment_method_keyboard
 subscription_handler.payment_method_keyboard = subscription_keyboard.payment_method_keyboard
 managed_card_payment.managed_payment_method_keyboard = subscription_keyboard.managed_payment_method_keyboard
 managed_card_payment.managed_payment_method_keyboard_renewal = subscription_keyboard.managed_payment_method_keyboard_renewal
