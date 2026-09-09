@@ -131,8 +131,24 @@ def _deserialize_state(value: Any, user_id: int) -> SubscriptionData | None:
 
 
 def _invoice_id(url: str) -> str:
-    value = (url or "").rstrip("/").rsplit("/", 1)[-1]
-    return value if value.isdigit() else ""
+    """
+    Extract the provider invoice identifier from a payment URL.
+
+    Invoice identifiers are provider-defined and are not necessarily numeric
+    (e.g. AbanGateway uses IDs such as ``inv_...``). Do not impose a numeric
+    constraint here; the gateway itself is responsible for validating the ID.
+    """
+    from urllib.parse import urlparse
+
+    value = (url or "").strip()
+    if not value:
+        return ""
+
+    parsed = urlparse(value)
+    path = parsed.path.rstrip("/")
+    invoice_id = path.rsplit("/", 1)[-1].strip() if path else ""
+
+    return invoice_id
 
 
 def _purchase_top_level(plan, callback_data, gateways, price_override=None):
