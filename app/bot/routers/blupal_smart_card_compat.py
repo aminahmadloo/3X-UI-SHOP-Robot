@@ -82,7 +82,7 @@ def _traffic_keyboard(subscription_id: int, plan_id: int, price_toman: int, gate
             text=f"{gateway.name} | {price_toman:,} {gateway.currency.symbol}",
             callback_data=f"mp:{key}:{plan_id}",
         )])
-    rows.append([InlineKeyboardButton(text="🔙 تغییر حجم", callback_data=f"traffic:add:{subscription_id}"))
+    rows.append([InlineKeyboardButton(text="🔙 تغییر حجم", callback_data=f"traffic:add:{subscription_id}")])
     rows.append([InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
