@@ -38,7 +38,7 @@ class BluPalGateway(PaymentGateway):
     callback = "pay_blupal"
     WEBHOOK_PATH = "/webhooks/blupal"
     DEFAULT_API_BASE_URL = "https://blupal.net/api"
-    DEFAULT_PAYMENT_BASE_URL = "https://blupal.net/sandbox/payment"
+    DEFAULT_PAYMENT_BASE_URL = "https://blupal.net/payment"
 
     def __init__(
         self,
@@ -163,22 +163,17 @@ class BluPalGateway(PaymentGateway):
         raise RuntimeError(f"Unknown BluPal invoice status: {remote_status or 'missing'}")
 
     def _payment_url(self, invoice_id: str, invoice: dict[str, Any] | None = None) -> str:
-        """Return BluPal's documented public payment URL.
+        """Return BluPal's provider-supplied public payment URL."""
+        explicit = str((invoice or {}).get("payment_link") or "").strip()
+        if explicit.startswith("https://blupal.net/payment/"):
+            return explicit
 
-        BluPal's payment page is identified by public_token, not invoice_id.
-        Ignore legacy/incorrect /payment/{invoice_id} links and construct the
-        documented sandbox URL from the public token returned by the provider.
-        """
         public_token = str((invoice or {}).get("public_token") or "").strip()
         if public_token:
             return f"{self.payment_base_url}/{quote(public_token, safe='')}"
 
-        explicit = str((invoice or {}).get("payment_link") or "").strip()
-        if explicit.startswith(f"{self.payment_base_url}/"):
-            return explicit
-
         raise RuntimeError(
-            f"BluPal invoice {invoice_id} did not contain a usable public_token/payment_link"
+            f"BluPal invoice {invoice_id} did not contain a usable payment_link/public_token"
         )
 
     async def _verify_invoice_matches_transaction(
@@ -204,7 +199,7 @@ class BluPalGateway(PaymentGateway):
         self, response: dict[str, Any], expected_rial: int
     ) -> tuple[str, str, int]:
         invoice_id = str(response.get("invoice_id") or "").strip()
-        public_token = str(response.get("public_token") or "").strip()
+        explicit_payment_link = str(response.get("payment_link") or "").strip()
 
         try:
             remote_amount = int(response.get("amount") or 0)
@@ -212,7 +207,7 @@ class BluPalGateway(PaymentGateway):
         except (TypeError, ValueError) as exc:
             raise RuntimeError("BluPal returned invalid invoice amounts") from exc
 
-        if not invoice_id.isdigit() or not public_token:
+        if not invoice_id.isdigit() or not explicit_payment_link.startswith("https://blupal.net/payment/"):
             raise RuntimeError("BluPal returned an incomplete invoice")
 
         if remote_amount != expected_rial:
@@ -224,8 +219,7 @@ class BluPalGateway(PaymentGateway):
         if final_amount < remote_amount or final_amount > remote_amount + 999:
             raise RuntimeError("BluPal returned an invalid final invoice amount")
 
-        payment_url = f"{self.payment_base_url}/{quote(public_token, safe='')}"
-        return invoice_id, payment_url, final_amount
+        return invoice_id, explicit_payment_link, final_amount
 
     async def create_payment(self, data: SubscriptionData) -> str:
         if not self.is_configured():
