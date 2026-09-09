@@ -9,6 +9,7 @@ from app.config import Config
 
 from ._gateway import PaymentGateway
 from .aban_gateway import AbanGateway
+from .blupal_gateway import BluPalGateway
 from .zarinpal import ZarinPal
 
 
@@ -39,3 +40,5 @@ class GatewayFactory:
             self.register_gateway(ZarinPal(*dependencies))
         if AbanGateway.is_configured():
             self.register_gateway(AbanGateway(*dependencies))
+        if BluPalGateway.is_configured():
+            self.register_gateway(BluPalGateway(*dependencies))

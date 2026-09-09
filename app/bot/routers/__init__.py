@@ -32,6 +32,7 @@ from .admin_tools.gift_promocode_handler import router as gift_promocode_router
 from .admin_tools.gift_reports_handler import router as gift_reports_router
 from .admin_tools.multi_card_settings_handler import router as multi_card_settings_router
 from .admin_tools.payment_gateway_settings_handler import router as payment_gateway_settings_router
+from .admin_tools.blupal_settings_handler import router as blupal_settings_router
 from .admin_tools.variza_settings_handler import router as variza_settings_router
 from .admin_tools.wallet_amounts_handler import router as wallet_amounts_router
 from .admin_tools.service_purchase_management_menu_handler import router as service_purchase_management_menu_router
@@ -70,11 +71,15 @@ from .special_offer_runtime_fixes import router as special_offer_runtime_fixes_r
 from .special_offer_input_guard import router as special_offer_input_guard_router
 from .special_offer_campaign_rename_v2 import router as special_offer_campaign_rename_router
 from .variza_payment_handler import router as variza_payment_router
+from .blupal_smart_card_payment import router as blupal_smart_card_payment_router
 
 from . import payment_method_visibility as _payment_method_visibility
 from . import variza_integration as _variza_integration
+from . import blupal_smart_card_payment as _blupal_smart_card_payment
+from . import blupal_smart_card_compat as _blupal_smart_card_compat
 
 _variza_integration.install()
+_blupal_smart_card_payment.install()
 
 
 def include(app: Application, dispatcher: Dispatcher) -> None:
@@ -85,6 +90,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         force_join_router,
         advertising.router,
         commands.router,
+        blupal_smart_card_payment_router,
         multi_card_wallet_receipt_router,
         multi_card_service_receipt_router,
         managed_card_payment.router,
@@ -159,5 +165,6 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         card_settings_router,
         variza_settings_router,
         payment_gateway_settings_router,
+        blupal_settings_router,
         wallet_amounts_router,
     )

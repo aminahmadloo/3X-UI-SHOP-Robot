@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+import os
+import sqlite3
+
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+from app.bot.payment_gateways.blupal_gateway import BluPalGateway
+from app.bot.routers import managed_card_payment
+from app.bot.routers import blupal_smart_card_payment
+from app.bot.routers.subscription import keyboard as subscription_keyboard
+from app.bot.routers.subscription import subscription_handler
+from app.bot.utils.navigation import NavMain
+
+
+_ORIGINAL_BLUPAL_SUCCESS = BluPalGateway.handle_payment_succeeded
+
+
+async def _blupal_success(self: BluPalGateway, payment_id: str) -> None:
+    async with self.session() as db:
+        from app.bot.models import SubscriptionData
+        from app.db.models import Transaction
+
+        transaction = await Transaction.get_by_id(session=db, payment_id=payment_id)
+        if transaction is None:
+            raise RuntimeError(f"BluPal transaction {payment_id} was not found")
+        data = SubscriptionData.deserialize(transaction.subscription)
+
+    if data.payment_kind == "wallet_topup":
+        # Wallet top-ups must pass exactly the same remote verification
+        # boundary as service payments before any balance is credited.
+        invoice = await self.get_invoice(payment_id)
+        if str(invoice.get("status") or "").strip().upper() != "PAID":
+            raise RuntimeError(f"BluPal invoice {payment_id} is not PAID")
+        await self._verify_invoice_matches_transaction(transaction, invoice)
+        await self.credit_wallet(payment_id)
+        return
+
+    await _ORIGINAL_BLUPAL_SUCCESS(self, payment_id)
+
+
+BluPalGateway.handle_payment_succeeded = _blupal_success
+
+
+def _enabled(key: str) -> bool:
+    name = os.getenv("DB_NAME", "bot_database").strip() or "bot_database"
+    try:
+        with sqlite3.connect(f"/app/data/{name}.sqlite3", timeout=2) as db:
+            row = db.execute("SELECT enabled FROM payment_method_settings WHERE method_key = ?", (key,)).fetchone()
+        return True if row is None else bool(row[0])
+    except (sqlite3.Error, OSError):
+        return True
+
+
+def _smart_wallet_available() -> bool:
+    aban_configured = bool(os.getenv("ABAN_GATEWAY_TOKEN", "").strip() and os.getenv("ABAN_GATEWAY_WEBHOOK_SECRET", "").strip())
+    blupal_configured = bool(os.getenv("BLUPAL_API_KEY", "").strip())
+    return (aban_configured and _enabled("pay_aban")) or (blupal_configured and _enabled("pay_blupal"))
+
+
+def _wallet_keyboard(language: str, amount: int) -> InlineKeyboardMarkup:
+    if language == "en":
+        bank_label, smart_label, back = "🏦 Bank gateway", "💳 Smart card-to-card", "🔙 Back"
+    elif language == "ru":
+        bank_label, smart_label, back = "🏦 Банковский шлюз", "💳 Умная оплата с карты на карту", "🔙 Назад"
+    else:
+        bank_label, smart_label, back = "🏦 درگاه بانکی", "💳 پرداخت کارت به کارت هوشمند", "🔙 بازگشت"
+    rows: list[list[InlineKeyboardButton]] = []
+    if os.getenv("SHOP_PAYMENT_ZARINPAL_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"} and _enabled("pay_zarinpal"):
+        rows.append([InlineKeyboardButton(text=bank_label, callback_data=f"wallet:method:gateway:{amount}:pay_zarinpal")])
+    if _smart_wallet_available():
+        rows.append([InlineKeyboardButton(text=smart_label, callback_data=f"smartcard:choose:wallet:{amount}")])
+    rows.append([InlineKeyboardButton(text=back, callback_data=NavMain.WALLET)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _traffic_keyboard(subscription_id: int, plan_id: int, price_toman: int, gateways) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if _enabled("mp_card"):
+        rows.append([InlineKeyboardButton(text=f"💳 کارت به کارت | {price_toman:,} تومان", callback_data=f"mp_card:{plan_id}")])
+    if _enabled("mp_wallet"):
+        rows.append([InlineKeyboardButton(text=f"💰 کیف پول | {price_toman:,} تومان", callback_data=f"mp_wallet:{plan_id}")])
+    for gateway in gateways:
+        key = str(getattr(getattr(gateway, "callback", ""), "value", getattr(gateway, "callback", "")))
+        if key in {"pay_aban", "pay_blupal"} or not _enabled(key):
+            continue
+        rows.append([InlineKeyboardButton(
+            text=f"{gateway.name} | {price_toman:,} {gateway.currency.symbol}",
+            callback_data=f"mp:{key}:{plan_id}",
+        )])
+    rows.append([InlineKeyboardButton(text="🔙 تغییر حجم", callback_data=f"traffic:add:{subscription_id}")])
+    rows.append([InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+subscription_keyboard.managed_payment_method_keyboard_traffic = _traffic_keyboard
+subscription_handler.managed_payment_method_keyboard = subscription_keyboard.managed_payment_method_keyboard
+subscription_handler.payment_method_keyboard = subscription_keyboard.payment_method_keyboard
+managed_card_payment.managed_payment_method_keyboard = subscription_keyboard.managed_payment_method_keyboard
+managed_card_payment.managed_payment_method_keyboard_renewal = subscription_keyboard.managed_payment_method_keyboard_renewal
+blupal_smart_card_payment._wallet_smart_configured_from_env = _smart_wallet_available
+blupal_smart_card_payment._wallet_keyboard = _wallet_keyboard
