@@ -235,9 +235,18 @@ class BluPalGateway(PaymentGateway):
         async with lock:
             existing = await self._find_pending_transaction(data)
             if existing is not None:
-                reused = await self._reconcile_existing_invoice(existing)
-                if reused is not None:
-                    return reused
+                try:
+                    reused = await self._reconcile_existing_invoice(existing)
+                    if reused is not None:
+                        return reused
+                except Exception:
+                    logger.warning(
+                        "BluPal existing invoice is not reusable, creating a new invoice. "
+                        "old_invoice=%s user=%s",
+                        existing.payment_id,
+                        data.user_id,
+                        exc_info=True,
+                    )
 
             payload = {"amount": amount_rial}
             status, response = await self._request("POST", "/v1/invoices/create", json=payload)
