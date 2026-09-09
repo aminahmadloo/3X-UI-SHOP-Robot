@@ -6,17 +6,33 @@ from unittest.mock import AsyncMock, patch
 
 from app.bot.models import SubscriptionData
 from app.bot.payment_gateways.blupal_gateway import BluPalGateway
-from app.bot.routers.blupal_smart_card_compat import _blupal_success
+from app.bot.routers.blupal_smart_card_compat import _blupal_success, _ORIGINAL_BLUPAL_SUCCESS
 from app.bot.utils.constants import TransactionStatus
 from app.bot.utils.navigation import NavSubscription
 
 
 class _FakeSessionContext:
+    def __init__(self, db=None):
+        self.db = db if db is not None else object()
+
     async def __aenter__(self):
-        return object()
+        return self.db
 
     async def __aexit__(self, exc_type, exc, tb):
         return False
+
+
+class _FakeRedisLock:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+class _FakeRedis:
+    def lock(self, *args, **kwargs):
+        return _FakeRedisLock()
 
 
 def _subscription_data(price: int = 100_000) -> SubscriptionData:
@@ -43,7 +59,7 @@ def _transaction(
     )
 
 
-class BluPalWalletSecurityTests(unittest.IsolatedAsyncioTestCase):
+class BluPalWalletCompatibilityTests(unittest.IsolatedAsyncioTestCase):
     def _gateway(self):
         gateway = SimpleNamespace()
         gateway.session = lambda: _FakeSessionContext()
@@ -170,68 +186,8 @@ class BluPalWalletSecurityTests(unittest.IsolatedAsyncioTestCase):
 
         gateway.credit_wallet.assert_not_awaited()
 
-    async def test_wallet_non_blupal_transaction_is_not_credited(self):
-        gateway = self._gateway()
-        transaction = _transaction(gateway="zarinpal")
 
-        # The real BluPal handler must reject another gateway before any
-        # wallet credit can happen. Test the actual gateway implementation.
-        gateway.session = lambda: _FakeSessionContext()
-        gateway.get_invoice = AsyncMock(
-            return_value={
-                "invoice_id": "12345",
-                "status": "PAID",
-                "amount": 1_000_000,
-                "final_amount": 1_000_042,
-            }
-        )
-
-        # Use the real BluPal success handler while replacing only its
-        # external/session dependencies.
-        gateway._verify_invoice_matches_transaction = AsyncMock()
-        gateway._on_payment_succeeded = AsyncMock()
-
-        # This assertion is covered directly by the implementation:
-        # handle_payment_succeeded checks transaction.gateway == "blupal".
-        from app.bot.payment_gateways.blupal_gateway import BluPalGateway
-
-        real_gateway = object.__new__(BluPalGateway)
-        real_gateway.session = lambda: _FakeSessionContext()
-        real_gateway.get_invoice = AsyncMock()
-        real_gateway._on_payment_succeeded = AsyncMock()
-
-        with patch(
-            "app.db.models.Transaction.get_by_id",
-            new=AsyncMock(return_value=transaction),
-        ):
-            # Redis locking is bypassed because this test targets the
-            # gateway-isolation boundary only.
-            real_gateway.redis = None
-
-            # The implementation performs the gateway check before the
-            # remote invoice lookup.
-            with patch.object(
-                BluPalGateway,
-                "_verify_invoice_matches_transaction",
-                new=AsyncMock(),
-            ):
-                # Calling the actual method would require the project's
-                # configured Redis lock. Instead assert the source-level
-                # invariant through the helper below.
-                pass
-
-        gateway.credit_wallet.assert_not_awaited()
-
-    async def test_completed_wallet_credit_is_idempotent(self):
-        gateway = self._gateway()
-        gateway.credit_wallet = AsyncMock()
-
-        # This verifies the compatibility layer delegates exactly once.
-        await gateway.credit_wallet("12345")
-        gateway.credit_wallet.assert_awaited_once_with("12345")
-
-
-class BluPalInvoiceVerificationTests(unittest.IsolatedAsyncioTestCase):
+class BluPalWalletInvoiceVerificationTests(unittest.IsolatedAsyncioTestCase):
     async def test_wallet_invoice_amount_must_match_expected_rial(self):
         transaction = _transaction(price=100_000)
         gateway = object.__new__(BluPalGateway)
@@ -285,6 +241,55 @@ class BluPalInvoiceVerificationTests(unittest.IsolatedAsyncioTestCase):
                 "final_amount": 1_000_999,
             },
         )
+
+
+class BluPalGatewayIsolationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_non_blupal_transaction_is_rejected_before_invoice_lookup(self):
+        transaction = _transaction(gateway="pay_aban")
+
+        gateway = object.__new__(BluPalGateway)
+        gateway.storage = SimpleNamespace(redis=_FakeRedis())
+        gateway.get_invoice = AsyncMock()
+        gateway._on_payment_succeeded = AsyncMock()
+
+        fake_db = object()
+        gateway.session = lambda: _FakeSessionContext(fake_db)
+
+        with patch(
+            "app.db.models.Transaction.get_by_id",
+            new=AsyncMock(return_value=transaction),
+        ) as get_by_id:
+            with self.assertRaisesRegex(RuntimeError, "does not belong to BluPal"):
+                await _ORIGINAL_BLUPAL_SUCCESS(gateway, "12345")
+
+        get_by_id.assert_awaited_once_with(
+            session=fake_db,
+            payment_id="12345",
+        )
+        gateway.get_invoice.assert_not_awaited()
+        gateway._on_payment_succeeded.assert_not_awaited()
+
+    async def test_completed_blupal_transaction_is_idempotent(self):
+        transaction = _transaction(status=TransactionStatus.COMPLETED)
+
+        gateway = object.__new__(BluPalGateway)
+        gateway.storage = SimpleNamespace(redis=_FakeRedis())
+        gateway.get_invoice = AsyncMock()
+        gateway._on_payment_succeeded = AsyncMock()
+
+        fake_db = object()
+        gateway.session = lambda: _FakeSessionContext(fake_db)
+
+        with patch(
+            "app.db.models.Transaction.get_by_id",
+            new=AsyncMock(return_value=transaction),
+        ) as get_by_id:
+            await _ORIGINAL_BLUPAL_SUCCESS(gateway, "12345")
+            await _ORIGINAL_BLUPAL_SUCCESS(gateway, "12345")
+
+        self.assertEqual(get_by_id.await_count, 2)
+        gateway.get_invoice.assert_not_awaited()
+        gateway._on_payment_succeeded.assert_not_awaited()
 
 
 if __name__ == "__main__":
