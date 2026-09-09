@@ -198,6 +198,12 @@ class BluPalGateway(PaymentGateway):
     def _validate_created_invoice_response(
         self, response: dict[str, Any], expected_rial: int
     ) -> tuple[str, str, int]:
+        logger.info(
+            "BluPal create response keys=%s body=%s",
+            list(response.keys()),
+            response,
+        )
+
         invoice_id = str(response.get("invoice_id") or "").strip()
         explicit_payment_link = str(response.get("payment_link") or "").strip()
 
