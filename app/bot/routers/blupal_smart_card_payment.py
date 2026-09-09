@@ -134,23 +134,32 @@ def _deserialize_state(value: Any, user_id: int) -> SubscriptionData | None:
 
 def _invoice_id(url: str) -> str:
     """
-    Extract the provider invoice identifier from a payment URL.
+    BluPal payment URLs carry a public token, while invoice lookup
+    requires the numeric invoice_id.
 
-    Invoice identifiers are provider-defined and are not necessarily numeric
-    (e.g. AbanGateway uses IDs such as ``inv_...``). Do not impose a numeric
-    constraint here; the gateway itself is responsible for validating the ID.
+    BluPalPaymentURL attaches the numeric invoice_id as metadata,
+    so prefer that value. Keep the normal URL parsing fallback for
+    Aban and older callers.
     """
-    from urllib.parse import urlparse
 
-    value = (url or "").strip()
-    if not value:
+    attached_invoice_id = getattr(url, "invoice_id", None)
+    if attached_invoice_id:
+        return str(attached_invoice_id).strip()
+
+    raw = str(url or "").strip()
+    if not raw:
         return ""
 
-    parsed = urlparse(value)
-    path = parsed.path.rstrip("/")
-    invoice_id = path.rsplit("/", 1)[-1].strip() if path else ""
+    try:
+        from urllib.parse import urlparse
 
-    return invoice_id
+        parsed = urlparse(raw)
+        path = parsed.path.rstrip("/")
+        return path.rsplit("/", 1)[-1].strip() if path else ""
+    except Exception:
+        path = raw.rstrip("/").split("?", 1)[0]
+        return path.rsplit("/", 1)[-1].strip() if path else ""
+
 
 
 def _purchase_top_level(plan, callback_data, gateways, price_override=None):
@@ -340,13 +349,23 @@ async def pay_subscription_smart_card(callback: CallbackQuery, user: User, state
             user.tg_id,
         )
         pay_url = await gateway.create_payment(subscription_data)
+
         logger.info(
             "SMARTCARD_DIAG create_payment:done flow=purchase provider=%s user=%s pay_url_present=%s",
             provider,
             user.tg_id,
             bool(pay_url),
         )
-        invoice_id = _invoice_id(pay_url)
+
+        # BluPalPaymentURL keeps numeric invoice_id metadata.
+        # Use it directly because payment URL contains public token.
+        invoice_id = getattr(pay_url, "invoice_id", None)
+
+        if invoice_id:
+            invoice_id = str(invoice_id)
+
+        if not invoice_id:
+            invoice_id = _invoice_id(pay_url)
         logger.info(
             "SMARTCARD_DIAG invoice_id provider=%s user=%s invoice_id=%s",
             provider,

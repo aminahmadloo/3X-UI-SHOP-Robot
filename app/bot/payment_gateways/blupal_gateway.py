@@ -25,6 +25,18 @@ from app.db.models import Transaction, User
 logger = logging.getLogger(__name__)
 
 
+class BluPalPaymentURL(str):
+    """
+    Payment URL that behaves exactly like str while carrying
+    the numeric BluPal invoice_id required by the lookup API.
+    """
+
+    def __new__(cls, url: str, invoice_id: str | int):
+        obj = str.__new__(cls, url)
+        obj.invoice_id = str(invoice_id)
+        return obj
+
+
 class BluPalGateway(PaymentGateway):
     """Independent BluPal card-to-card provider.
 
@@ -100,9 +112,27 @@ class BluPalGateway(PaymentGateway):
         return str(body.get("error") or "")
 
     async def get_invoice(self, invoice_id: str) -> dict[str, Any]:
-        """Fetch an invoice, tolerating the provider's short post-creation race."""
+        """
+        Fetch BluPal invoice.
+
+        BluPal payment links contain a public token,
+        but invoice lookup API requires numeric invoice_id.
+        """
+
+        invoice_id = str(invoice_id).strip()
+
+        if not invoice_id.isdigit():
+            logger.warning(
+                "BluPal invalid invoice id received: %s",
+                invoice_id,
+            )
+            raise RuntimeError(
+                f"BluPal invalid invoice id format: {invoice_id}"
+            )
+
         last_status = 0
         last_body: dict[str, Any] = {}
+
         for attempt in range(3):
             status, body = await self._request("GET", f"/v1/invoices/{invoice_id}")
             last_status = status
@@ -162,18 +192,38 @@ class BluPalGateway(PaymentGateway):
             return self._payment_url(transaction.payment_id, invoice)
         raise RuntimeError(f"Unknown BluPal invoice status: {remote_status or 'missing'}")
 
-    def _payment_url(self, invoice_id: str, invoice: dict[str, Any] | None = None) -> str:
-        """Return BluPal's provider-supplied public payment URL."""
-        explicit = str((invoice or {}).get("payment_link") or "").strip()
-        if explicit.startswith("https://blupal.net/payment/"):
-            return explicit
+    def _payment_url(self, invoice_id: str | int, invoice: dict[str, Any]) -> str:
+        """
+        Return the public BluPal payment URL while preserving the
+        numeric invoice_id needed for subsequent invoice lookup.
+        """
 
-        public_token = str((invoice or {}).get("public_token") or "").strip()
+        invoice_id = str(invoice_id).strip()
+
+        payment_link = str(
+            invoice.get("payment_link")
+            or invoice.get("url")
+            or ""
+        ).strip()
+
+        public_token = str(
+            invoice.get("public_token")
+            or invoice.get("token")
+            or ""
+        ).strip()
+
+        if payment_link:
+            return BluPalPaymentURL(payment_link, invoice_id)
+
         if public_token:
-            return f"{self.payment_base_url}/{quote(public_token, safe='')}"
+            return BluPalPaymentURL(
+                f"https://blupal.net/payment/{public_token}",
+                invoice_id,
+            )
 
         raise RuntimeError(
-            f"BluPal invoice {invoice_id} did not contain a usable payment_link/public_token"
+            f"BluPal invoice {invoice_id} did not contain a usable "
+            "payment_link/public_token"
         )
 
     async def _verify_invoice_matches_transaction(
@@ -284,7 +334,7 @@ class BluPalGateway(PaymentGateway):
                 amount_rial,
                 final_amount,
             )
-            return payment_url
+            return BluPalPaymentURL(payment_url, invoice_id)
 
     async def handle_payment_succeeded(self, payment_id: str) -> None:
         lock = self.storage.redis.lock(
