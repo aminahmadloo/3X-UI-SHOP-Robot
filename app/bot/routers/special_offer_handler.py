@@ -12,6 +12,7 @@ from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
 from app.bot.routers.main_menu import handler as main_menu_handler
 from app.bot.routers.subscription.subscription_handler import _start_plan_purchase
+from app.bot.services.customer_level import get_discounted_plan_price
 from app.db.models import (
     ServicePurchasePlan,
     SpecialOfferCampaign,
@@ -263,15 +264,34 @@ async def callback_special_offer_purchase(
 
     data = await state.get_data()
     packed = data.get("subscription_data")
+
     if isinstance(packed, dict):
         special_price = int(offer.special_price_toman)
+
+        customer_level, _, discounted_special_price = await get_discounted_plan_price(
+            session,
+            user.tg_id,
+            special_price,
+        )
+
+        discount_percent = int(
+            getattr(customer_level, "discount_percent", 0) or 0
+        )
+
+        discount_title = str(
+            getattr(customer_level, "title", "")
+            or getattr(customer_level, "name", "")
+            or "سطح پایه"
+        )
+
         await state.update_data(
             subscription_data={
                 **packed,
-                "price": special_price,
+                "base_plan_price": int(plan.price_toman),
+                "price": discounted_special_price,
                 "original_price": special_price,
-                "discount_percent": 0,
-                "discount_level_title": campaign.title,
+                "discount_percent": discount_percent,
+                "discount_level_title": discount_title,
                 "special_offer": True,
                 "special_offer_campaign_id": campaign.id,
             }
