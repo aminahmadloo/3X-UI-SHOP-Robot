@@ -40,6 +40,7 @@ from .admin_tools.dynamic_service_period_handler import router as dynamic_servic
 from .admin_tools.dynamic_renewal_management_handler import router as dynamic_renewal_admin_router
 from .admin_tools.dynamic_traffic_addon_management_handler import router as dynamic_traffic_admin_router
 from .admin_tools.server_handler import router as server_router
+from .admin_tools.system_health_handler import router as system_health_router
 from .admin_tools.referral_settings_handler import router as referral_settings_router
 from .admin_tools.test_account_settings_handler import router as test_account_settings_router
 from .admin_tools.advertising_management_extra_handler import router as advertising_management_extra_router
@@ -130,6 +131,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         dynamic_service_period_router,
         dynamic_traffic_admin_router,
         server_router,
+        system_health_router,
         gift_promocode_router,
         gift_reports_router,
         env_settings_enhancer_router,
