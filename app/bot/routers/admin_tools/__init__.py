@@ -13,6 +13,7 @@ from . import (
     server_handler,
     subscription_settings_handler,
     statistics_handler,
+    system_health_handler,
     user_handler,
 )
 

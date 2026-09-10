@@ -1,31 +1,57 @@
 from aiogram import F, Router
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.bot.filters import IsAdmin
 from app.bot.services.system_health import get_system_health_report
+from app.bot.utils.navigation import NavAdminTools
 
 router = Router(name=__name__)
 
 
 @router.callback_query(F.data == "system_health", IsAdmin())
-async def system_health(callback: CallbackQuery) -> None:
-    report = await get_system_health_report()
-    nodes = "\n".join(
-        f"🌍 {node['name']}: {node['status']}" for node in report.get("nodes", [])
-    )
+async def system_health_callback(callback: CallbackQuery) -> None:
+    await callback.answer()
+
+    data = await get_system_health_report()
+
+    disk = data.get("disk", {})
 
     text = (
-        "🩺 <b>گزارش سلامت سیستم</b>\n\n"
-        f"✅ وضعیت: <b>{report['status']}</b>\n"
-        f"🖥 میزبان: <code>{report['hostname']}</code>\n"
-        f"🐍 Python: <code>{report['python']}</code>\n"
-        f"⏱ Uptime: <code>{report['uptime_seconds']}s</code>\n"
-        f"⚙️ CPU: <code>{report.get('cpu_count', 0)}</code>\n\n"
-        "💾 Disk:\n"
-        f"• Used: {report['disk']['used']}\n"
-        f"• Free: {report['disk']['free']}\n\n"
-        f"{nodes}"
+        "🩺 <b>سلامت سیستم</b>\n\n"
+        f"🟢 وضعیت: <b>{data.get('status')}</b>\n"
+        f"🖥 هاست: <code>{data.get('hostname')}</code>\n"
+        f"🐍 Python: <code>{data.get('python')}</code>\n"
+        f"⚙️ CPU: <b>{data.get('cpu_count')}</b>\n\n"
+        "💾 دیسک:\n"
+        f"• کل: {disk.get('total')}\n"
+        f"• مصرف شده: {disk.get('used')}\n"
+        f"• آزاد: {disk.get('free')}\n\n"
+        "🌍 نودها:\n"
     )
 
-    await callback.answer()
-    await callback.message.edit_text(text)
+    for node in data.get("nodes", []):
+        node_status = node.get("status")
+        icon = "🟢" if node_status else "🔴"
+        text += f"{icon} {node.get('name')}: {node_status}\n"
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 بروزرسانی",
+                    callback_data="system_health",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 بازگشت",
+                    callback_data=NavAdminTools.MAIN,
+                )
+            ],
+        ]
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=kb,
+    )
