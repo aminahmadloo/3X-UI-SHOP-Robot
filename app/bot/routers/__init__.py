@@ -157,6 +157,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         admin_tools.client_control_settings_handler.router,
         admin_tools.subscription_settings_handler.router,
         admin_tools.statistics_handler.router,
+        admin_tools.system_health_handler.router,
         admin_tools.user_handler.router,
         admin_tools.customer_level_settings_handler.router,
         referral_settings_router,

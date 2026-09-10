@@ -130,6 +130,7 @@ async def callback_admin_tools(callback: CallbackQuery, user: User) -> None:
     markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="🎁 تنظیمات معرفی به دوستان", callback_data=NavAdminTools.REFERRAL_SETTINGS)])
     markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="📝 مدیریت پیام خوش‌آمدگویی", callback_data=NavAdminTools.WELCOME_MESSAGE_SETTINGS)])
     markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="💰 مدیریت مبالغ کیف پول", callback_data="wallet_amounts")])
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="🩺 سلامت سیستم", callback_data="system_health")])
     await callback.message.edit_text(text=_("admin_tools:message:main"), reply_markup=markup)
 
 
