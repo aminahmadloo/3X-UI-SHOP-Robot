@@ -85,7 +85,7 @@ def main_menu_keyboard(
             callback_data=NavSubscription.GET_TRIAL,
         ),
         InlineKeyboardButton(
-            text=_("main_menu:button:support"),
+            text="آموزش و پشتیبانی",
             callback_data=NavSupport.MAIN,
         ),
     )
