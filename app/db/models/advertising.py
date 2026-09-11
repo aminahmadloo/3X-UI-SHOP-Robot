@@ -39,6 +39,7 @@ class AdvertisingCampaign(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1", index=True)
     custom_buttons_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
     selected_offers_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    publication_targets_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
     show_services: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     content_type: Mapped[str] = mapped_column(String(16), nullable=False, default="text", server_default="text")
     media_file_id: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -68,6 +69,18 @@ class AdvertisingCampaign(Base):
     @selected_offers.setter
     def selected_offers(self, value: list[str]) -> None:
         self.selected_offers_json = json.dumps(value, ensure_ascii=False)
+
+    @property
+    def publication_targets(self) -> list[str]:
+        try:
+            value = json.loads(self.publication_targets_json or "[]")
+            return [str(item) for item in value] if isinstance(value, list) else []
+        except (TypeError, ValueError):
+            return []
+
+    @publication_targets.setter
+    def publication_targets(self, value: list[str]) -> None:
+        self.publication_targets_json = json.dumps(value, ensure_ascii=False)
 
 
 class AdvertisingPublication(Base):
