@@ -76,7 +76,7 @@ def main_menu_keyboard(
         ),
     )
 
-    # 6. اکانت تست | پشتیبانی
+    # 6. اکانت تست | آموزش و پشتیبانی
     # اکانت تست فعلاً همیشه نمایش داده می‌شود.
     # منطق نهایی دسترسی/فعال‌سازی بعداً جداگانه اصلاح خواهد شد.
     builder.row(
@@ -85,7 +85,7 @@ def main_menu_keyboard(
             callback_data=NavSubscription.GET_TRIAL,
         ),
         InlineKeyboardButton(
-            text=_("main_menu:button:support"),
+            text="آموزش و پشتیبانی",
             callback_data=NavSupport.MAIN,
         ),
     )
