@@ -9,6 +9,8 @@ class AdvertisingStates(StatesGroup):
     waiting_button_url = State()
     waiting_button_color = State()
     waiting_service_selection = State()
+    waiting_publication_destinations = State()
+    waiting_publication_channels = State()
     waiting_edit_campaign_title = State()
     waiting_edit_campaign_body = State()
     waiting_edit_campaign_media = State()
