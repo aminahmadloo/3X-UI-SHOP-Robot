@@ -75,12 +75,13 @@ async def tracked_ad_start(
             command=command,
             is_new_user=is_new_user,
         )
-        home_campaign = await _get_active_home_campaign(session)
-        if home_campaign:
-            try:
-                await send_campaign_content(message.bot, message.chat.id, home_campaign, session)
-            except Exception:
-                logger.exception("Failed to publish home campaign for user %s", user.tg_id)
+        if not args:
+            home_campaign = await _get_active_home_campaign(session)
+            if home_campaign:
+                try:
+                    await send_campaign_content(message.bot, message.chat.id, home_campaign, session)
+                except Exception:
+                    logger.exception("Failed to publish home campaign for user %s", user.tg_id)
         return
 
     parts = args.split("_")
