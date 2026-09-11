@@ -5,15 +5,19 @@ from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import SubscriptionData
+from app.bot.routers.admin_tools.advertising_publication_destinations_handler import _get_active_home_campaign, _edit_or_replace_home, send_campaign_content, router as advertising_destination_router
 from app.bot.routers.subscription.keyboard import service_purchase_plan_keyboard
+from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY
 from app.bot.utils.navigation import NavMain, NavSubscription
 from app.db.models import AdvertisingCampaign, AdvertisingChannel, AdvertisingEvent, ConnectedDeviceSettings, ServicePeriod, ServicePurchasePlan, User
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
+router.include_router(advertising_destination_router)
 
 
 def _home_keyboard() -> InlineKeyboardMarkup:
@@ -59,7 +63,15 @@ async def _show_campaign_purchase(message: Message, session: AsyncSession, user:
 async def tracked_ad_start(message: Message, command: CommandObject, user: User, session: AsyncSession, state: FSMContext) -> None:
     args = (command.args or "").strip()
     if not args.startswith("ad_"):
-        raise SkipHandler
+        if args:
+            raise SkipHandler
+        home_campaign = await _get_active_home_campaign(session)
+        if not home_campaign:
+            raise SkipHandler
+        await state.clear()
+        sent = await send_campaign_content(message.bot, message.chat.id, home_campaign, session)
+        await state.update_data({MAIN_MESSAGE_ID_KEY: sent.message_id})
+        return
 
     parts = args.split("_")
     try:
@@ -78,6 +90,15 @@ async def tracked_ad_start(message: Message, command: CommandObject, user: User,
     unique = await AdvertisingEvent.record_unique(session, campaign_id, user.tg_id, "start", channel_id=channel_id, plan_id=plan_id)
     logger.info("Advertising start: campaign=%s user=%s channel=%s unique=%s", campaign_id, user.tg_id, channel_id, unique)
     await _show_campaign_purchase(message, session, user, campaign_id, period_id, plan_id)
+
+
+@router.callback_query(F.data == NavMain.MAIN_MENU)
+async def advertising_home_main_menu(callback: CallbackQuery, user: User, session: AsyncSession, state: FSMContext) -> None:
+    campaign = await _get_active_home_campaign(session)
+    if not campaign:
+        raise SkipHandler
+    await callback.answer()
+    await _edit_or_replace_home(callback, campaign, session, state)
 
 
 @router.callback_query(F.data.regexp(r"^ad_click:\d+:\d+:\d+$"))
