@@ -8,9 +8,8 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import SubscriptionData
-from app.bot.routers.admin_tools.advertising_publication_destinations_handler import _edit_or_replace_home, _get_active_home_campaign, router as advertising_destination_router, send_campaign_content
+from app.bot.routers.admin_tools.advertising_publication_destinations_handler import router as advertising_destination_router
 from app.bot.routers.subscription.keyboard import service_purchase_plan_keyboard
-from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY
 from app.bot.utils.navigation import NavMain, NavSubscription
 from app.db.models import AdvertisingCampaign, AdvertisingChannel, AdvertisingEvent, ConnectedDeviceSettings, ServicePeriod, ServicePurchasePlan, User
 
@@ -55,15 +54,7 @@ async def _show_campaign_purchase(message: Message, session: AsyncSession, user:
 async def tracked_ad_start(message: Message, command: CommandObject, user: User, session: AsyncSession, state: FSMContext) -> None:
     args = (command.args or "").strip()
     if not args.startswith("ad_"):
-        if args:
-            raise SkipHandler
-        home_campaign = await _get_active_home_campaign(session)
-        if not home_campaign:
-            raise SkipHandler
-        await state.clear()
-        sent = await send_campaign_content(message.bot, message.chat.id, home_campaign, session)
-        await state.update_data({MAIN_MESSAGE_ID_KEY: sent.message_id})
-        return
+        raise SkipHandler
     parts = args.split("_")
     try:
         campaign_id = int(parts[1])
@@ -80,15 +71,6 @@ async def tracked_ad_start(message: Message, command: CommandObject, user: User,
     unique = await AdvertisingEvent.record_unique(session, campaign_id, user.tg_id, "start", channel_id=channel_id, plan_id=plan_id)
     logger.info("Advertising start: campaign=%s user=%s channel=%s unique=%s", campaign_id, user.tg_id, channel_id, unique)
     await _show_campaign_purchase(message, session, user, campaign_id, period_id, plan_id)
-
-
-@router.callback_query(F.data == NavMain.MAIN_MENU)
-async def advertising_home_main_menu(callback: CallbackQuery, user: User, session: AsyncSession, state: FSMContext) -> None:
-    campaign = await _get_active_home_campaign(session)
-    if not campaign:
-        raise SkipHandler
-    await callback.answer()
-    await _edit_or_replace_home(callback, campaign, session, state)
 
 
 @router.callback_query(F.data.regexp(r"^ad_click:\d+:\d+:\d+$"))
