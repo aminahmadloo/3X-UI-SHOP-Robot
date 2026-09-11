@@ -79,7 +79,9 @@ async def tracked_ad_start(
             home_campaign = await _get_active_home_campaign(session)
             if home_campaign:
                 try:
-                    await send_campaign_content(message.bot, message.chat.id, home_campaign, session)
+                    shown = await AdvertisingEvent.record_unique(session, home_campaign.id, user.tg_id, "home_view")
+                    if shown:
+                        await send_campaign_content(message.bot, message.chat.id, home_campaign, session)
                 except Exception:
                     logger.exception("Failed to publish home campaign for user %s", user.tg_id)
         return
