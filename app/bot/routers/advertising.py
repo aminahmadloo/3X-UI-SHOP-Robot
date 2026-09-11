@@ -5,11 +5,10 @@ from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import SubscriptionData
-from app.bot.routers.admin_tools.advertising_publication_destinations_handler import _get_active_home_campaign, _edit_or_replace_home, send_campaign_content, router as advertising_destination_router
+from app.bot.routers.admin_tools.advertising_publication_destinations_handler import _edit_or_replace_home, _get_active_home_campaign, router as advertising_destination_router, send_campaign_content
 from app.bot.routers.subscription.keyboard import service_purchase_plan_keyboard
 from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY
 from app.bot.utils.navigation import NavMain, NavSubscription
