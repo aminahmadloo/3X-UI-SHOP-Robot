@@ -26,7 +26,7 @@ from app.db.models import Server
 logger = logging.getLogger(__name__)
 
 SETTINGS_PATHS = (Path("/app/data/system_health_settings.json"), Path("data/system_health_settings.json"))
-DEFAULT_SETTINGS = {"enabled": False, "interval_minutes": 15, "errors_only": True}
+DEFAULT_SETTINGS = {"enabled": False, "interval_minutes": 15, "errors_only": True, "network_monitor_enabled": True}
 INTERVALS = (5, 15, 30, 60, 360, 720, 1440)
 
 
@@ -43,6 +43,7 @@ def load_health_settings() -> dict[str, Any]:
         data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
         result = DEFAULT_SETTINGS | data
         result["interval_minutes"] = int(result["interval_minutes"])
+        result["network_monitor_enabled"] = bool(result["network_monitor_enabled"])
         if result["interval_minutes"] not in INTERVALS:
             result["interval_minutes"] = DEFAULT_SETTINGS["interval_minutes"]
         return result
@@ -56,6 +57,7 @@ def save_health_settings(**changes: Any) -> dict[str, Any]:
     settings.update(changes)
     settings["enabled"] = bool(settings["enabled"])
     settings["errors_only"] = bool(settings["errors_only"])
+    settings["network_monitor_enabled"] = bool(settings["network_monitor_enabled"])
     settings["interval_minutes"] = int(settings["interval_minutes"])
     if settings["interval_minutes"] not in INTERVALS:
         raise ValueError("Unsupported health report interval")
