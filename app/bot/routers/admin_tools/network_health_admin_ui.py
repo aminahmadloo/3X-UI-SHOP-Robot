@@ -8,12 +8,12 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
 from app.bot.services.network_health import _load_state, collect_network_health, render_network_section
-from app.bot.services.system_health import NETWORK_INTERVALS, load_health_settings, save_health_settings
+from app.bot.services.system_health import load_health_settings, save_health_settings
 from app.bot.tasks import system_health as system_health_task
 from app.config import Config
 
 router = Router(name=__name__)
-
+NETWORK_INTERVALS = (1, 2, 5, 10, 15, 30, 60)
 NETWORK = "system_health:network"
 NETWORK_HISTORY = "system_health:network_history"
 NETWORK_RUN = "system_health:network_run"
@@ -68,7 +68,6 @@ def _reschedule_network_job() -> None:
 def _install_scheduler_hooks() -> None:
     if getattr(system_health_task, "_network_interval_ui_installed", False):
         return
-
     original_start = system_health_task.start_scheduler
     original_restart = system_health_task.restart_scheduler
 
@@ -91,15 +90,13 @@ def install_ui_hooks() -> None:
     from app.bot.routers.admin_tools import system_health_handler
     if getattr(system_health_handler, "_network_health_ui_installed", False):
         return
-
     original_keyboard = system_health_handler.keyboard
 
     def wrapped_keyboard() -> InlineKeyboardMarkup:
         markup = original_keyboard()
         button = InlineKeyboardButton(text="🌐 Network Health", callback_data=NETWORK)
         if not any(item.callback_data == NETWORK for row in markup.inline_keyboard for item in row):
-            index = max(0, len(markup.inline_keyboard) - 1)
-            markup.inline_keyboard.insert(index, [button])
+            markup.inline_keyboard.insert(max(0, len(markup.inline_keyboard) - 1), [button])
         return markup
 
     system_health_handler.keyboard = wrapped_keyboard
@@ -187,10 +184,7 @@ async def network_toggle(callback: CallbackQuery) -> None:
 async def network_interval_menu(callback: CallbackQuery) -> None:
     settings = load_health_settings()
     current = settings.get("network_interval_minutes", 1)
-    rows = [
-        [InlineKeyboardButton(text=f"{'✅ ' if current == minutes else ''}{minutes} دقیقه", callback_data=f"{NETWORK_INTERVAL}:{minutes}")]
-        for minutes in NETWORK_INTERVALS
-    ]
+    rows = [[InlineKeyboardButton(text=f"{'✅ ' if current == minutes else ''}{minutes} دقیقه", callback_data=f"{NETWORK_INTERVAL}:{minutes}")] for minutes in NETWORK_INTERVALS]
     rows.append([InlineKeyboardButton(text="🔙 تنظیمات Network Health", callback_data=NETWORK_SETTINGS)])
     await callback.answer()
     await callback.message.edit_text("⏱ <b>فاصله بررسی Network Health</b>\n\nفاصله اجرای مانیتور شبکه را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
