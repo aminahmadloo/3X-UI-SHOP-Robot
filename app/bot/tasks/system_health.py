@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 
+from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from aiogram import Bot
 
 from app.bot.models import ServicesContainer
 from app.bot.services.system_health import HealthCollector, load_health_settings
@@ -27,24 +27,30 @@ async def run_once() -> None:
         return
     try:
         report = await _collector.collect()
-        if settings["errors_only"] and not _collector.has_errors(report):
-            _collector._last_state = "healthy"
-            return
         state = "error" if _collector.has_errors(report) else "healthy"
-        # Error-only mode is edge-triggered to prevent Telegram spam while a fault persists.
-        if settings["errors_only"] and _collector._last_state == state:
-            return
+        previous = _collector._last_state
         _collector._last_state = state
-        await _collector.server_pool.config  # keep service object alive for older runtime DI
+
+        if settings["errors_only"]:
+            if previous == state:
+                return
+            if state == "healthy" and previous == "error":
+                await _collector.bot.send_message(
+                    chat_id=_collector.config.bot.DEV_ID,
+                    text="✅ <b>System recovered</b>\n\nتمامی بررسی‌های سلامت به وضعیت عادی برگشتند.",
+                )
+                return
+            if state == "error":
+                await _collector.bot.send_message(
+                    chat_id=_collector.config.bot.DEV_ID,
+                    text=_collector.render(report),
+                )
+            return
+
         await _collector.bot.send_message(
             chat_id=_collector.config.bot.DEV_ID,
             text=_collector.render(report),
         )
-        if state == "healthy" and settings["errors_only"]:
-            await _collector.bot.send_message(
-                chat_id=_collector.config.bot.DEV_ID,
-                text="✅ <b>System recovered</b>\n\nتمامی بررسی‌های سلامت به وضعیت عادی برگشتند.",
-            )
     except Exception:
         logger.exception("Automatic system health report failed")
 
@@ -70,7 +76,10 @@ def start_scheduler(config: Config, services: ServicesContainer, bot: Bot) -> No
         coalesce=True,
     )
     _scheduler.start()
-    logger.info("System health scheduler started: enabled=%s interval=%sm errors_only=%s", settings["enabled"], settings["interval_minutes"], settings["errors_only"])
+    logger.info(
+        "System health scheduler started: enabled=%s interval=%sm errors_only=%s",
+        settings["enabled"], settings["interval_minutes"], settings["errors_only"],
+    )
 
 
 def restart_scheduler() -> None:
@@ -78,6 +87,5 @@ def restart_scheduler() -> None:
         return
     settings = load_health_settings()
     job = _scheduler.get_job(_job_id())
-    if job is None:
-        return
-    job.reschedule(trigger=IntervalTrigger(minutes=settings["interval_minutes"]))
+    if job is not None:
+        job.reschedule(trigger=IntervalTrigger(minutes=settings["interval_minutes"]))
