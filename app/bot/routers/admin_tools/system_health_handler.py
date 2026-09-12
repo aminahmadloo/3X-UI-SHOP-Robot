@@ -18,6 +18,7 @@ SETTINGS = "system_health:settings"
 TOGGLE = "system_health:toggle"
 ERRORS = "system_health:errors"
 INTERVAL = "system_health:interval"
+DETAIL_KINDS = {"servers", "xui", "inbounds", "clients", "docker", "processes", "webhook", "sqlite", "resources"}
 
 
 def install_admin_menu_button() -> None:
@@ -25,15 +26,13 @@ def install_admin_menu_button() -> None:
     from app.bot.routers.admin_tools import admin_tools_handler
     if getattr(admin_tools_handler, "_system_health_installed", False):
         return
-
     original = admin_tools_handler.admin_tools_keyboard
 
     def wrapped(is_dev: bool):
         markup = original(is_dev)
         button = InlineKeyboardButton(text="❤️ مدیریت سلامت سیستم", callback_data=MENU)
-        rows = markup.inline_keyboard
-        if not any(any(item.callback_data == MENU for item in row) for row in rows):
-            rows.insert(-1, [button])
+        if not any(any(item.callback_data == MENU for item in row) for row in markup.inline_keyboard):
+            markup.inline_keyboard.insert(-1, [button])
         return markup
 
     admin_tools_handler.admin_tools_keyboard = wrapped
@@ -126,11 +125,9 @@ async def health_report(callback: CallbackQuery, services: ServicesContainer, co
     await callback.message.edit_text(HealthCollector.render(report), reply_markup=keyboard())
 
 
-@router.callback_query(F.data.startswith("system_health:"), IsAdmin())
+@router.callback_query(F.data.in_({f"system_health:{kind}" for kind in DETAIL_KINDS}), IsAdmin())
 async def health_detail(callback: CallbackQuery, services: ServicesContainer, config: Config, session: AsyncSession) -> None:
     kind = callback.data.split(":", 1)[1]
-    if kind not in {"servers", "xui", "inbounds", "clients", "docker", "processes", "webhook", "sqlite", "resources"}:
-        return
     await callback.answer("در حال بررسی...")
     report = await _collector(config, services, callback.bot, session).collect()
     await callback.message.edit_text(
