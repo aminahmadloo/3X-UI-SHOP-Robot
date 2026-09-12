@@ -7,7 +7,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
-from app.bot.services.network_health import _load_state, collect_network_health, render_network_section, update_alert_state
+from app.bot.services.network_health import _load_state, collect_network_health, render_network_section
 from app.bot.services.system_health import NETWORK_INTERVALS, load_health_settings, save_health_settings
 from app.bot.tasks import system_health as system_health_task
 from app.config import Config
@@ -23,13 +23,7 @@ NETWORK_INTERVAL = "system_health:network_interval"
 
 
 def _icon(severity: str) -> str:
-    return {
-        "healthy": "🟢",
-        "warning": "🟡",
-        "problem": "🟠",
-        "critical": "🔴",
-        "unknown": "⚪️",
-    }.get(severity, "⚪️")
+    return {"healthy": "🟢", "warning": "🟡", "problem": "🟠", "critical": "🔴", "unknown": "⚪️"}.get(severity, "⚪️")
 
 
 def _fmt_ts(value: int | float | None) -> str:
@@ -59,6 +53,40 @@ def _settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
     ])
 
 
+def _reschedule_network_job() -> None:
+    scheduler = getattr(system_health_task, "_scheduler", None)
+    if scheduler is None or not scheduler.running:
+        return
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    settings = load_health_settings()
+    job = scheduler.get_job(system_health_task._network_job_id())
+    if job is not None:
+        job.reschedule(trigger=IntervalTrigger(minutes=settings.get("network_interval_minutes", 1)))
+
+
+def _install_scheduler_hooks() -> None:
+    if getattr(system_health_task, "_network_interval_ui_installed", False):
+        return
+
+    original_start = system_health_task.start_scheduler
+    original_restart = system_health_task.restart_scheduler
+
+    def wrapped_start(*args, **kwargs):
+        result = original_start(*args, **kwargs)
+        _reschedule_network_job()
+        return result
+
+    def wrapped_restart(*args, **kwargs):
+        result = original_restart(*args, **kwargs)
+        _reschedule_network_job()
+        return result
+
+    system_health_task.start_scheduler = wrapped_start
+    system_health_task.restart_scheduler = wrapped_restart
+    system_health_task._network_interval_ui_installed = True
+
+
 def install_ui_hooks() -> None:
     from app.bot.routers.admin_tools import system_health_handler
     if getattr(system_health_handler, "_network_health_ui_installed", False):
@@ -78,6 +106,7 @@ def install_ui_hooks() -> None:
     system_health_handler._network_health_ui_installed = True
 
 
+_install_scheduler_hooks()
 install_ui_hooks()
 
 
@@ -88,13 +117,14 @@ async def network_health(callback: CallbackQuery, services: ServicesContainer, c
     state = _load_state()
     text = (
         f"🌐 <b>Network Health</b>\n\n"
-        f"وضعیت کلی: {_icon(state.get('current', 'unknown'))} <b>{state.get('current', 'unknown')}</b>\n"
-        f"آخرین بررسی: <code>{_fmt_ts(report.get('timestamp'))}</code>\n"
+        f"وضعیت آخرین نمونه: {_icon(state.get('current', 'unknown'))} <b>{state.get('current', 'unknown')}</b>\n"
+        f"آخرین بررسی ثبت‌شده: <code>{_fmt_ts((state.get('last_report') or {}).get('timestamp'))}</code>\n"
+        f"بررسی جاری: <code>{_fmt_ts(report.get('timestamp'))}</code>\n"
         f"تعداد نمونه‌های History: <b>{len(state.get('history', []))}</b>\n\n"
         f"{render_network_section(report)}"
     )
     for server in report.get("servers", []):
-        text += f"\n\n🩺 <b>تشخیص {server.get('name', '-')}</b>\n{server.get('diagnosis', '-') }"
+        text += f"\n\n🩺 <b>تشخیص {server.get('name', '-')}</b>\n{server.get('diagnosis', '-')}"
     await callback.message.edit_text(text, reply_markup=_network_keyboard())
 
 
@@ -148,7 +178,7 @@ async def network_settings(callback: CallbackQuery) -> None:
 @router.callback_query(F.data == NETWORK_TOGGLE, IsAdmin())
 async def network_toggle(callback: CallbackQuery) -> None:
     settings = save_health_settings(network_monitor_enabled=not load_health_settings().get("network_monitor_enabled", True))
-    system_health_task.restart_scheduler()
+    _reschedule_network_job()
     await callback.answer("وضعیت مانیتور شبکه تغییر کرد")
     await callback.message.edit_reply_markup(reply_markup=_settings_keyboard(settings))
 
@@ -173,6 +203,6 @@ async def set_network_interval(callback: CallbackQuery) -> None:
         await callback.answer("فاصله انتخاب‌شده معتبر نیست", show_alert=True)
         return
     settings = save_health_settings(network_interval_minutes=minutes)
-    system_health_task.restart_scheduler()
+    _reschedule_network_job()
     await callback.answer(f"فاصله مانیتور روی {minutes} دقیقه تنظیم شد")
     await callback.message.edit_text("⚙️ <b>تنظیمات Network Health</b>", reply_markup=_settings_keyboard(settings))
