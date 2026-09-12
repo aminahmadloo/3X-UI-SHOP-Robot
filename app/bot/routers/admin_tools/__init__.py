@@ -22,3 +22,9 @@ from . import (
 # integration removes its legacy duplicate channel:menu handler and extends
 # the canonical channel publisher with safe semantic CTA resolution.
 from . import ai_content_channel_integration  # noqa: E402,F401
+
+# Extend server and service-inbound administration with the same
+# multi-server/multi-node topology used by System Health. This module is
+# intentionally loaded after the legacy handlers so it can safely replace
+# only their keyboards and add dedicated topology callbacks.
+from . import admin_topology_management  # noqa: E402,F401
