@@ -10,7 +10,9 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
+from urllib.request import Request, urlopen
 
 from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -140,7 +142,7 @@ async def _docker_container(name: str) -> dict[str, Any]:
 
 
 async def _process_status() -> dict[str, Any]:
-    """Check the current bot process only; host nginx is outside this container."""
+    """Check the current bot process only; host services are outside this container."""
     pid = os.getpid()
     return _status(pid > 0, f"bot process pid={pid}") | {"pid": pid}
 
@@ -209,6 +211,116 @@ async def _webhook_health(bot: Bot, config: Config) -> dict[str, Any]:
         return _status(False, str(exc)) | {"expected": expected}
 
 
+async def _http_json(url: str, token: str | None = None, timeout: float = 8.0) -> Any:
+    """Read a 3X-UI JSON endpoint without adding another HTTP dependency."""
+    def request() -> Any:
+        headers = {"Accept": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = Request(url, headers=headers, method="GET")
+        with urlopen(req, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    return await asyncio.to_thread(request)
+
+
+def _api_url(server: Server, path: str) -> str:
+    base = server.host.rstrip("/") + "/"
+    return urljoin(base, path.lstrip("/"))
+
+
+def _unwrap_api(payload: Any) -> Any:
+    if isinstance(payload, dict) and "obj" in payload:
+        return payload["obj"]
+    return payload
+
+
+async def _panel_status(server: Server, config: Config) -> dict[str, Any]:
+    """Collect the real host/Xray status from the 3X-UI panel."""
+    try:
+        payload = _unwrap_api(await _http_json(_api_url(server, "panel/api/server/status"), config.xui.TOKEN))
+        if not isinstance(payload, dict):
+            raise RuntimeError("Invalid X-UI server/status response")
+        xray = payload.get("xray") or {}
+        mem = payload.get("mem") or {}
+        disk = payload.get("disk") or {}
+        swap = payload.get("swap") or {}
+        return _status(True, "X-UI panel and host status reachable") | {
+            "cpu": payload.get("cpu"),
+            "memory_percent": round((mem.get("current", 0) / mem.get("total", 1)) * 100, 1) if mem.get("total") else None,
+            "memory": mem,
+            "disk_percent": round((disk.get("current", 0) / disk.get("total", 1)) * 100, 1) if disk.get("total") else None,
+            "disk": disk,
+            "swap": swap,
+            "load": payload.get("load") or {},
+            "xray": xray,
+            "panel_version": payload.get("panelVersion"),
+            "panel_guid": payload.get("panelGuid"),
+            "uptime": payload.get("uptime"),
+            "tcp_count": payload.get("tcpCount"),
+            "udp_count": payload.get("udpCount"),
+            "net_io": payload.get("netIO") or {},
+        }
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        return _status(False, f"X-UI status request failed: {exc}")
+    except Exception as exc:
+        return _status(False, str(exc))
+
+
+async def _managed_nodes(server: Server, config: Config) -> list[dict[str, Any]]:
+    """Discover every 3X-UI managed node, including transitive nodes exposed by the master."""
+    try:
+        payload = _unwrap_api(await _http_json(_api_url(server, "panel/api/nodes/list"), config.xui.TOKEN))
+        if not isinstance(payload, list):
+            return []
+        nodes: list[dict[str, Any]] = []
+        for node in payload:
+            if not isinstance(node, dict):
+                continue
+            status = str(node.get("status") or "unknown").lower()
+            enabled = bool(node.get("enable", True))
+            effective_ok = status == "online" and enabled
+            nodes.append(
+                {
+                    "id": node.get("id"),
+                    "name": node.get("name") or node.get("remark") or node.get("address") or "Unnamed node",
+                    "remark": node.get("remark") or "",
+                    "address": node.get("address") or "-",
+                    "port": node.get("port"),
+                    "base_path": node.get("basePath") or "/",
+                    "guid": node.get("guid") or "",
+                    "parent_guid": node.get("parentGuid") or "",
+                    "transitive": bool(node.get("transitive", False)),
+                    "enabled": enabled,
+                    "status": status,
+                    "ok": effective_ok,
+                    "latency_ms": node.get("latencyMs"),
+                    "cpu_percent": node.get("cpuPct"),
+                    "memory_percent": node.get("memPct"),
+                    "uptime": node.get("uptimeSecs"),
+                    "net_up": node.get("netUp"),
+                    "net_down": node.get("netDown"),
+                    "xray_version": node.get("xrayVersion"),
+                    "xray_state": node.get("xrayState"),
+                    "xray_error": node.get("xrayError") or "",
+                    "panel_version": node.get("panelVersion"),
+                    "last_heartbeat": node.get("lastHeartbeat"),
+                    "last_error": node.get("lastError") or "",
+                    "inbound_count": node.get("inboundCount", 0),
+                    "client_count": node.get("clientCount", 0),
+                    "online_count": node.get("onlineCount", 0),
+                    "active_count": node.get("activeCount", 0),
+                    "disabled_count": node.get("disabledCount", 0),
+                    "depleted_count": node.get("depletedCount", 0),
+                    "parent_server": server.name,
+                }
+            )
+        return nodes
+    except Exception as exc:
+        logger.warning("Managed-node discovery failed for %s (%s): %s", server.name, server.host, exc)
+        return []
+
+
 @dataclass
 class HealthCollector:
     config: Config
@@ -219,17 +331,13 @@ class HealthCollector:
 
     async def _servers(self) -> list[dict[str, Any]]:
         if self.session is None:
-            return [{"name": "ServerPool", "status": "unhealthy", "panel": _status(False, "Database session unavailable"), "inbounds": [], "clients": _client_stats([])}]
+            return [{"name": "ServerPool", "status": "unhealthy", "panel": _status(False, "Database session unavailable"), "inbounds": [], "clients": _client_stats([]), "nodes": []}]
 
         servers: list[dict[str, Any]] = []
         db_servers = await Server.get_all(self.session)
         for server in db_servers:
-            item: dict[str, Any] = {"id": server.id, "name": server.name, "host": server.host}
+            item: dict[str, Any] = {"id": server.id, "name": server.name, "host": server.host, "location": server.location}
             try:
-                # Prefer the already-live ServerPool connection. If a server is not
-                # currently in the pool, build a temporary API client for a read-only
-                # health probe instead of calling get_connection_for_server(), which
-                # may reconnect the server and write its online flag to the database.
                 connection = self.server_pool._servers.get(server.id)
                 api = connection.api if connection is not None else self.server_pool._build_api(server)
                 inbounds = await get_inbounds(api)
@@ -244,20 +352,35 @@ class HealthCollector:
                     for i in inbounds
                 ]
                 enabled = sum(1 for i in inbound_rows if i["enable"])
+                panel = await _panel_status(server, self.config)
+                nodes = await _managed_nodes(server, self.config)
+                server_ok = bool(panel["ok"])
                 servers.append(
                     item
                     | {
-                        "status": "healthy",
-                        "panel": _status(True, "X-UI API reachable"),
+                        "status": "healthy" if server_ok else "unhealthy",
+                        "panel": panel,
                         "inbounds": inbound_rows,
                         "inbound_total": len(inbounds),
                         "inbound_enabled": enabled,
                         "clients": _client_stats(inbounds),
+                        "nodes": nodes,
                     }
                 )
             except Exception as exc:
                 logger.warning("Health check failed for server %s: %s", server.name, exc)
-                servers.append(item | {"status": "unhealthy", "panel": _status(False, str(exc)), "inbounds": [], "clients": _client_stats([])})
+                servers.append(
+                    item
+                    | {
+                        "status": "unhealthy",
+                        "panel": _status(False, str(exc)),
+                        "inbounds": [],
+                        "inbound_total": 0,
+                        "inbound_enabled": 0,
+                        "clients": _client_stats([]),
+                        "nodes": [],
+                    }
+                )
         return servers
 
     async def collect(self) -> dict[str, Any]:
@@ -273,11 +396,12 @@ class HealthCollector:
             servers = await self._servers()
         except Exception as exc:
             logger.exception("System health server collection failed")
-            servers = [{"name": "ServerPool", "status": "unhealthy", "panel": _status(False, str(exc)), "inbounds": [], "clients": _client_stats([])}]
+            servers = [{"name": "ServerPool", "status": "unhealthy", "panel": _status(False, str(exc)), "inbounds": [], "clients": _client_stats([]), "nodes": []}]
 
-        checks = [bool(webhook["ok"]), bool(sqlite["ok"])]
+        nodes = [node for server in servers for node in server.get("nodes", [])]
+        checks = [bool(webhook["ok"]), bool(sqlite["ok"]), bool(process["ok"])]
         checks.extend(s["status"] == "healthy" for s in servers)
-        checks.append(bool(process["ok"]))
+        checks.extend(node["ok"] for node in nodes if node.get("enabled", True))
         for value in docker.values():
             if value.get("ok") is not None:
                 checks.append(bool(value["ok"]))
@@ -286,6 +410,7 @@ class HealthCollector:
             "timestamp": int(time.time()),
             "overall": "healthy" if overall else "unhealthy",
             "servers": servers,
+            "nodes": nodes,
             "robot": {"docker": docker, "process": process, "webhook": webhook, "sqlite": sqlite},
             "resources": resources,
             "settings": load_health_settings(),
@@ -304,16 +429,36 @@ class HealthCollector:
         lines = [
             "❤️ <b>گزارش سلامت سیستم ToonelVPN</b>",
             f"\nوضعیت کلی: <b>{'🟢 سالم' if report['overall'] == 'healthy' else '🔴 دارای خطا'}</b>",
-            f"\n🖥 <b>منابع</b>\nCPU: {r['cpu']['percent']}%\nRAM: {r['ram']['percent']}%\nDisk: {r['disk']['percent']}%",
+            f"\n🖥 <b>منابع Bot</b>\nCPU: {r['cpu']['percent']}%\nRAM: {r['ram']['percent']}%\nDisk: {r['disk']['percent']}%",
         ]
+
         for server in report["servers"]:
+            panel = server.get("panel", {})
+            xray = panel.get("xray") or {}
             clients = server.get("clients", {})
             lines.append(
-                f"\n🌍 <b>{server['name']}</b> {icon(server.get('status') == 'healthy')}\n"
-                f"X-UI: {icon(server.get('panel', {}).get('ok'))}\n"
+                f"\n🖥 <b>سرور: {server['name']}</b> {icon(server.get('status') == 'healthy')}\n"
+                f"IP/Host: <code>{server.get('host','-')}</code>\n"
+                f"X-UI: {icon(panel.get('ok'))} | Xray: {icon(str(xray.get('state','')).lower() == 'running')}\n"
+                f"CPU: {panel.get('cpu','-')}% | RAM: {panel.get('memory_percent','-')}% | Disk: {panel.get('disk_percent','-')}%\n"
                 f"Inbound: {server.get('inbound_enabled', 0)}/{server.get('inbound_total', 0)} فعال\n"
                 f"Client: {clients.get('enabled', 0)}/{clients.get('total', 0)} فعال | {clients.get('expired', 0)} منقضی"
             )
+
+        if report.get("nodes"):
+            lines.append("\n🧩 <b>3X-UI Nodes</b>")
+            for node in report["nodes"]:
+                node_icon = icon(node.get("ok")) if node.get("enabled", True) else "⚪️"
+                xray_icon = icon(str(node.get("xray_state", "")).lower() == "running")
+                lines.append(
+                    f"\n{node_icon} <b>{node.get('name','-')}</b> — Node{' (transitive)' if node.get('transitive') else ''}\n"
+                    f"Parent: {node.get('parent_server','-')}\n"
+                    f"Address: <code>{node.get('address','-')}</code>:{node.get('port','-')}\n"
+                    f"Status: {node.get('status','-')} | Ping: {node.get('latency_ms','-')} ms\n"
+                    f"CPU: {node.get('cpu_percent','-')}% | RAM: {node.get('memory_percent','-')}% | Xray: {xray_icon}\n"
+                    f"Inbound: {node.get('inbound_count',0)} | Client: {node.get('client_count',0)} | Online: {node.get('online_count',0)}"
+                )
+
         robot = report["robot"]
         lines.append(
             f"\n🐳 <b>Docker</b>\nBot: {icon(robot['docker']['bot'].get('ok'))}\nRedis: {icon(robot['docker']['redis'].get('ok'))}"
