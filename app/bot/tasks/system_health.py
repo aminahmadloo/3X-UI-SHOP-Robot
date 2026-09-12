@@ -8,7 +8,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.models import ServicesContainer
-from app.bot.services.system_health import HealthCollector, load_health_settings
+from app.bot.services.system_health import load_health_settings
+from app.bot.services.system_health_comprehensive import ComprehensiveHealthCollector
 from app.config import Config
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ async def run_once() -> None:
 
     try:
         async with _session_factory() as session:
-            collector = HealthCollector(
+            collector = ComprehensiveHealthCollector(
                 config=_collector_config,
                 server_pool=_services.server_pool,
                 bot=_bot,
