@@ -54,6 +54,7 @@ from .admin_tools.channel_management_handler import router as channel_management
 from .admin_tools.channel_management_extras import router as channel_management_extras_router
 from .admin_tools.channel_management_v2 import router as channel_management_v2_router
 from .admin_tools.system_health_backup_handler import router as system_health_backup_router
+from .admin_tools.network_health_admin_ui import router as network_health_admin_router
 from .admin_tools.admin_topology_management import router as admin_topology_management_router
 from .gift_service_handler import router as gift_service_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
@@ -151,6 +152,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         channel_management_extras_router,
         channel_management_v2_router,
         admin_tools.system_health_handler.router,
+        network_health_admin_router,
         system_health_backup_router,
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,
