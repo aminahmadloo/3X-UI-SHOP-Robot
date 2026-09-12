@@ -53,6 +53,7 @@ from .admin_tools.channel_menu_campaigns import router as channel_menu_campaigns
 from .admin_tools.channel_management_handler import router as channel_management_router
 from .admin_tools.channel_management_extras import router as channel_management_extras_router
 from .admin_tools.channel_management_v2 import router as channel_management_v2_router
+from .admin_tools.system_health_backup_handler import router as system_health_backup_router
 from .gift_service_handler import router as gift_service_router
 from .main_menu.renew_service_handler import router as main_menu_renewal_router
 from .main_menu.renewal_aban_payment_fix import router as main_menu_renewal_aban_payment_fix_router
@@ -149,6 +150,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         channel_management_extras_router,
         channel_management_v2_router,
         admin_tools.system_health_handler.router,
+        system_health_backup_router,
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,
         admin_tools.inbound_management_handler.router,
