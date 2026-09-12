@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.filters import IsAdmin, IsDev
+from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
 from app.bot.services.system_health import HealthCollector, INTERVALS, load_health_settings, save_health_settings
 from app.bot.tasks import system_health as system_health_task
 from app.config import Config
-from app.db.models import User
 
 router = Router(name=__name__)
 
@@ -20,6 +20,10 @@ ERRORS = "system_health:errors"
 INTERVAL = "system_health:interval"
 
 
+def admin_button() -> list[InlineKeyboardButton]:
+    return [InlineKeyboardButton(text="❤️ مدیریت سلامت سیستم", callback_data=MENU)]
+
+
 def keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 گزارش کامل سلامت", callback_data=REPORT)],
@@ -28,7 +32,7 @@ def keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🔌 وضعیت Inboundها", callback_data="system_health:inbounds")],
         [InlineKeyboardButton(text="👤 وضعیت Clientها", callback_data="system_health:clients")],
         [InlineKeyboardButton(text="🐳 وضعیت Docker", callback_data="system_health:docker")],
-        [InlineKeyboardButton(text="⚙️ وضعیت Processها", callback_data="system_health:processes")],
+        [InlineKeyboardButton(text="⚙️ وضعیت Process", callback_data="system_health:processes")],
         [InlineKeyboardButton(text="🔗 وضعیت Webhook", callback_data="system_health:webhook")],
         [InlineKeyboardButton(text="🗄 وضعیت SQLite", callback_data="system_health:sqlite")],
         [InlineKeyboardButton(text="📊 CPU / RAM / Disk", callback_data="system_health:resources")],
@@ -48,8 +52,8 @@ def settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
     ])
 
 
-def _collector(config: Config, services: ServicesContainer, bot) -> HealthCollector:
-    return HealthCollector(config=config, session_factory=services.server_pool.session, server_pool=services.server_pool, bot=bot)
+def _collector(config: Config, services: ServicesContainer, bot, session: AsyncSession) -> HealthCollector:
+    return HealthCollector(config=config, server_pool=services.server_pool, bot=bot, session=session)
 
 
 async def _render_detail(report: dict, kind: str) -> str:
@@ -73,10 +77,10 @@ async def _render_detail(report: dict, kind: str) -> str:
         return "\n".join(lines)
     if kind == "docker":
         d = report["robot"]["docker"]
-        return f"🐳 <b>Docker</b>\n\nBot: {'🟢' if d['bot']['ok'] else '🔴'} {d['bot'].get('state','-')}\nRedis: {'🟢' if d['redis']['ok'] else '🔴'} {d['redis'].get('state','-')}"
+        return f"🐳 <b>Docker</b>\n\nBot: {'🟢' if d['bot'].get('ok') is True else '🔴' if d['bot'].get('ok') is False else '⚪️'} {d['bot'].get('state') or d['bot'].get('message','-')}\nRedis: {'🟢' if d['redis'].get('ok') is True else '🔴' if d['redis'].get('ok') is False else '⚪️'} {d['redis'].get('state') or d['redis'].get('message','-')}"
     if kind == "processes":
-        p = report["robot"]["processes"]
-        return f"⚙️ <b>Processها</b>\n\nPython: {'🟢' if p['python']['ok'] else '🔴'}\nNginx: {'🟢' if p['nginx']['ok'] else '🔴'}"
+        p = report["robot"]["process"]
+        return f"⚙️ <b>Process</b>\n\nBot process: {'🟢' if p['ok'] else '🔴'}\nPID: <code>{p.get('pid','-')}</code>"
     if kind == "webhook":
         w = report["robot"]["webhook"]
         return f"🔗 <b>Webhook</b>\n\n{'🟢' if w['ok'] else '🔴'}\nExpected: <code>{w.get('expected','-')}</code>\nActual: <code>{w.get('actual','-')}</code>\nPending: {w.get('pending_updates',0)}\nError: {w.get('last_error') or '-'}"
@@ -87,50 +91,48 @@ async def _render_detail(report: dict, kind: str) -> str:
     return f"📊 <b>CPU / RAM / Disk</b>\n\nCPU: {r['cpu']['percent']}% | Load: {r['cpu']['load1']}\nRAM: {r['ram']['percent']}%\nDisk: {r['disk']['percent']}%"
 
 
-@router.callback_query(F.data == "admin_tools", IsAdmin())
-async def system_health_admin_tools_entry(callback: CallbackQuery, user: User) -> None:
-    is_dev = await IsDev()(user_id=user.tg_id)
-    from app.bot.routers.admin_tools.keyboard import admin_tools_keyboard
-    markup = admin_tools_keyboard(is_dev)
-    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="❤️ مدیریت سلامت سیستم", callback_data=MENU)])
-    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="📣 مدیریت تبلیغات", callback_data="advertising:menu")])
-    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="📢 مدیریت کانال", callback_data="channel:menu")])
-    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="🏆 مدیریت تخفیف سطوح مشتری", callback_data="customer_level_settings")])
-    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="🎁 تنظیمات معرفی به دوستان", callback_data="referral_settings")])
-    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="📝 مدیریت پیام خوش‌آمدگویی", callback_data="welcome_message_settings")])
-    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="💰 مدیریت مبالغ کیف پول", callback_data="wallet_amounts")])
-    await callback.answer()
-    await callback.message.edit_text("⚙️ <b>مدیریت ربات</b>", reply_markup=markup)
-
-
 @router.callback_query(F.data == MENU, IsAdmin())
 async def health_menu(callback: CallbackQuery) -> None:
     await callback.answer()
-    await callback.message.edit_text("❤️ <b>مدیریت سلامت سیستم</b>\n\nبررسی واقعی Bot، ServerPool، X-UI، Inboundها، Clientها، Docker، Processها، Webhook، SQLite و منابع سیستم.", reply_markup=keyboard())
+    await callback.message.edit_text(
+        "❤️ <b>مدیریت سلامت سیستم</b>\n\nبررسی واقعی Bot، ServerPool، X-UI، Inboundها، Clientها، Docker، Process، Webhook، SQLite و منابع سیستم.",
+        reply_markup=keyboard(),
+    )
 
 
 @router.callback_query(F.data == REPORT, IsAdmin())
-async def health_report(callback: CallbackQuery, services: ServicesContainer, config: Config) -> None:
+async def health_report(callback: CallbackQuery, services: ServicesContainer, config: Config, session: AsyncSession) -> None:
     await callback.answer("در حال بررسی...")
-    report = await _collector(config, services, callback.bot).collect()
+    report = await _collector(config, services, callback.bot, session).collect()
     await callback.message.edit_text(HealthCollector.render(report), reply_markup=keyboard())
 
 
 @router.callback_query(F.data.startswith("system_health:"), IsAdmin())
-async def health_detail(callback: CallbackQuery, services: ServicesContainer, config: Config) -> None:
+async def health_detail(callback: CallbackQuery, services: ServicesContainer, config: Config, session: AsyncSession) -> None:
     kind = callback.data.split(":", 1)[1]
     if kind not in {"servers", "xui", "inbounds", "clients", "docker", "processes", "webhook", "sqlite", "resources"}:
         return
     await callback.answer("در حال بررسی...")
-    report = await _collector(config, services, callback.bot).collect()
-    await callback.message.edit_text(await _render_detail(report, kind), reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔄 بازخوانی", callback_data=f"system_health:{kind}")], [InlineKeyboardButton(text="🔙 مدیریت سلامت", callback_data=MENU)]]))
+    report = await _collector(config, services, callback.bot, session).collect()
+    await callback.message.edit_text(
+        await _render_detail(report, kind),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔄 بازخوانی", callback_data=f"system_health:{kind}")],
+                [InlineKeyboardButton(text="🔙 مدیریت سلامت", callback_data=MENU)],
+            ]
+        ),
+    )
 
 
 @router.callback_query(F.data == SETTINGS, IsAdmin())
 async def health_settings(callback: CallbackQuery) -> None:
     await callback.answer()
     settings = load_health_settings()
-    await callback.message.edit_text("🔔 <b>تنظیمات گزارش خودکار سلامت</b>\n\nEnable: فعال/غیرفعال کردن گزارش دوره‌ای\nInterval: فاصله اجرای بررسی\nError only: فقط تغییر وضعیت به خطا یا بازگشت را گزارش می‌کند و از اسپم جلوگیری می‌شود.", reply_markup=settings_keyboard(settings))
+    await callback.message.edit_text(
+        "🔔 <b>تنظیمات گزارش خودکار سلامت</b>\n\nEnable: فعال/غیرفعال کردن گزارش دوره‌ای\nInterval: فاصله اجرای بررسی\nError only: فقط تغییر وضعیت به خطا یا بازگشت را گزارش می‌کند و از اسپم جلوگیری می‌شود.",
+        reply_markup=settings_keyboard(settings),
+    )
 
 
 @router.callback_query(F.data == TOGGLE, IsAdmin())
