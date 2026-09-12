@@ -13,7 +13,7 @@ from app.bot.tasks import system_health as system_health_task
 from app.config import Config
 
 router = Router(name=__name__)
-NETWORK_INTERVALS = (1, 2, 5, 10, 15, 30, 60)
+NETWORK_INTERVALS_SECONDS = (30, 60, 120, 300, 600, 900, 1800, 3600)
 NETWORK = "system_health:network"
 NETWORK_HISTORY = "system_health:network_history"
 NETWORK_RUN = "system_health:network_run"
@@ -35,6 +35,24 @@ def _fmt_ts(value: int | float | None) -> str:
         return "-"
 
 
+def _fmt_interval(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds} ثانیه"
+    return f"{seconds // 60} دقیقه"
+
+
+def _interval_seconds(settings: dict) -> int:
+    value = settings.get("network_interval_seconds")
+    if value is not None:
+        try:
+            value = int(value)
+            if value in NETWORK_INTERVALS_SECONDS:
+                return value
+        except (TypeError, ValueError):
+            pass
+    return 60
+
+
 def _network_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔄 بررسی الآن", callback_data=NETWORK_RUN)],
@@ -46,9 +64,10 @@ def _network_keyboard() -> InlineKeyboardMarkup:
 
 def _settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
     enabled = "🟢 فعال" if settings.get("network_monitor_enabled", True) else "🔴 غیرفعال"
+    interval = _interval_seconds(settings)
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"🌐 مانیتور شبکه: {enabled}", callback_data=NETWORK_TOGGLE)],
-        [InlineKeyboardButton(text=f"⏱ فاصله مانیتور: {settings.get('network_interval_minutes', 1)} دقیقه", callback_data=NETWORK_INTERVAL)],
+        [InlineKeyboardButton(text=f"⏱ فاصله مانیتور: {_fmt_interval(interval)}", callback_data=NETWORK_INTERVAL)],
         [InlineKeyboardButton(text="🔙 Network Health", callback_data=NETWORK)],
     ])
 
@@ -59,10 +78,10 @@ def _reschedule_network_job() -> None:
         return
     from apscheduler.triggers.interval import IntervalTrigger
 
-    settings = load_health_settings()
+    seconds = _interval_seconds(load_health_settings())
     job = scheduler.get_job(system_health_task._network_job_id())
     if job is not None:
-        job.reschedule(trigger=IntervalTrigger(minutes=settings.get("network_interval_minutes", 1)))
+        job.reschedule(trigger=IntervalTrigger(seconds=seconds))
 
 
 def _install_scheduler_hooks() -> None:
@@ -117,6 +136,7 @@ async def network_health(callback: CallbackQuery, services: ServicesContainer, c
         f"وضعیت آخرین نمونه: {_icon(state.get('current', 'unknown'))} <b>{state.get('current', 'unknown')}</b>\n"
         f"آخرین بررسی ثبت‌شده: <code>{_fmt_ts((state.get('last_report') or {}).get('timestamp'))}</code>\n"
         f"بررسی جاری: <code>{_fmt_ts(report.get('timestamp'))}</code>\n"
+        f"فاصله مانیتور: <b>{_fmt_interval(_interval_seconds(load_health_settings()))}</b>\n"
         f"تعداد نمونه‌های History: <b>{len(state.get('history', []))}</b>\n\n"
         f"{render_network_section(report)}"
     )
@@ -134,6 +154,7 @@ async def network_run(callback: CallbackQuery) -> None:
         f"🌐 <b>نتیجه آخرین بررسی شبکه</b>\n\n"
         f"وضعیت: {_icon(state.get('current', 'unknown'))} <b>{state.get('current', 'unknown')}</b>\n"
         f"آخرین بررسی: <code>{_fmt_ts((state.get('last_report') or {}).get('timestamp'))}</code>\n"
+        f"فاصله فعلی: <b>{_fmt_interval(_interval_seconds(load_health_settings()))}</b>\n"
         f"نمونه‌های History: {len(state.get('history', []))}",
         reply_markup=_network_keyboard(),
     )
@@ -149,6 +170,7 @@ async def network_history(callback: CallbackQuery) -> None:
         "📈 <b>تاریخچه Network Health</b>",
         f"\nوضعیت فعلی: {_icon(state.get('current', 'unknown'))} {state.get('current', 'unknown')}",
         f"آخرین بررسی: <code>{_fmt_ts((state.get('last_report') or {}).get('timestamp'))}</code>",
+        f"فاصله مانیتور: <b>{_fmt_interval(_interval_seconds(load_health_settings()))}</b>",
         "",
     ]
     if not history:
@@ -167,7 +189,7 @@ async def network_settings(callback: CallbackQuery) -> None:
     await callback.message.edit_text(
         "⚙️ <b>تنظیمات Network Health</b>\n\n"
         "مانیتور شبکه مستقل از گزارش دوره‌ای سلامت سیستم اجرا می‌شود.\n"
-        "تغییر فاصله، Scheduler را بدون Restart کانتینر به‌روزرسانی می‌کند.",
+        "فاصله قابل انتخاب از ۳۰ ثانیه تا ۶۰ دقیقه است و تغییر آن بدون Restart کانتینر اعمال می‌شود.",
         reply_markup=_settings_keyboard(settings),
     )
 
@@ -183,8 +205,8 @@ async def network_toggle(callback: CallbackQuery) -> None:
 @router.callback_query(F.data == NETWORK_INTERVAL, IsAdmin())
 async def network_interval_menu(callback: CallbackQuery) -> None:
     settings = load_health_settings()
-    current = settings.get("network_interval_minutes", 1)
-    rows = [[InlineKeyboardButton(text=f"{'✅ ' if current == minutes else ''}{minutes} دقیقه", callback_data=f"{NETWORK_INTERVAL}:{minutes}")] for minutes in NETWORK_INTERVALS]
+    current = _interval_seconds(settings)
+    rows = [[InlineKeyboardButton(text=f"{'✅ ' if current == seconds else ''}{_fmt_interval(seconds)}", callback_data=f"{NETWORK_INTERVAL}:{seconds}")] for seconds in NETWORK_INTERVALS_SECONDS]
     rows.append([InlineKeyboardButton(text="🔙 تنظیمات Network Health", callback_data=NETWORK_SETTINGS)])
     await callback.answer()
     await callback.message.edit_text("⏱ <b>فاصله بررسی Network Health</b>\n\nفاصله اجرای مانیتور شبکه را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
@@ -192,11 +214,11 @@ async def network_interval_menu(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith(f"{NETWORK_INTERVAL}:"), IsAdmin())
 async def set_network_interval(callback: CallbackQuery) -> None:
-    minutes = int(callback.data.rsplit(":", 1)[1])
-    if minutes not in NETWORK_INTERVALS:
+    seconds = int(callback.data.rsplit(":", 1)[1])
+    if seconds not in NETWORK_INTERVALS_SECONDS:
         await callback.answer("فاصله انتخاب‌شده معتبر نیست", show_alert=True)
         return
-    settings = save_health_settings(network_interval_minutes=minutes)
+    settings = save_health_settings(network_interval_seconds=seconds)
     _reschedule_network_job()
-    await callback.answer(f"فاصله مانیتور روی {minutes} دقیقه تنظیم شد")
+    await callback.answer(f"فاصله مانیتور روی {_fmt_interval(seconds)} تنظیم شد")
     await callback.message.edit_text("⚙️ <b>تنظیمات Network Health</b>", reply_markup=_settings_keyboard(settings))
