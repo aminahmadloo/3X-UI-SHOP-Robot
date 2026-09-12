@@ -20,9 +20,9 @@ from app.config import Config
 
 logger = logging.getLogger(__name__)
 
-# The official cloud Bot API accepts up to 50 MB per uploaded file. Keep a
-# safety margin so backups work without requiring a Local Bot API Server.
-BACKUP_PART_BYTES = 49 * 1024 * 1024
+# Telegram documents are limited to 50 MB on the official cloud Bot API.
+# Use 49,000,000 bytes (49 MB decimal) as a safety margin.
+BACKUP_PART_BYTES = 49_000_000
 BACKUP_MAX_TOTAL_BYTES = 1024 * 1024 * 1024
 BACKUP_ROOT = Path("/tmp/toonelvpn-full-backups")
 
