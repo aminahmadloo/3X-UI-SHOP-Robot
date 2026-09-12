@@ -5,12 +5,18 @@ from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    CallbackQuery,
+    FSInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.filters import IsAdmin
-from app.bot.utils.navigation import NavAdminTools
 from app.bot.services.full_backup import cleanup_full_backup, create_full_backup
+from app.bot.services.full_backup_storage import BackupStorageConfig
+from app.bot.utils.navigation import NavAdminTools
 from app.config import Config
 from app.db.models import User
 
@@ -34,11 +40,18 @@ async def full_backup_menu(callback: CallbackQuery, config: Config) -> None:
         await callback.answer("این بخش فقط برای توسعه‌دهنده اصلی فعال است.", show_alert=True)
         return
     await callback.answer()
+    storage = BackupStorageConfig.from_env()
+    storage_note = (
+        "\n\n☁️ Storage خارجی فعال است: فایل‌های بالای 49MB به‌صورت یک فایل واحد در Storage آپلود و لینک دانلود موقت ارسال می‌شوند."
+        if storage.enabled
+        else "\n\nℹ️ Storage خارجی تنظیم نشده؛ فایل‌های 49MB تا 1GB به‌صورت Telegram Parts ارسال می‌شوند."
+    )
     await callback.message.edit_text(
         "💾 <b>Backup کامل ربات</b>\n\n"
         "این Backup شامل برنامه مستقر، دیتابیس SQLite، داده‌های runtime، تنظیمات .env و داده‌های Redis است.\n"
-        "فایل‌های بزرگ به چند بخش کمتر از 49MB تقسیم و به‌ترتیب ارسال می‌شوند؛ بنابراین نیازی به Local Bot API Server نیست.\n\n"
-        "⚠️ فایل Backup شامل اطلاعات محرمانه است و فقط به توسعه‌دهنده اصلی ارسال می‌شود.",
+        "برای فایل‌های بزرگ، در صورت فعال بودن Storage خارجی، یک لینک دانلود موقت ارسال می‌شود و دیگر نیازی به چند بخش کردن فایل نیست."
+        + storage_note
+        + "\n\n⚠️ فایل Backup شامل اطلاعات محرمانه است و فقط به توسعه‌دهنده اصلی ارسال می‌شود.",
         reply_markup=full_backup_keyboard(),
     )
 
@@ -66,8 +79,36 @@ async def create_full_backup_handler(
         path = result.path
         parts = result.parts
         size_mb = result.size_bytes / (1024 * 1024)
-        part_count = len(parts)
 
+        if result.delivery == "download_link" and result.download_url:
+            storage = BackupStorageConfig.from_env()
+            expires_hours = storage.url_expires_seconds / 3600
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="⬇️ دانلود Backup کامل", url=result.download_url)]
+                ]
+            )
+            await status_message.edit_text(
+                "✅ <b>Backup کامل آماده است.</b>\n\n"
+                f"📦 حجم: <code>{size_mb:.2f} MB</code>\n"
+                f"🔑 Redis keys: <code>{result.redis_keys}</code>\n"
+                f"🔐 SHA-256:\n<code>{result.sha256}</code>\n"
+                "☁️ روش تحویل: <b>لینک دانلود مستقیم</b>\n"
+                f"⏱ اعتبار لینک: <code>{expires_hours:.1f} ساعت</code>\n\n"
+                "⚠️ لینک مانند رمز عبور عمل می‌کند؛ آن را با دیگران به اشتراک نگذارید.",
+                reply_markup=keyboard,
+            )
+            logger.info(
+                "Full backup uploaded and download link sent to developer %s: key=%s size=%d redis_keys=%d sha256=%s",
+                user.tg_id,
+                result.storage_key,
+                result.size_bytes,
+                result.redis_keys,
+                result.sha256,
+            )
+            return
+
+        part_count = len(parts)
         await status_message.edit_text(
             "📤 <b>Backup ساخته شد؛ در حال ارسال...</b>\n"
             f"📦 حجم کل: <code>{size_mb:.2f} MB</code>\n"
@@ -121,9 +162,6 @@ async def create_full_backup_handler(
             await cleanup_full_backup(path, parts)
 
 
-# The existing Admin Tools router already owns the main management menu. Importing
-# it here keeps this feature self-contained and avoids changing the global router
-# ordering; aiogram supports nested routers as long as there is no circular chain.
 from app.bot.routers.admin_tools import admin_tools_handler  # noqa: E402
 
 _original_admin_tools_keyboard = admin_tools_handler.admin_tools_keyboard
