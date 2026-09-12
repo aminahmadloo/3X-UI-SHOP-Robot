@@ -166,6 +166,7 @@ async def collect_network_health(config: Config, server_pool: ServerPoolService,
         try:
             nodes = await _managed_nodes(server, config)
         except Exception:
+            logger.exception("Failed to load managed nodes for network health server=%s", server.name)
             nodes = []
         node_inputs = []
         for node in nodes:
