@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import shutil
 import sqlite3
 import tarfile
 import tempfile
@@ -38,7 +39,6 @@ def _copy_sqlite_consistent(source: Path, destination: Path) -> None:
     with sqlite3.connect(source_uri, uri=True) as source_db:
         with sqlite3.connect(destination) as destination_db:
             source_db.backup(destination_db)
-            destination_db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             destination_db.commit()
 
 
@@ -94,7 +94,7 @@ async def create_full_backup(config: Config) -> FullBackupResult:
     archive_path = BACKUP_ROOT / f"toonelvpn-full-backup-{timestamp}.tar.gz"
 
     app_path = Path("/app")
-    db_path = Path(config.database.url().replace("sqlite+aiosqlite:", ""))
+    db_path = Path("/app/data") / f"{config.database.NAME}.sqlite3"
 
     try:
         (work_dir / "app").mkdir(parents=True, exist_ok=True)
@@ -103,12 +103,17 @@ async def create_full_backup(config: Config) -> FullBackupResult:
         (work_dir / "config").mkdir(parents=True, exist_ok=True)
 
         await asyncio.to_thread(
-            lambda: __import__("shutil").copytree(
-                app_path,
-                work_dir / "app",
-                dirs_exist_ok=True,
-                ignore=__import__("shutil").ignore_patterns("__pycache__", "*.pyc", "*.pyo", "logs"),
-            )
+            shutil.copytree,
+            app_path,
+            work_dir / "app",
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns(
+                ".env",
+                "__pycache__",
+                "*.pyc",
+                "*.pyo",
+                "logs",
+            ),
         )
 
         if db_path.exists():
@@ -122,11 +127,7 @@ async def create_full_backup(config: Config) -> FullBackupResult:
 
         env_path = app_path / ".env"
         if env_path.exists():
-            await asyncio.to_thread(
-                __import__("shutil").copy2,
-                env_path,
-                work_dir / "config" / ".env",
-            )
+            await asyncio.to_thread(shutil.copy2, env_path, work_dir / "config" / ".env")
 
         manifest = {
             "format": "toonelvpn-full-backup-v1",
@@ -136,9 +137,16 @@ async def create_full_backup(config: Config) -> FullBackupResult:
             "database": db_path.name if db_path.exists() else None,
             "redis_database": config.redis.DB_NAME,
             "redis_keys": redis_keys,
-            "excluded_from_app": ["__pycache__", "*.pyc", "*.pyo", "logs"],
+            "included": [
+                "deployed /app application tree",
+                "consistent SQLite database copy",
+                "runtime data and locales",
+                "logical Redis dump with TTL metadata",
+                "runtime .env configuration",
+            ],
+            "excluded_from_app": [".env", "__pycache__", "*.pyc", "*.pyo", "logs"],
             "telegram_upload_limit_bytes": BACKUP_MAX_UPLOAD_BYTES,
-            "note": "Application source is captured from the deployed /app tree; repository metadata is intentionally not copied into the container backup.",
+            "note": "The deployed /app tree is the application snapshot. Git repository metadata is intentionally not copied into the container backup.",
         }
         _write_json(work_dir / "MANIFEST.json", manifest)
 
@@ -149,9 +157,11 @@ async def create_full_backup(config: Config) -> FullBackupResult:
             "1. Deploy the matching ToonelVPN source revision from the Git repository.\n"
             "2. Stop the bot container before replacing runtime data.\n"
             "3. Restore `database/*.sqlite3` into `app/data/`.\n"
-            "4. Restore the archived `app/data/`, `app/locales/`, and `config/.env` as required.\n"
-            "5. Restore Redis using the records in `redis/dump.jsonl` with the Redis DUMP/RESTORE commands.\n"
-            "6. Rebuild and recreate the bot container.\n\n"
+            "4. Restore archived runtime files from `app/data/` and `app/locales/` as required.\n"
+            "5. Restore `config/.env` to the bot runtime environment.\n"
+            "6. Restore Redis using `redis/dump.jsonl`: base64-decode `key` and `payload`, "
+            "then issue Redis RESTORE with the recorded `pttl` (use 0 for persistent keys).\n"
+            "7. Rebuild and recreate the bot container.\n\n"
             "Never commit `config/.env` or this archive to Git.\n",
             encoding="utf-8",
         )
@@ -163,7 +173,7 @@ async def create_full_backup(config: Config) -> FullBackupResult:
         if size_bytes > BACKUP_MAX_UPLOAD_BYTES:
             raise ValueError(
                 f"Backup size is {size_bytes / (1024 * 1024):.1f} MB; "
-                f"Telegram upload limit configured for this feature is {BACKUP_MAX_UPLOAD_BYTES / (1024 * 1024):.0f} MB."
+                f"the maximum upload size configured for Telegram is {BACKUP_MAX_UPLOAD_BYTES / (1024 * 1024):.0f} MB."
             )
 
         return FullBackupResult(
@@ -177,7 +187,7 @@ async def create_full_backup(config: Config) -> FullBackupResult:
         archive_path.unlink(missing_ok=True)
         raise
     finally:
-        await asyncio.to_thread(__import__("shutil").rmtree, work_dir, True)
+        await asyncio.to_thread(shutil.rmtree, work_dir, True)
 
 
 async def cleanup_full_backup(path: Path) -> None:
