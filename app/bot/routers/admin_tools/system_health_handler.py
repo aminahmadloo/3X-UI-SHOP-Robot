@@ -18,7 +18,7 @@ SETTINGS = "system_health:settings"
 TOGGLE = "system_health:toggle"
 ERRORS = "system_health:errors"
 INTERVAL = "system_health:interval"
-DETAIL_KINDS = {"servers", "xui", "inbounds", "clients", "docker", "processes", "webhook", "sqlite", "resources"}
+DETAIL_KINDS = {"servers", "nodes", "xui", "inbounds", "clients", "docker", "processes", "webhook", "sqlite", "resources"}
 
 
 def install_admin_menu_button() -> None:
@@ -46,6 +46,7 @@ def keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 گزارش کامل سلامت", callback_data=REPORT)],
         [InlineKeyboardButton(text="🌍 وضعیت سرورها", callback_data="system_health:servers")],
+        [InlineKeyboardButton(text="🧩 وضعیت Nodeها", callback_data="system_health:nodes")],
         [InlineKeyboardButton(text="📡 وضعیت X-UI", callback_data="system_health:xui")],
         [InlineKeyboardButton(text="🔌 وضعیت Inboundها", callback_data="system_health:inbounds")],
         [InlineKeyboardButton(text="👤 وضعیت Clientها", callback_data="system_health:clients")],
@@ -78,10 +79,41 @@ async def _render_detail(report: dict, kind: str) -> str:
     if kind == "servers":
         lines = ["🌍 <b>وضعیت سرورها</b>"]
         for server in report["servers"]:
-            lines.append(f"\n<b>{server['name']}</b> — {'🟢 سالم' if server.get('status') == 'healthy' else '🔴 مشکل'}\nHost: <code>{server.get('host','-')}</code>")
+            panel = server.get("panel", {})
+            xray = panel.get("xray") or {}
+            lines.append(
+                f"\n<b>{server['name']}</b> — {'🟢 سالم' if server.get('status') == 'healthy' else '🔴 مشکل'}"
+                f"\nHost: <code>{server.get('host','-')}</code>"
+                f"\nX-UI: {'🟢' if panel.get('ok') else '🔴'} | Xray: {'🟢' if str(xray.get('state','')).lower() == 'running' else '🔴'}"
+                f"\nCPU: {panel.get('cpu','-')}% | RAM: {panel.get('memory_percent','-')}% | Disk: {panel.get('disk_percent','-')}%"
+            )
+        return "\n".join(lines)
+    if kind == "nodes":
+        lines = ["🧩 <b>وضعیت 3X-UI Nodeها</b>"]
+        if not report.get("nodes"):
+            return "\n".join(lines + ["\n⚪️ هیچ Node مدیریتشده‌ای از پنل‌های ثبت‌شده پیدا نشد."])
+        for node in report["nodes"]:
+            if not node.get("enabled", True):
+                state = "⚪️ غیرفعال"
+            elif node.get("ok"):
+                state = "🟢 سالم"
+            else:
+                state = "🔴 مشکل"
+            lines.append(
+                f"\n<b>{node.get('name','-')}</b> — {state}"
+                f"\nParent: {node.get('parent_server','-')}"
+                f"\nAddress: <code>{node.get('address','-')}</code>:{node.get('port','-')}"
+                f"\nStatus: {node.get('status','-')} | Ping: {node.get('latency_ms','-')} ms"
+                f"\nCPU: {node.get('cpu_percent','-')}% | RAM: {node.get('memory_percent','-')}%"
+                f"\nXray: {node.get('xray_state','-')} {('— ' + node.get('xray_error')) if node.get('xray_error') else ''}"
+                f"\nInbound: {node.get('inbound_count',0)} | Client: {node.get('client_count',0)} | Online: {node.get('online_count',0)}"
+            )
         return "\n".join(lines)
     if kind == "xui":
-        return "📡 <b>وضعیت X-UI</b>\n\n" + "\n".join(f"{('🟢' if s.get('panel',{}).get('ok') else '🔴')} {s['name']}: {s.get('panel',{}).get('message') or 'API reachable'}" for s in report["servers"])
+        return "📡 <b>وضعیت X-UI</b>\n\n" + "\n".join(
+            f"{('🟢' if s.get('panel',{}).get('ok') else '🔴')} {s['name']}: {s.get('panel',{}).get('message') or 'API reachable'}"
+            for s in report["servers"]
+        )
     if kind in {"inbounds", "clients"}:
         lines = [f"{'🔌' if kind == 'inbounds' else '👤'} <b>{'Inboundها' if kind == 'inbounds' else 'Clientها'}</b>"]
         for s in report["servers"]:
@@ -113,14 +145,14 @@ async def _render_detail(report: dict, kind: str) -> str:
 async def health_menu(callback: CallbackQuery) -> None:
     await callback.answer()
     await callback.message.edit_text(
-        "❤️ <b>مدیریت سلامت سیستم</b>\n\nبررسی واقعی Bot، ServerPool، X-UI، Inboundها، Clientها، Docker، Process، Webhook، SQLite و منابع سیستم.",
+        "❤️ <b>مدیریت سلامت سیستم</b>\n\nبررسی واقعی Bot، همه Serverهای ثبت‌شده، همه 3X-UI Nodeهای مدیریت‌شده، X-UI، Inboundها، Clientها، Docker، Process، Webhook، SQLite و منابع سیستم.",
         reply_markup=keyboard(),
     )
 
 
 @router.callback_query(F.data == REPORT, IsAdmin())
 async def health_report(callback: CallbackQuery, services: ServicesContainer, config: Config, session: AsyncSession) -> None:
-    await callback.answer("در حال بررسی...")
+    await callback.answer("در حال بررسی همه سرورها و Nodeها...")
     report = await _collector(config, services, callback.bot, session).collect()
     await callback.message.edit_text(HealthCollector.render(report), reply_markup=keyboard())
 
