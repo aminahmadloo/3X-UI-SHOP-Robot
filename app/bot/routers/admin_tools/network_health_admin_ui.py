@@ -284,7 +284,8 @@ async def network_interval_menu(callback: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith(f"{NETWORK_INTERVAL}:"), IsAdmin())
 async def network_interval_set(callback: CallbackQuery) -> None:
     try:
-        seconds = int(callback.data.split(":", 1)[1])
+        # NETWORK_INTERVAL itself contains a colon, so split from the right.
+        seconds = int(callback.data.rsplit(":", 1)[1])
     except (AttributeError, TypeError, ValueError):
         await callback.answer("مقدار نامعتبر است", show_alert=True)
         return
