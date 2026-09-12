@@ -90,18 +90,23 @@ async def get_server_inbound_groups(server: Any, config: Config) -> list[dict[st
     for inbound in payload:
         if not isinstance(inbound, dict):
             continue
+
         node_id = inbound.get("nodeId")
         node = node_by_id.get(int(node_id)) if node_id is not None else None
-        if node is None:
+        node_address = inbound.get("nodeAddress") or (node.get("address") if node else None)
+
+        if node_id is None:
             key = "local"
             title = server.name
             subtitle = "سرور اصلی"
             flag = "🖥"
+            address = server.host
         else:
             key = f"node:{node_id}"
-            title = node["name"]
+            title = node["name"] if node else (node_address or f"Node {node_id}")
             subtitle = f"نود زیرمجموعه {server.name}"
             flag = "🧩"
+            address = node_address or "-"
 
         group = groups.setdefault(
             key,
@@ -110,7 +115,7 @@ async def get_server_inbound_groups(server: Any, config: Config) -> list[dict[st
                 "title": title,
                 "subtitle": subtitle,
                 "flag": flag,
-                "address": node.get("address") if node else server.host,
+                "address": address,
                 "node_id": node_id,
                 "inbounds": [],
             },
@@ -130,7 +135,7 @@ async def get_server_inbound_groups(server: Any, config: Config) -> list[dict[st
                 "port": inbound.get("port") or "-",
                 "enable": bool(inbound.get("enable", True)),
                 "node_id": node_id,
-                "node_address": inbound.get("nodeAddress") or (node.get("address") if node else server.host),
+                "node_address": node_address or address,
                 "client_count": len(clients) if isinstance(clients, list) else 0,
             }
         )
