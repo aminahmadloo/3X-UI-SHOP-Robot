@@ -20,13 +20,17 @@ from app.config import Config
 
 logger = logging.getLogger(__name__)
 
-BACKUP_MAX_UPLOAD_BYTES = 48 * 1024 * 1024
+# The official cloud Bot API accepts up to 50 MB per uploaded file. Keep a
+# safety margin so backups work without requiring a Local Bot API Server.
+BACKUP_PART_BYTES = 49 * 1024 * 1024
+BACKUP_MAX_TOTAL_BYTES = 1024 * 1024 * 1024
 BACKUP_ROOT = Path("/tmp/toonelvpn-full-backups")
 
 
 @dataclass(frozen=True)
 class FullBackupResult:
     path: Path
+    parts: tuple[Path, ...]
     size_bytes: int
     sha256: str
     redis_keys: int
@@ -52,6 +56,21 @@ def _sha256(path: Path) -> str:
 
 def _write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _split_file(source: Path, part_size: int) -> tuple[Path, ...]:
+    parts: list[Path] = []
+    with source.open("rb") as handle:
+        index = 1
+        while True:
+            chunk = handle.read(part_size)
+            if not chunk:
+                break
+            part = source.with_name(f"{source.name}.part{index:03d}")
+            part.write_bytes(chunk)
+            parts.append(part)
+            index += 1
+    return tuple(parts)
 
 
 async def _dump_redis(redis_url: str, destination: Path) -> int:
@@ -92,6 +111,7 @@ async def create_full_backup(config: Config) -> FullBackupResult:
     BACKUP_ROOT.mkdir(parents=True, exist_ok=True)
     work_dir = Path(tempfile.mkdtemp(prefix=f"toonelvpn-{timestamp}-", dir=BACKUP_ROOT))
     archive_path = BACKUP_ROOT / f"toonelvpn-full-backup-{timestamp}.tar.gz"
+    parts: tuple[Path, ...] = ()
 
     app_path = Path("/app")
     db_path = Path("/app/data") / f"{config.database.NAME}.sqlite3"
@@ -145,7 +165,9 @@ async def create_full_backup(config: Config) -> FullBackupResult:
                 "runtime .env configuration",
             ],
             "excluded_from_app": [".env", "__pycache__", "*.pyc", "*.pyo", "logs"],
-            "telegram_upload_limit_bytes": BACKUP_MAX_UPLOAD_BYTES,
+            "telegram_upload_part_limit_bytes": BACKUP_PART_BYTES,
+            "telegram_upload_total_limit_bytes": BACKUP_MAX_TOTAL_BYTES,
+            "telegram_transport": "multipart Telegram documents; no Local Bot API Server required",
             "note": "The deployed /app tree is the application snapshot. Git repository metadata is intentionally not copied into the container backup.",
         }
         _write_json(work_dir / "MANIFEST.json", manifest)
@@ -154,6 +176,10 @@ async def create_full_backup(config: Config) -> FullBackupResult:
             "# ToonelVPN Full Backup Restore\n\n"
             "This archive contains the deployed application tree, a consistent SQLite copy, "
             "a logical Redis dump, and the runtime .env file.\n\n"
+            "If the Telegram delivery contains multiple `.partNNN` files, first place all parts "
+            "in the same directory and concatenate them in numeric order, for example:\n\n"
+            "`cat toonelvpn-full-backup-*.tar.gz.part* > toonelvpn-full-backup.tar.gz`\n\n"
+            "Then verify the resulting archive SHA-256 against the value reported by the bot.\n\n"
             "1. Deploy the matching ToonelVPN source revision from the Git repository.\n"
             "2. Stop the bot container before replacing runtime data.\n"
             "3. Restore `database/*.sqlite3` into `app/data/`.\n"
@@ -170,14 +196,16 @@ async def create_full_backup(config: Config) -> FullBackupResult:
         size_bytes = archive_path.stat().st_size
         sha256 = await asyncio.to_thread(_sha256, archive_path)
 
-        if size_bytes > BACKUP_MAX_UPLOAD_BYTES:
+        if size_bytes > BACKUP_MAX_TOTAL_BYTES:
             raise ValueError(
                 f"Backup size is {size_bytes / (1024 * 1024):.1f} MB; "
-                f"the maximum upload size configured for Telegram is {BACKUP_MAX_UPLOAD_BYTES / (1024 * 1024):.0f} MB."
+                f"the maximum total Telegram backup size configured is {BACKUP_MAX_TOTAL_BYTES / (1024 * 1024):.0f} MB."
             )
 
+        parts = await asyncio.to_thread(_split_file, archive_path, BACKUP_PART_BYTES)
         return FullBackupResult(
             path=archive_path,
+            parts=parts,
             size_bytes=size_bytes,
             sha256=sha256,
             redis_keys=redis_keys,
@@ -185,10 +213,14 @@ async def create_full_backup(config: Config) -> FullBackupResult:
         )
     except Exception:
         archive_path.unlink(missing_ok=True)
+        for part in parts:
+            part.unlink(missing_ok=True)
         raise
     finally:
         await asyncio.to_thread(shutil.rmtree, work_dir, True)
 
 
-async def cleanup_full_backup(path: Path) -> None:
+async def cleanup_full_backup(path: Path, parts: tuple[Path, ...] = ()) -> None:
     await asyncio.to_thread(path.unlink, True)
+    for part in parts:
+        await asyncio.to_thread(part.unlink, True)
