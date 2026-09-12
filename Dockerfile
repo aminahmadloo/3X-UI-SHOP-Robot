@@ -5,6 +5,10 @@ ENV POETRY_VIRTUALENVS_CREATE=false
 
 COPY pyproject.toml poetry.lock /
 
-RUN pip install poetry && poetry install
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends iputils-ping traceroute \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install poetry \
+    && poetry install
 
 COPY ./app /app
