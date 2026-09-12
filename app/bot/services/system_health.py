@@ -121,12 +121,7 @@ async def _run(command: str, *args: str, timeout: float = 8.0) -> tuple[int, str
 
 
 async def _docker_container(name: str) -> dict[str, Any]:
-    """Check Docker only when this runtime can actually reach the Docker daemon.
-
-    The bot container is not assumed to have the host Docker socket/CLI mounted.
-    An unavailable Docker daemon is therefore reported as 'unavailable', not as a
-    false host/container failure and is excluded from the overall health decision.
-    """
+    """Check Docker only when this runtime can actually reach the Docker daemon."""
     code, out, err = await _run(
         "docker",
         "inspect",
@@ -231,11 +226,13 @@ class HealthCollector:
         for server in db_servers:
             item: dict[str, Any] = {"id": server.id, "name": server.name, "host": server.host}
             try:
-                connection = await self.server_pool.get_connection_for_server(server)
-                if connection is None:
-                    servers.append(item | {"status": "unhealthy", "panel": _status(False, "X-UI connection unavailable"), "inbounds": [], "clients": _client_stats([])})
-                    continue
-                inbounds = await get_inbounds(connection.api)
+                # Prefer the already-live ServerPool connection. If a server is not
+                # currently in the pool, build a temporary API client for a read-only
+                # health probe instead of calling get_connection_for_server(), which
+                # may reconnect the server and write its online flag to the database.
+                connection = self.server_pool._servers.get(server.id)
+                api = connection.api if connection is not None else self.server_pool._build_api(server)
+                inbounds = await get_inbounds(api)
                 inbound_rows = [
                     {
                         "id": i.id,
