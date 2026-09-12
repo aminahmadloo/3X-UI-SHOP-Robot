@@ -28,3 +28,8 @@ from . import ai_content_channel_integration  # noqa: E402,F401
 # intentionally loaded after the legacy handlers so it can safely replace
 # only their keyboards and add dedicated topology callbacks.
 from . import admin_topology_management  # noqa: E402,F401
+
+# Install System Health severity handling after the health handlers/classes
+# are imported. Historical Telegram webhook errors become warnings instead
+# of falsely marking the whole system critical.
+from app.bot.services import health_severity  # noqa: E402,F401
