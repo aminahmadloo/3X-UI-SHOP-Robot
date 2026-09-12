@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -46,14 +47,46 @@ async def _send_to_admins(text: str) -> None:
 
 async def run_network_once() -> None:
     if _bot is None or _collector_config is None or _services is None or _session_factory is None:
+        logger.warning("Network health check skipped: scheduler dependencies are not initialized")
         return
     settings = load_health_settings()
     if not settings.get("network_monitor_enabled", True):
+        logger.info("Network health check skipped: network_monitor_enabled=False")
         return
+
+    started = time.monotonic()
+    logger.info("Network health check started")
     try:
         async with _session_factory() as session:
             report = await collect_network_health(_collector_config, _services.server_pool, session)
-        alert, _previous = update_alert_state(report)
+        alert, previous = update_alert_state(report)
+
+        servers = report.get("servers", [])
+        node_count = sum(len(server.get("nodes", [])) for server in servers)
+        current = "unknown"
+        state_path = None
+        try:
+            # The persisted state is the authoritative alert state; the report itself
+            # intentionally remains free of scheduler-specific metadata.
+            from app.bot.services.network_health import _load_state, _history_path
+
+            state = _load_state()
+            current = state.get("current", "unknown")
+            state_path = str(_history_path())
+        except Exception:
+            logger.exception("Failed to read network health state for runtime diagnostics")
+
+        logger.info(
+            "Network health check completed: severity=%s previous=%s alert=%s servers=%d nodes=%d history=%s duration=%.2fs",
+            current,
+            previous,
+            alert or "none",
+            len(servers),
+            node_count,
+            state_path or "unknown",
+            time.monotonic() - started,
+        )
+
         if alert == "degraded":
             await _send_to_admins(render_network_alert(report, recovered=False))
         elif alert == "recovered":
