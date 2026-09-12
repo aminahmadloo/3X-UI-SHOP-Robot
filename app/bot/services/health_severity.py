@@ -11,6 +11,7 @@ from app.bot.services.system_health_comprehensive import ComprehensiveHealthColl
 _HEALTHY = "healthy"
 _WARNING = "warning"
 _CRITICAL = "critical"
+_WEBHOOK_RECENT_SECONDS = 300
 
 
 def _timestamp(value: Any) -> int | None:
@@ -26,7 +27,19 @@ def _timestamp(value: Any) -> int | None:
         return None
 
 
+def _webhook_age(last_error_date: int | None) -> int | None:
+    if not last_error_date:
+        return None
+    return max(0, int(time.time()) - last_error_date)
+
+
 async def _webhook_health(bot, config):
+    """Classify Telegram webhook health using current delivery pressure.
+
+    Telegram keeps ``last_error_message`` as historical state. Therefore a
+    correct URL with zero pending updates is healthy when the last error is
+    stale; the historical error is still returned for visibility.
+    """
     expected = _base.urljoin(config.bot.DOMAIN, _base.TELEGRAM_WEBHOOK)
     try:
         info = await bot.get_webhook_info()
@@ -34,21 +47,33 @@ async def _webhook_health(bot, config):
         pending = int(info.pending_update_count or 0)
         last_error = info.last_error_message or ""
         last_error_date = _timestamp(getattr(info, "last_error_date", None))
+        last_error_age = _webhook_age(last_error_date)
         url_ok = actual == expected
+        recent_error = bool(
+            last_error
+            and last_error_age is not None
+            and last_error_age <= _WEBHOOK_RECENT_SECONDS
+        )
 
         if not url_ok:
             severity = _CRITICAL
             ok = False
             message = "Webhook URL mismatch"
-        elif pending > 0 and last_error and last_error_date and time.time() - last_error_date <= 300:
+        elif pending > 0 and recent_error:
             severity = _CRITICAL
             ok = False
             message = last_error
-        elif last_error or pending > 0:
+        elif pending > 0:
             severity = _WARNING
             ok = True
-            message = last_error or f"{pending} update(s) pending"
+            message = f"{pending} update(s) pending"
+        elif recent_error:
+            severity = _WARNING
+            ok = True
+            message = last_error
         else:
+            # No queued updates means Telegram is not currently under delivery
+            # pressure. A stale last_error_message is historical evidence only.
             severity = _HEALTHY
             ok = True
             message = ""
@@ -63,7 +88,8 @@ async def _webhook_health(bot, config):
             "pending_updates": pending,
             "last_error": last_error,
             "last_error_date": last_error_date,
-            "last_error_age_seconds": (int(time.time()) - last_error_date) if last_error_date else None,
+            "last_error_age_seconds": last_error_age,
+            "recent_error": recent_error,
         }
     except Exception as exc:
         return {
@@ -77,6 +103,7 @@ async def _webhook_health(bot, config):
             "last_error": str(exc),
             "last_error_date": None,
             "last_error_age_seconds": None,
+            "recent_error": False,
         }
 
 
@@ -164,6 +191,11 @@ def _render(report):
         old = f"آخرین خطا: {webhook['last_error']}"
         new = f"آخرین خطا: {webhook['last_error']} | زمان: {age_text}"
         text = text.replace(old, new)
+
+    if webhook.get("severity") == _HEALTHY and webhook.get("last_error"):
+        historical = "ℹ️ خطای قبلی تاریخی است؛ در حال حاضر Pending Updates صفر است و خطای فعالی گزارش نشده."
+        if historical not in text:
+            text = text.rstrip() + "\n" + historical
     return text
 
 
