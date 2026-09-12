@@ -168,9 +168,9 @@ async def run_network_once() -> bool:
                 next_ping_count,
             )
 
-            # The scheduler is deliberately moved after state persistence so a degraded
-            # sample immediately switches the next cycle to incident mode, while recovery
-            # requires the existing RECOVERY_SAMPLES threshold before returning to normal.
+            # Move the scheduler after state persistence so degraded samples immediately
+            # switch the next cycle to incident mode; recovery keeps incident mode until
+            # the existing RECOVERY_SAMPLES threshold is satisfied.
             reschedule_network_job()
 
             if alert == "degraded":
@@ -266,6 +266,13 @@ def start_scheduler(
         NORMAL_PING_COUNT,
         INCIDENT_PING_COUNT,
     )
+    # The Network Health UI historically reschedules this job immediately after
+    # start_scheduler(). Re-apply the effective adaptive interval one event-loop
+    # turn later so the UI cannot accidentally disable adaptive startup behavior.
+    try:
+        asyncio.get_running_loop().call_soon(reschedule_network_job)
+    except RuntimeError:
+        pass
 
 
 def restart_scheduler() -> None:
