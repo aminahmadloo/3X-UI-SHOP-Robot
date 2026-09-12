@@ -15,6 +15,7 @@ from . import (
     statistics_handler,
     user_handler,
     system_health_handler,
+    system_health_backup_handler,
 )
 
 # Install AI channel integration after the AI handler is registered. The
