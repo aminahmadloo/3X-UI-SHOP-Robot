@@ -19,6 +19,16 @@ def _job_id() -> str:
     return "toonel_system_health_report"
 
 
+async def _send_to_admins(text: str) -> None:
+    if _collector is None:
+        return
+    for chat_id in _collector.config.bot.ADMINS:
+        try:
+            await _collector.bot.send_message(chat_id=chat_id, text=text)
+        except Exception:
+            logger.exception("Failed to send system health report to admin %s", chat_id)
+
+
 async def run_once() -> None:
     if _collector is None:
         return
@@ -35,22 +45,13 @@ async def run_once() -> None:
             if previous == state:
                 return
             if state == "healthy" and previous == "error":
-                await _collector.bot.send_message(
-                    chat_id=_collector.config.bot.DEV_ID,
-                    text="✅ <b>System recovered</b>\n\nتمامی بررسی‌های سلامت به وضعیت عادی برگشتند.",
-                )
+                await _send_to_admins("✅ <b>System recovered</b>\n\nتمامی بررسی‌های سلامت به وضعیت عادی برگشتند.")
                 return
             if state == "error":
-                await _collector.bot.send_message(
-                    chat_id=_collector.config.bot.DEV_ID,
-                    text=_collector.render(report),
-                )
+                await _send_to_admins(_collector.render(report))
             return
 
-        await _collector.bot.send_message(
-            chat_id=_collector.config.bot.DEV_ID,
-            text=_collector.render(report),
-        )
+        await _send_to_admins(_collector.render(report))
     except Exception:
         logger.exception("Automatic system health report failed")
 
@@ -59,27 +60,12 @@ def start_scheduler(config: Config, services: ServicesContainer, bot: Bot) -> No
     global _scheduler, _collector
     if _scheduler is not None and _scheduler.running:
         return
-    _collector = HealthCollector(
-        config=config,
-        session_factory=services.server_pool.session,
-        server_pool=services.server_pool,
-        bot=bot,
-    )
+    _collector = HealthCollector(config=config, session_factory=services.server_pool.session, server_pool=services.server_pool, bot=bot)
     settings = load_health_settings()
     _scheduler = AsyncIOScheduler()
-    _scheduler.add_job(
-        run_once,
-        trigger=IntervalTrigger(minutes=settings["interval_minutes"]),
-        id=_job_id(),
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-    )
+    _scheduler.add_job(run_once, trigger=IntervalTrigger(minutes=settings["interval_minutes"]), id=_job_id(), replace_existing=True, max_instances=1, coalesce=True)
     _scheduler.start()
-    logger.info(
-        "System health scheduler started: enabled=%s interval=%sm errors_only=%s",
-        settings["enabled"], settings["interval_minutes"], settings["errors_only"],
-    )
+    logger.info("System health scheduler started: enabled=%s interval=%sm errors_only=%s", settings["enabled"], settings["interval_minutes"], settings["errors_only"])
 
 
 def restart_scheduler() -> None:
