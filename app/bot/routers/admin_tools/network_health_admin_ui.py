@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.bot.filters import IsAdmin
 from app.bot.models import ServicesContainer
-from app.bot.services.network_health import _load_state, collect_network_health, render_network_section
+from app.bot.services.network_health import _load_state, render_network_section
 from app.bot.services.system_health import load_health_settings, save_health_settings
 from app.bot.tasks import system_health as system_health_task
 from app.config import Config
@@ -122,42 +123,75 @@ def install_ui_hooks() -> None:
     system_health_handler._network_health_ui_installed = True
 
 
+def _render_network_view(report: dict, state: dict, settings: dict) -> str:
+    current = state.get("current", "unknown")
+    lines = [
+        "🌐 <b>Network Health</b>",
+        "",
+        f"وضعیت آخرین نمونه: {_icon(current)} <b>{current}</b>",
+        f"آخرین بررسی ثبت‌شده: <code>{_fmt_ts((state.get('last_report') or {}).get('timestamp'))}</code>",
+        f"فاصله مانیتور: <b>{_fmt_interval(_interval_seconds(settings))}</b>",
+        f"تعداد نمونه‌های History: <b>{len(state.get('history', []))}</b>",
+        "",
+    ]
+    if report:
+        lines.append(render_network_section(report))
+        for server in report.get("servers", []):
+            lines.append(f"\n🩺 <b>تشخیص {server.get('name', '-')}</b>\n{server.get('diagnosis', '-')}")
+    else:
+        lines.append("⚪️ هنوز هیچ بررسی شبکه‌ای ثبت نشده است.")
+        lines.append("برای اولین بررسی، «🔄 بررسی الآن» را بزنید.")
+    return "\n".join(lines)
+
+
+async def _run_manual_network_check(message: Message) -> None:
+    try:
+        started = await system_health_task.run_network_once()
+        state = _load_state()
+        settings = load_health_settings()
+        report = state.get("last_report") if isinstance(state.get("last_report"), dict) else {}
+        if not started:
+            text = _render_network_view(report, state, settings) + "\n\n🟡 یک بررسی شبکه در حال اجراست؛ از اجرای هم‌زمان بررسی جلوگیری شد."
+        else:
+            text = _render_network_view(report, state, settings)
+        await message.edit_text(text, reply_markup=_network_keyboard())
+    except Exception:
+        from logging import getLogger
+        getLogger(__name__).exception("Manual Network Health UI check failed")
+
+
 _install_scheduler_hooks()
 install_ui_hooks()
 
 
 @router.callback_query(F.data == NETWORK, IsAdmin())
-async def network_health(callback: CallbackQuery, services: ServicesContainer, config: Config, session) -> None:
-    await callback.answer("در حال بررسی شبکه...")
-    report = await collect_network_health(config, services.server_pool, session)
+async def network_health(callback: CallbackQuery) -> None:
+    """Render the persisted Network Health state immediately; never run ICMP here."""
+    await callback.answer()
+    if not isinstance(callback.message, Message):
+        return
     state = _load_state()
-    text = (
-        f"🌐 <b>Network Health</b>\n\n"
-        f"وضعیت آخرین نمونه: {_icon(state.get('current', 'unknown'))} <b>{state.get('current', 'unknown')}</b>\n"
-        f"آخرین بررسی ثبت‌شده: <code>{_fmt_ts((state.get('last_report') or {}).get('timestamp'))}</code>\n"
-        f"بررسی جاری: <code>{_fmt_ts(report.get('timestamp'))}</code>\n"
-        f"فاصله مانیتور: <b>{_fmt_interval(_interval_seconds(load_health_settings()))}</b>\n"
-        f"تعداد نمونه‌های History: <b>{len(state.get('history', []))}</b>\n\n"
-        f"{render_network_section(report)}"
+    settings = load_health_settings()
+    report = state.get("last_report") if isinstance(state.get("last_report"), dict) else {}
+    await callback.message.edit_text(
+        _render_network_view(report, state, settings),
+        reply_markup=_network_keyboard(),
     )
-    for server in report.get("servers", []):
-        text += f"\n\n🩺 <b>تشخیص {server.get('name', '-')}</b>\n{server.get('diagnosis', '-')}"
-    await callback.message.edit_text(text, reply_markup=_network_keyboard())
 
 
 @router.callback_query(F.data == NETWORK_RUN, IsAdmin())
 async def network_run(callback: CallbackQuery) -> None:
-    await callback.answer("بررسی شبکه آغاز شد...")
-    await system_health_task.run_network_once()
-    state = _load_state()
+    """Start a real network check in the background so Telegram is never blocked by ICMP."""
+    await callback.answer("بررسی شبکه در پس‌زمینه آغاز شد...")
+    if not isinstance(callback.message, Message):
+        return
     await callback.message.edit_text(
-        f"🌐 <b>نتیجه آخرین بررسی شبکه</b>\n\n"
-        f"وضعیت: {_icon(state.get('current', 'unknown'))} <b>{state.get('current', 'unknown')}</b>\n"
-        f"آخرین بررسی: <code>{_fmt_ts((state.get('last_report') or {}).get('timestamp'))}</code>\n"
-        f"فاصله فعلی: <b>{_fmt_interval(_interval_seconds(load_health_settings()))}</b>\n"
-        f"نمونه‌های History: {len(state.get('history', []))}",
+        "🌐 <b>بررسی Network Health آغاز شد</b>\n\n"
+        "⏳ تست شبکه در پس‌زمینه انجام می‌شود.\n"
+        "این صفحه بعد از پایان بررسی با نتیجه جدید به‌روزرسانی خواهد شد.",
         reply_markup=_network_keyboard(),
     )
+    asyncio.create_task(_run_manual_network_check(callback.message))
 
 
 @router.callback_query(F.data == NETWORK_HISTORY, IsAdmin())
