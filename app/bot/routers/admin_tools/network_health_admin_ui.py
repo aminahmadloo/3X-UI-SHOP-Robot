@@ -196,19 +196,19 @@ def _history_summary(history: list[dict]) -> list[str]:
     server_stats: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for sample in samples:
         for server in sample.get("servers", []):
-            name = str(server.get("name") or "-")
+            server_name = str(server.get("name") or "-")
             for scope, key in (("endpoint", "Endpoint"), ("public", "Internet")):
                 metric = server.get(scope) or {}
                 for field in ("avg_ms", "max_ms", "loss_percent"):
                     value = metric.get(field)
                     if isinstance(value, (int, float)):
-                        server_stats[name][f"{key}:{field}"].append(float(value))
+                        server_stats[server_name][f"{key}:{field}"].append(float(value))
             for node in server.get("nodes", []):
-                name = f"{name} / {node.get('name') or '-'}"
+                node_name = f"{server_name} / {node.get('name') or '-'}"
                 for field in ("avg_ms", "max_ms", "loss_percent"):
                     value = node.get(field)
                     if isinstance(value, (int, float)):
-                        server_stats[name][f"Node:{field}"].append(float(value))
+                        server_stats[node_name][f"Node:{field}"].append(float(value))
     lines = [f"📊 <b>خلاصه {len(samples)} نمونه اخیر</b>"]
     for name, metrics in server_stats.items():
         lines.append(f"\n<b>{name}</b>")
@@ -248,7 +248,6 @@ async def network_history(callback: CallbackQuery) -> None:
                 for node in server.get("nodes", []):
                     lines.append(f"  🧩 {node.get('name','-')} | {_metric(node.get('avg_ms'),' ms')} | loss {_metric(node.get('loss_percent'),'%')} | max {_metric(node.get('max_ms'),' ms')} | jitter {_metric(node.get('jitter_ms'),' ms')}")
     text = "\n".join(lines)
-    # Telegram message limit safety: preserve the newest entries if history is large.
     if len(text) > 3900:
         text = "\n".join(lines[:12]) + "\n\n⚠️ برای جلوگیری از عبور از محدودیت پیام، فقط بخشی از آخرین نمونه‌ها نمایش داده شد."
     await callback.message.edit_text(text, reply_markup=_network_keyboard())
@@ -279,16 +278,32 @@ async def network_interval_menu(callback: CallbackQuery) -> None:
     rows = [[InlineKeyboardButton(text=f"{'✅ ' if current == seconds else ''}{_fmt_interval(seconds)}", callback_data=f"{NETWORK_INTERVAL}:{seconds}")] for seconds in NETWORK_INTERVALS_SECONDS]
     rows.append([InlineKeyboardButton(text="🔙 تنظیمات Network Health", callback_data=NETWORK_SETTINGS)])
     await callback.answer()
-    await callback.message.edit_text("⏱ <b>فاصله بررسی Network Health</b>\n\nفاصله اجرای مانیتور شبکه را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await callback.message.edit_text("⏱ <b>فاصله مانیتور Network Health</b>\n\nیک فاصله را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @router.callback_query(F.data.startswith(f"{NETWORK_INTERVAL}:"), IsAdmin())
-async def set_network_interval(callback: CallbackQuery) -> None:
-    seconds = int(callback.data.rsplit(":", 1)[1])
+async def network_interval_set(callback: CallbackQuery) -> None:
+    try:
+        seconds = int(callback.data.split(":", 1)[1])
+    except (AttributeError, TypeError, ValueError):
+        await callback.answer("مقدار نامعتبر است", show_alert=True)
+        return
     if seconds not in NETWORK_INTERVALS_SECONDS:
-        await callback.answer("فاصله انتخاب‌شده معتبر نیست", show_alert=True)
+        await callback.answer("مقدار نامعتبر است", show_alert=True)
         return
     settings = save_health_settings(network_interval_seconds=seconds)
     _reschedule_network_job()
-    await callback.answer(f"فاصله مانیتور روی {_fmt_interval(seconds)} تنظیم شد")
-    await callback.message.edit_text("⚙️ <b>تنظیمات Network Health</b>", reply_markup=_settings_keyboard(settings))
+    await callback.answer("فاصله مانیتور تغییر کرد")
+    await callback.message.edit_reply_markup(reply_markup=_settings_keyboard(settings))
+
+
+@router.callback_query(F.data == "system_health:menu", IsAdmin())
+async def network_back_to_health(callback: CallbackQuery) -> None:
+    await callback.answer()
+    if not isinstance(callback.message, Message):
+        return
+    services = ServicesContainer.get()
+    config = Config.from_env()
+    from app.bot.routers.admin_tools.system_health_handler import render_system_health, keyboard
+    text = render_system_health(services, config)
+    await callback.message.edit_text(text, reply_markup=keyboard())
