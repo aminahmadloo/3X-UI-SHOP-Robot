@@ -8,6 +8,7 @@ from app.bot.models import ServicesContainer
 from app.bot.services.system_health import HealthCollector, INTERVALS, load_health_settings, save_health_settings
 from app.bot.tasks import system_health as system_health_task
 from app.config import Config
+from app.db.models import User
 
 router = Router(name=__name__)
 
@@ -87,7 +88,7 @@ async def _render_detail(report: dict, kind: str) -> str:
 
 
 @router.callback_query(F.data == "admin_tools", IsAdmin())
-async def system_health_admin_tools_entry(callback: CallbackQuery, user) -> None:
+async def system_health_admin_tools_entry(callback: CallbackQuery, user: User) -> None:
     is_dev = await IsDev()(user_id=user.tg_id)
     from app.bot.routers.admin_tools.keyboard import admin_tools_keyboard
     markup = admin_tools_keyboard(is_dev)
