@@ -8,6 +8,11 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.models import ServicesContainer
+from app.bot.services.network_health import (
+    collect_network_health,
+    render_network_alert,
+    update_alert_state,
+)
 from app.bot.services.system_health import load_health_settings
 from app.bot.services.system_health_comprehensive import ComprehensiveHealthCollector
 from app.config import Config
@@ -25,6 +30,10 @@ def _job_id() -> str:
     return "toonel_system_health_report"
 
 
+def _network_job_id() -> str:
+    return "toonel_network_health_monitor"
+
+
 async def _send_to_admins(text: str) -> None:
     if _bot is None or _collector_config is None:
         return
@@ -33,6 +42,24 @@ async def _send_to_admins(text: str) -> None:
             await _bot.send_message(chat_id=chat_id, text=text)
         except Exception:
             logger.exception("Failed to send system health report to admin %s", chat_id)
+
+
+async def run_network_once() -> None:
+    if _bot is None or _collector_config is None or _services is None or _session_factory is None:
+        return
+    settings = load_health_settings()
+    if not settings.get("network_monitor_enabled", True):
+        return
+    try:
+        async with _session_factory() as session:
+            report = await collect_network_health(_collector_config, _services.server_pool, session)
+        alert, _previous = update_alert_state(report)
+        if alert == "degraded":
+            await _send_to_admins(render_network_alert(report, recovered=False))
+        elif alert == "recovered":
+            await _send_to_admins(render_network_alert(report, recovered=True))
+    except Exception:
+        logger.exception("Automatic network health check failed")
 
 
 async def run_once() -> None:
@@ -97,12 +124,21 @@ def start_scheduler(
         max_instances=1,
         coalesce=True,
     )
+    _scheduler.add_job(
+        run_network_once,
+        trigger=IntervalTrigger(minutes=1),
+        id=_network_job_id(),
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     _scheduler.start()
     logger.info(
-        "System health scheduler started: enabled=%s interval=%sm errors_only=%s",
+        "System health scheduler started: enabled=%s interval=%sm errors_only=%s network_monitor=%s",
         settings["enabled"],
         settings["interval_minutes"],
         settings["errors_only"],
+        settings.get("network_monitor_enabled", True),
     )
 
 
