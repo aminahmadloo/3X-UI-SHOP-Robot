@@ -20,8 +20,27 @@ ERRORS = "system_health:errors"
 INTERVAL = "system_health:interval"
 
 
-def admin_button() -> list[InlineKeyboardButton]:
-    return [InlineKeyboardButton(text="❤️ مدیریت سلامت سیستم", callback_data=MENU)]
+def install_admin_menu_button() -> None:
+    """Extend the existing admin menu without replacing its canonical handler."""
+    from app.bot.routers.admin_tools import admin_tools_handler
+    if getattr(admin_tools_handler, "_system_health_installed", False):
+        return
+
+    original = admin_tools_handler.admin_tools_keyboard
+
+    def wrapped(is_dev: bool):
+        markup = original(is_dev)
+        button = InlineKeyboardButton(text="❤️ مدیریت سلامت سیستم", callback_data=MENU)
+        rows = markup.inline_keyboard
+        if not any(any(item.callback_data == MENU for item in row) for row in rows):
+            rows.insert(-1, [button])
+        return markup
+
+    admin_tools_handler.admin_tools_keyboard = wrapped
+    admin_tools_handler._system_health_installed = True
+
+
+install_admin_menu_button()
 
 
 def keyboard() -> InlineKeyboardMarkup:
