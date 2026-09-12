@@ -10,20 +10,23 @@ import shutil
 import sqlite3
 import tarfile
 import tempfile
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from redis.asyncio import Redis
 
+from app.bot.services.full_backup_storage import BackupStorageConfig, S3CompatibleBackupStorage
 from app.config import Config
 
 logger = logging.getLogger(__name__)
 
-# Telegram documents are limited to 50 MB on the official cloud Bot API.
+# Official Telegram cloud Bot API limit is 50 MB per document.
 # Use 49,000,000 bytes (49 MB decimal) as a safety margin.
 BACKUP_PART_BYTES = 49_000_000
-BACKUP_MAX_TOTAL_BYTES = 1024 * 1024 * 1024
+TELEGRAM_MAX_TOTAL_BYTES = 1024 * 1024 * 1024
+BACKUP_MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024
 BACKUP_ROOT = Path("/tmp/toonelvpn-full-backups")
 
 
@@ -35,6 +38,9 @@ class FullBackupResult:
     sha256: str
     redis_keys: int
     source_app_path: str
+    delivery: str
+    download_url: str | None = None
+    storage_key: str | None = None
 
 
 def _copy_sqlite_consistent(source: Path, destination: Path) -> None:
@@ -106,6 +112,12 @@ def _build_archive(work_dir: Path, archive_path: Path) -> None:
         archive.add(work_dir / "RESTORE.md", arcname="RESTORE.md")
 
 
+def _storage_key(storage: BackupStorageConfig, timestamp: str) -> str:
+    prefix = storage.prefix.strip("/")
+    suffix = f"{timestamp}-{uuid.uuid4().hex}.tar.gz"
+    return f"{prefix}/{suffix}" if prefix else suffix
+
+
 async def create_full_backup(config: Config) -> FullBackupResult:
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
     BACKUP_ROOT.mkdir(parents=True, exist_ok=True)
@@ -117,10 +129,8 @@ async def create_full_backup(config: Config) -> FullBackupResult:
     db_path = Path("/app/data") / f"{config.database.NAME}.sqlite3"
 
     try:
-        (work_dir / "app").mkdir(parents=True, exist_ok=True)
-        (work_dir / "database").mkdir(parents=True, exist_ok=True)
-        (work_dir / "redis").mkdir(parents=True, exist_ok=True)
-        (work_dir / "config").mkdir(parents=True, exist_ok=True)
+        for directory in ("app", "database", "redis", "config"):
+            (work_dir / directory).mkdir(parents=True, exist_ok=True)
 
         await asyncio.to_thread(
             shutil.copytree,
@@ -150,7 +160,7 @@ async def create_full_backup(config: Config) -> FullBackupResult:
             await asyncio.to_thread(shutil.copy2, env_path, work_dir / "config" / ".env")
 
         manifest = {
-            "format": "toonelvpn-full-backup-v1",
+            "format": "toonelvpn-full-backup-v2",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "hostname": os.uname().nodename,
             "application_root": str(app_path),
@@ -166,8 +176,9 @@ async def create_full_backup(config: Config) -> FullBackupResult:
             ],
             "excluded_from_app": [".env", "__pycache__", "*.pyc", "*.pyo", "logs"],
             "telegram_upload_part_limit_bytes": BACKUP_PART_BYTES,
-            "telegram_upload_total_limit_bytes": BACKUP_MAX_TOTAL_BYTES,
-            "telegram_transport": "multipart Telegram documents; no Local Bot API Server required",
+            "telegram_fallback_total_limit_bytes": TELEGRAM_MAX_TOTAL_BYTES,
+            "external_storage_total_limit_bytes": BACKUP_MAX_TOTAL_BYTES,
+            "transport_policy": "direct Telegram <=49MB; external presigned download link when configured; Telegram parts as fallback up to 1GiB",
             "note": "The deployed /app tree is the application snapshot. Git repository metadata is intentionally not copied into the container backup.",
         }
         _write_json(work_dir / "MANIFEST.json", manifest)
@@ -176,10 +187,11 @@ async def create_full_backup(config: Config) -> FullBackupResult:
             "# ToonelVPN Full Backup Restore\n\n"
             "This archive contains the deployed application tree, a consistent SQLite copy, "
             "a logical Redis dump, and the runtime .env file.\n\n"
-            "If the Telegram delivery contains multiple `.partNNN` files, first place all parts "
-            "in the same directory and concatenate them in numeric order, for example:\n\n"
+            "For Telegram multipart delivery, concatenate all `.partNNN` files in numeric order "
+            "before extraction. External-storage delivery provides the original `.tar.gz` as a "
+            "single downloadable file.\n\n"
             "`cat toonelvpn-full-backup-*.tar.gz.part* > toonelvpn-full-backup.tar.gz`\n\n"
-            "Then verify the resulting archive SHA-256 against the value reported by the bot.\n\n"
+            "Verify the resulting archive SHA-256 against the value reported by the bot.\n\n"
             "1. Deploy the matching ToonelVPN source revision from the Git repository.\n"
             "2. Stop the bot container before replacing runtime data.\n"
             "3. Restore `database/*.sqlite3` into `app/data/`.\n"
@@ -194,12 +206,45 @@ async def create_full_backup(config: Config) -> FullBackupResult:
 
         await asyncio.to_thread(_build_archive, work_dir, archive_path)
         size_bytes = archive_path.stat().st_size
-        sha256 = await asyncio.to_thread(_sha256, archive_path)
-
         if size_bytes > BACKUP_MAX_TOTAL_BYTES:
             raise ValueError(
                 f"Backup size is {size_bytes / (1024 * 1024):.1f} MB; "
-                f"the maximum total Telegram backup size configured is {BACKUP_MAX_TOTAL_BYTES / (1024 * 1024):.0f} MB."
+                f"the configured maximum is {BACKUP_MAX_TOTAL_BYTES / (1024 * 1024 * 1024):.0f} GiB."
+            )
+        sha256 = await asyncio.to_thread(_sha256, archive_path)
+
+        if size_bytes <= BACKUP_PART_BYTES:
+            parts = (archive_path,)
+            return FullBackupResult(
+                path=archive_path,
+                parts=parts,
+                size_bytes=size_bytes,
+                sha256=sha256,
+                redis_keys=redis_keys,
+                source_app_path=str(app_path),
+                delivery="telegram",
+            )
+
+        storage = BackupStorageConfig.from_env()
+        if storage.enabled:
+            storage_client = S3CompatibleBackupStorage(storage)
+            uploaded = await storage_client.upload(archive_path, _storage_key(storage, timestamp))
+            return FullBackupResult(
+                path=archive_path,
+                parts=(),
+                size_bytes=size_bytes,
+                sha256=sha256,
+                redis_keys=redis_keys,
+                source_app_path=str(app_path),
+                delivery="download_link",
+                download_url=uploaded.url,
+                storage_key=uploaded.key,
+            )
+
+        if size_bytes > TELEGRAM_MAX_TOTAL_BYTES:
+            raise ValueError(
+                "Backup is larger than 1 GiB and external backup storage is not configured. "
+                "Configure FULL_BACKUP_STORAGE_* to receive a single download link."
             )
 
         parts = await asyncio.to_thread(_split_file, archive_path, BACKUP_PART_BYTES)
@@ -210,11 +255,13 @@ async def create_full_backup(config: Config) -> FullBackupResult:
             sha256=sha256,
             redis_keys=redis_keys,
             source_app_path=str(app_path),
+            delivery="telegram_parts",
         )
     except Exception:
         archive_path.unlink(missing_ok=True)
         for part in parts:
-            part.unlink(missing_ok=True)
+            if part != archive_path:
+                part.unlink(missing_ok=True)
         raise
     finally:
         await asyncio.to_thread(shutil.rmtree, work_dir, True)
@@ -223,4 +270,5 @@ async def create_full_backup(config: Config) -> FullBackupResult:
 async def cleanup_full_backup(path: Path, parts: tuple[Path, ...] = ()) -> None:
     await asyncio.to_thread(path.unlink, True)
     for part in parts:
-        await asyncio.to_thread(part.unlink, True)
+        if part != path:
+            await asyncio.to_thread(part.unlink, True)
