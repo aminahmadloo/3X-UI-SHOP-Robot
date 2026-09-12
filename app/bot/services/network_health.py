@@ -103,37 +103,38 @@ async def _ping(host: str) -> dict[str, Any]:
     if not host:
         return _status(False, "No ping target") | {"host": host, "available": False, "severity": "unknown"}
     if not shutil.which("ping"):
-        return _status(False, "ICMP ping utility is not installed") | {
-            "host": host, "available": False, "severity": "unknown"
-        }
+        return _status(False, "ICMP ping utility is not installed") | {"host": host, "available": False, "severity": "unknown"}
     try:
         proc = await asyncio.create_subprocess_exec(
             "ping", "-n", "-c", str(PING_COUNT), "-W", str(PING_TIMEOUT), host,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=PING_COUNT * PING_TIMEOUT + 5)
         result = _parse_ping(stdout.decode(errors="replace"), proc.returncode or 0)
         result.update({"host": host, "available": True, "timestamp": int(time.time())})
         return result
     except Exception as exc:
-        return _status(False, str(exc)) | {
-            "host": host, "available": True, "severity": "critical", "loss_percent": 100.0
-        }
+        return _status(False, str(exc)) | {"host": host, "available": True, "severity": "critical", "loss_percent": 100.0}
 
 
 def _aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
     usable = [r for r in results if r.get("available") and r.get("loss_percent") is not None]
     if not usable:
-        return {"severity": "unknown", "loss_percent": None, "avg_ms": None, "targets": results}
+        return {"severity": "unknown", "loss_percent": None, "avg_ms": None, "min_ms": None, "max_ms": None, "jitter_ms": None, "targets": results}
     loss = max(float(r.get("loss_percent") or 0) for r in usable)
     avgs = [float(r["avg_ms"]) for r in usable if r.get("avg_ms") is not None]
+    minimums = [float(r["min_ms"]) for r in usable if r.get("min_ms") is not None]
+    maximums = [float(r["max_ms"]) for r in usable if r.get("max_ms") is not None]
+    jitters = [float(r["jitter_ms"]) for r in usable if r.get("jitter_ms") is not None]
     avg = max(avgs) if avgs else None
     severity = max((r.get("severity", "unknown") for r in usable), key=lambda value: ORDER.get(value, 0))
     return {
         "severity": severity,
         "loss_percent": round(loss, 2),
         "avg_ms": round(avg, 2) if avg is not None else None,
+        "min_ms": round(min(minimums), 2) if minimums else None,
+        "max_ms": round(max(maximums), 2) if maximums else None,
+        "jitter_ms": round(max(jitters), 2) if jitters else None,
         "targets": results,
     }
 
@@ -155,7 +156,7 @@ def _diagnosis(endpoint: dict[str, Any] | None, public: dict[str, Any]) -> str:
 
 
 async def collect_network_health(config: Config, server_pool: ServerPoolService, session: AsyncSession) -> dict[str, Any]:
-    del server_pool  # Reserved for future active route/transport checks.
+    del server_pool
     db_servers = await Server.get_all(session)
     servers: list[dict[str, Any]] = []
     for server in db_servers:
@@ -179,12 +180,8 @@ async def collect_network_health(config: Config, server_pool: ServerPoolService,
             result = _aggregate([ping_result])
             node_rows.append({"id": node.get("id"), "name": node.get("name"), "address": address, **result})
         servers.append({
-            "id": server.id,
-            "name": server.name,
-            "host": endpoint_host,
-            "endpoint": endpoint,
-            "public": public,
-            "nodes": node_rows,
+            "id": server.id, "name": server.name, "host": endpoint_host,
+            "endpoint": endpoint, "public": public, "nodes": node_rows,
             "diagnosis": _diagnosis(endpoint, public),
         })
     return {"timestamp": int(time.time()), "servers": servers}
@@ -199,6 +196,32 @@ def _worst(report: dict[str, Any]) -> str:
     return max(severities or ["unknown"], key=lambda value: ORDER.get(value, 0))
 
 
+def _history_snapshot(report: dict[str, Any], severity: str) -> dict[str, Any]:
+    """Keep the history useful without duplicating transient/internal ping fields."""
+    servers = []
+    for server in report.get("servers", []):
+        def compact(value: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "severity": value.get("severity", "unknown"),
+                "avg_ms": value.get("avg_ms"),
+                "min_ms": value.get("min_ms"),
+                "max_ms": value.get("max_ms"),
+                "jitter_ms": value.get("jitter_ms"),
+                "loss_percent": value.get("loss_percent"),
+            }
+        servers.append({
+            "id": server.get("id"),
+            "name": server.get("name"),
+            "endpoint": compact(server.get("endpoint", {})),
+            "public": compact(server.get("public", {})),
+            "nodes": [
+                {"id": node.get("id"), "name": node.get("name"), "address": node.get("address"), **compact(node)}
+                for node in server.get("nodes", [])
+            ],
+        })
+    return {"timestamp": report.get("timestamp"), "severity": severity, "servers": servers}
+
+
 def update_alert_state(report: dict[str, Any]) -> tuple[str | None, str | None]:
     state = _load_state()
     current = _worst(report)
@@ -208,7 +231,6 @@ def update_alert_state(report: dict[str, Any]) -> tuple[str | None, str | None]:
     good_count = int(state.get("good_count", 0)) + 1 if current in {"healthy", "unknown"} else 0
     if current in {"warning", "problem", "critical"}:
         good_count = 0
-
     alert = None
     if current in {"warning", "problem", "critical"} and bad_count >= ALERT_SAMPLES:
         if ORDER.get(current, 0) > ORDER.get(alert_level, 0):
@@ -217,16 +239,9 @@ def update_alert_state(report: dict[str, Any]) -> tuple[str | None, str | None]:
     elif current in {"healthy", "unknown"} and good_count >= RECOVERY_SAMPLES and ORDER.get(alert_level, 0) > ORDER["healthy"]:
         alert = "recovered"
         alert_level = "healthy"
-
-    state.update({
-        "current": current,
-        "alert_level": alert_level,
-        "bad_count": bad_count,
-        "good_count": good_count,
-        "last_report": report,
-    })
+    state.update({"current": current, "alert_level": alert_level, "bad_count": bad_count, "good_count": good_count, "last_report": report})
     history = state.get("history") if isinstance(state.get("history"), list) else []
-    history.append({"timestamp": report.get("timestamp"), "severity": current})
+    history.append(_history_snapshot(report, current))
     state["history"] = history[-MAX_HISTORY:]
     _save_state(state)
     return alert, previous
@@ -245,10 +260,7 @@ def render_network_alert(report: dict[str, Any], recovered: bool = False) -> str
             f"تشخیص: {server.get('diagnosis','-')}"
         )
         for node in server.get("nodes", []):
-            lines.append(
-                f"🧩 {node.get('name','-')} ({node.get('address','-')}): "
-                f"{node.get('avg_ms','-')} ms | Loss {node.get('loss_percent','-')}%"
-            )
+            lines.append(f"🧩 {node.get('name','-')} ({node.get('address','-')}): {node.get('avg_ms','-')} ms | Loss {node.get('loss_percent','-')}%")
     return "\n".join(lines)
 
 
@@ -258,14 +270,9 @@ def render_network_section(report: dict[str, Any]) -> str:
         public = server.get("public", {})
         severity = public.get("severity")
         icon = "🟢" if severity == "healthy" else "🟡" if severity == "warning" else "🔴"
-        lines.append(
-            f"\n{icon} <b>{server.get('name','-')}</b> | Internet: "
-            f"{public.get('avg_ms','-')} ms | Loss {public.get('loss_percent','-')}%"
-        )
+        lines.append(f"\n{icon} <b>{server.get('name','-')}</b> | Internet: {public.get('avg_ms','-')} ms | Loss {public.get('loss_percent','-')}%")
         for node in server.get("nodes", []):
             severity = node.get("severity")
             nicon = "🟢" if severity == "healthy" else "🟡" if severity == "warning" else "🔴"
-            lines.append(
-                f"{nicon} {node.get('name','-')}: {node.get('avg_ms','-')} ms | Loss {node.get('loss_percent','-')}%"
-            )
+            lines.append(f"{nicon} {node.get('name','-')}: {node.get('avg_ms','-')} ms | Loss {node.get('loss_percent','-')}%")
     return "\n".join(lines)
