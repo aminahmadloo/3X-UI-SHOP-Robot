@@ -11,9 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.models import ServicesContainer
 from app.bot.services.network_health import (
+    INCIDENT_PING_COUNT,
+    NORMAL_PING_COUNT,
     collect_network_health,
     render_network_alert,
     update_alert_state,
+    _load_state,
 )
 from app.bot.services.system_health import load_health_settings
 from app.bot.services.system_health_comprehensive import ComprehensiveHealthCollector
@@ -27,6 +30,10 @@ _bot: Bot | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 _last_state: str | None = None
 _network_run_lock = asyncio.Lock()
+
+NETWORK_NORMAL_INTERVAL_SECONDS = 300
+NETWORK_INCIDENT_INTERVAL_SECONDS = 60
+NETWORK_INTERVAL_OPTIONS = (30, 60, 120, 300, 600, 900, 1800, 3600)
 
 
 def _job_id() -> str:
@@ -47,6 +54,57 @@ async def _send_to_admins(text: str) -> None:
             logger.exception("Failed to send system health report to admin %s", chat_id)
 
 
+def _network_settings() -> tuple[bool, int, int]:
+    settings = load_health_settings()
+    adaptive = bool(settings.get("network_adaptive_enabled", True))
+    normal = int(settings.get("network_interval_seconds", NETWORK_NORMAL_INTERVAL_SECONDS))
+    incident = int(settings.get("network_incident_interval_seconds", NETWORK_INCIDENT_INTERVAL_SECONDS))
+    if normal not in NETWORK_INTERVAL_OPTIONS:
+        normal = NETWORK_NORMAL_INTERVAL_SECONDS
+    if incident not in NETWORK_INTERVAL_OPTIONS:
+        incident = NETWORK_INCIDENT_INTERVAL_SECONDS
+    return adaptive, normal, incident
+
+
+def _network_incident_mode() -> bool:
+    state = _load_state()
+    current = str(state.get("current", "unknown"))
+    alert_level = str(state.get("alert_level", "healthy"))
+    return current in {"warning", "problem", "critical"} or alert_level in {"warning", "problem", "critical"}
+
+
+def _network_interval_seconds() -> int:
+    adaptive, normal, incident = _network_settings()
+    if not adaptive:
+        return normal
+    return incident if _network_incident_mode() else normal
+
+
+def _network_ping_count() -> int:
+    adaptive, _, _ = _network_settings()
+    if adaptive and _network_incident_mode():
+        return INCIDENT_PING_COUNT
+    return NORMAL_PING_COUNT
+
+
+def reschedule_network_job() -> None:
+    """Apply the effective adaptive interval without restarting the scheduler."""
+    if _scheduler is None or not _scheduler.running:
+        return
+    job = _scheduler.get_job(_network_job_id())
+    if job is None:
+        return
+    seconds = _network_interval_seconds()
+    job.reschedule(trigger=IntervalTrigger(seconds=seconds))
+    logger.info(
+        "Network health scheduler interval updated: interval=%ss adaptive=%s incident=%s ping_count=%s",
+        seconds,
+        _network_settings()[0],
+        _network_incident_mode(),
+        _network_ping_count(),
+    )
+
+
 async def run_network_once() -> bool:
     """Run one network check, rejecting overlapping manual/scheduled executions."""
     if _network_run_lock.locked():
@@ -63,10 +121,23 @@ async def run_network_once() -> bool:
             return False
 
         started = time.monotonic()
-        logger.info("Network health check started")
+        ping_count = _network_ping_count()
+        effective_interval = _network_interval_seconds()
+        logger.info(
+            "Network health check started: adaptive=%s incident=%s interval=%ss ping_count=%s",
+            _network_settings()[0],
+            _network_incident_mode(),
+            effective_interval,
+            ping_count,
+        )
         try:
             async with _session_factory() as session:
-                report = await collect_network_health(_collector_config, _services.server_pool, session)
+                report = await collect_network_health(
+                    _collector_config,
+                    _services.server_pool,
+                    session,
+                    ping_count=ping_count,
+                )
             alert, previous = update_alert_state(report)
 
             servers = report.get("servers", [])
@@ -74,9 +145,7 @@ async def run_network_once() -> bool:
             current = "unknown"
             state_path = None
             try:
-                # The persisted state is the authoritative alert state; the report itself
-                # intentionally remains free of scheduler-specific metadata.
-                from app.bot.services.network_health import _load_state, _history_path
+                from app.bot.services.network_health import _history_path
 
                 state = _load_state()
                 current = state.get("current", "unknown")
@@ -84,8 +153,10 @@ async def run_network_once() -> bool:
             except Exception:
                 logger.exception("Failed to read network health state for runtime diagnostics")
 
+            next_interval = _network_interval_seconds()
+            next_ping_count = _network_ping_count()
             logger.info(
-                "Network health check completed: severity=%s previous=%s alert=%s servers=%d nodes=%d history=%s duration=%.2fs",
+                "Network health check completed: severity=%s previous=%s alert=%s servers=%d nodes=%d history=%s duration=%.2fs next_interval=%ss next_ping_count=%s",
                 current,
                 previous,
                 alert or "none",
@@ -93,7 +164,14 @@ async def run_network_once() -> bool:
                 node_count,
                 state_path or "unknown",
                 time.monotonic() - started,
+                next_interval,
+                next_ping_count,
             )
+
+            # Move the scheduler after state persistence so degraded samples immediately
+            # switch the next cycle to incident mode; recovery keeps incident mode until
+            # the existing RECOVERY_SAMPLES threshold is satisfied.
+            reschedule_network_job()
 
             if alert == "degraded":
                 await _send_to_admins(render_network_alert(report, recovered=False))
@@ -169,7 +247,7 @@ def start_scheduler(
     )
     _scheduler.add_job(
         run_network_once,
-        trigger=IntervalTrigger(minutes=1),
+        trigger=IntervalTrigger(seconds=_network_interval_seconds()),
         id=_network_job_id(),
         replace_existing=True,
         max_instances=1,
@@ -177,12 +255,24 @@ def start_scheduler(
     )
     _scheduler.start()
     logger.info(
-        "System health scheduler started: enabled=%s interval=%sm errors_only=%s network_monitor=%s",
+        "System health scheduler started: enabled=%s interval=%sm errors_only=%s network_monitor=%s network_adaptive=%s network_interval=%ss incident_interval=%ss ping_normal=%s ping_incident=%s",
         settings["enabled"],
         settings["interval_minutes"],
         settings["errors_only"],
         settings.get("network_monitor_enabled", True),
+        _network_settings()[0],
+        _network_settings()[1],
+        _network_settings()[2],
+        NORMAL_PING_COUNT,
+        INCIDENT_PING_COUNT,
     )
+    # The Network Health UI historically reschedules this job immediately after
+    # start_scheduler(). Re-apply the effective adaptive interval one event-loop
+    # turn later so the UI cannot accidentally disable adaptive startup behavior.
+    try:
+        asyncio.get_running_loop().call_soon(reschedule_network_job)
+    except RuntimeError:
+        pass
 
 
 def restart_scheduler() -> None:
@@ -192,3 +282,4 @@ def restart_scheduler() -> None:
     job = _scheduler.get_job(_job_id())
     if job is not None:
         job.reschedule(trigger=IntervalTrigger(minutes=settings["interval_minutes"]))
+    reschedule_network_job()

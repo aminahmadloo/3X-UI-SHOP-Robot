@@ -20,7 +20,8 @@ from app.db.models import Server
 logger = logging.getLogger(__name__)
 
 HISTORY_PATHS = (Path("/app/data/network_health_history.json"), Path("data/network_health_history.json"))
-PING_COUNT = 20
+NORMAL_PING_COUNT = 5
+INCIDENT_PING_COUNT = 20
 PING_TIMEOUT = 2
 RECOVERY_SAMPLES = 2
 ALERT_SAMPLES = 3
@@ -99,22 +100,22 @@ def _parse_ping(stdout: str, returncode: int) -> dict[str, Any]:
     }
 
 
-async def _ping(host: str) -> dict[str, Any]:
+async def _ping(host: str, ping_count: int) -> dict[str, Any]:
     if not host:
         return _status(False, "No ping target") | {"host": host, "available": False, "severity": "unknown"}
     if not shutil.which("ping"):
         return _status(False, "ICMP ping utility is not installed") | {"host": host, "available": False, "severity": "unknown"}
     try:
         proc = await asyncio.create_subprocess_exec(
-            "ping", "-n", "-c", str(PING_COUNT), "-W", str(PING_TIMEOUT), host,
+            "ping", "-n", "-c", str(ping_count), "-W", str(PING_TIMEOUT), host,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=PING_COUNT * PING_TIMEOUT + 5)
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=ping_count * PING_TIMEOUT + 5)
         result = _parse_ping(stdout.decode(errors="replace"), proc.returncode or 0)
-        result.update({"host": host, "available": True, "timestamp": int(time.time())})
+        result.update({"host": host, "available": True, "timestamp": int(time.time()), "ping_count": ping_count})
         return result
     except Exception as exc:
-        return _status(False, str(exc)) | {"host": host, "available": True, "severity": "critical", "loss_percent": 100.0}
+        return _status(False, str(exc)) | {"host": host, "available": True, "severity": "critical", "loss_percent": 100.0, "ping_count": ping_count}
 
 
 def _aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -155,15 +156,21 @@ def _diagnosis(endpoint: dict[str, Any] | None, public: dict[str, Any]) -> str:
     return "وضعیت شبکه عادی است."
 
 
-async def collect_network_health(config: Config, server_pool: ServerPoolService, session: AsyncSession) -> dict[str, Any]:
+async def collect_network_health(
+    config: Config,
+    server_pool: ServerPoolService,
+    session: AsyncSession,
+    ping_count: int = NORMAL_PING_COUNT,
+) -> dict[str, Any]:
     del server_pool
+    ping_count = max(1, int(ping_count))
     db_servers = await Server.get_all(session)
     servers: list[dict[str, Any]] = []
     for server in db_servers:
-        public_results = await asyncio.gather(*(_ping(target) for target in TARGETS))
+        public_results = await asyncio.gather(*(_ping(target, ping_count) for target in TARGETS))
         public = _aggregate(public_results)
         endpoint_host = _host_from_value(server.host)
-        endpoint = _aggregate([await _ping(endpoint_host)])
+        endpoint = _aggregate([await _ping(endpoint_host, ping_count)])
         try:
             nodes = await _managed_nodes(server, config)
         except Exception:
@@ -174,7 +181,7 @@ async def collect_network_health(config: Config, server_pool: ServerPoolService,
             address = _host_from_value(str(node.get("address") or ""))
             if address:
                 node_inputs.append((node, address))
-        node_results = await asyncio.gather(*(_ping(address) for _, address in node_inputs))
+        node_results = await asyncio.gather(*(_ping(address, ping_count) for _, address in node_inputs))
         node_rows = []
         for (node, address), ping_result in zip(node_inputs, node_results):
             result = _aggregate([ping_result])
@@ -184,7 +191,7 @@ async def collect_network_health(config: Config, server_pool: ServerPoolService,
             "endpoint": endpoint, "public": public, "nodes": node_rows,
             "diagnosis": _diagnosis(endpoint, public),
         })
-    return {"timestamp": int(time.time()), "servers": servers}
+    return {"timestamp": int(time.time()), "servers": servers, "ping_count": ping_count}
 
 
 def _worst(report: dict[str, Any]) -> str:
@@ -219,7 +226,12 @@ def _history_snapshot(report: dict[str, Any], severity: str) -> dict[str, Any]:
                 for node in server.get("nodes", [])
             ],
         })
-    return {"timestamp": report.get("timestamp"), "severity": severity, "servers": servers}
+    return {
+        "timestamp": report.get("timestamp"),
+        "severity": severity,
+        "ping_count": report.get("ping_count", NORMAL_PING_COUNT),
+        "servers": servers,
+    }
 
 
 def update_alert_state(report: dict[str, Any]) -> tuple[str | None, str | None]:
@@ -227,7 +239,7 @@ def update_alert_state(report: dict[str, Any]) -> tuple[str | None, str | None]:
     current = _worst(report)
     previous = state.get("current", "unknown")
     alert_level = state.get("alert_level", "healthy")
-    bad_count = int(state.get("bad_count", 0)) if current in {"warning", "problem", "critical"} else 0
+    bad_count = int(state.get("bad_count", 0)) + 1 if current in {"warning", "problem", "critical"} else 0
     good_count = int(state.get("good_count", 0)) + 1 if current in {"healthy", "unknown"} else 0
     if current in {"warning", "problem", "critical"}:
         good_count = 0
