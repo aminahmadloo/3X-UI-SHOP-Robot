@@ -3,7 +3,7 @@ from __future__ import annotations
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.bot.filters import IsAdmin
+from app.bot.filters import IsAdmin, IsDev
 from app.bot.models import ServicesContainer
 from app.bot.services.system_health import HealthCollector, INTERVALS, load_health_settings, save_health_settings
 from app.bot.tasks import system_health as system_health_task
@@ -17,7 +17,6 @@ SETTINGS = "system_health:settings"
 TOGGLE = "system_health:toggle"
 ERRORS = "system_health:errors"
 INTERVAL = "system_health:interval"
-BACK = "system_health:back"
 
 
 def keyboard() -> InlineKeyboardMarkup:
@@ -49,12 +48,7 @@ def settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
 
 
 def _collector(config: Config, services: ServicesContainer, bot) -> HealthCollector:
-    return HealthCollector(
-        config=config,
-        session_factory=services.server_pool.session,
-        server_pool=services.server_pool,
-        bot=bot,
-    )
+    return HealthCollector(config=config, session_factory=services.server_pool.session, server_pool=services.server_pool, bot=bot)
 
 
 async def _render_detail(report: dict, kind: str) -> str:
@@ -92,10 +86,26 @@ async def _render_detail(report: dict, kind: str) -> str:
     return f"📊 <b>CPU / RAM / Disk</b>\n\nCPU: {r['cpu']['percent']}% | Load: {r['cpu']['load1']}\nRAM: {r['ram']['percent']}%\nDisk: {r['disk']['percent']}%"
 
 
+@router.callback_query(F.data == "admin_tools", IsAdmin())
+async def system_health_admin_tools_entry(callback: CallbackQuery, user) -> None:
+    is_dev = await IsDev()(user_id=user.tg_id)
+    from app.bot.routers.admin_tools.keyboard import admin_tools_keyboard
+    markup = admin_tools_keyboard(is_dev)
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="❤️ مدیریت سلامت سیستم", callback_data=MENU)])
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="📣 مدیریت تبلیغات", callback_data="advertising:menu")])
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="📢 مدیریت کانال", callback_data="channel:menu")])
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="🏆 مدیریت تخفیف سطوح مشتری", callback_data="customer_level_settings")])
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="🎁 تنظیمات معرفی به دوستان", callback_data="referral_settings")])
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="📝 مدیریت پیام خوش‌آمدگویی", callback_data="welcome_message_settings")])
+    markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="💰 مدیریت مبالغ کیف پول", callback_data="wallet_amounts")])
+    await callback.answer()
+    await callback.message.edit_text("⚙️ <b>مدیریت ربات</b>", reply_markup=markup)
+
+
 @router.callback_query(F.data == MENU, IsAdmin())
 async def health_menu(callback: CallbackQuery) -> None:
     await callback.answer()
-    await callback.message.edit_text("❤️ <b>مدیریت سلامت سیستم</b>\n\nیک بررسی واقعی از Bot، ServerPool، X-UI، Inboundها، Clientها، Docker، Processها، Webhook، SQLite و منابع سیستم انجام می‌شود.", reply_markup=keyboard())
+    await callback.message.edit_text("❤️ <b>مدیریت سلامت سیستم</b>\n\nبررسی واقعی Bot، ServerPool، X-UI، Inboundها، Clientها، Docker، Processها، Webhook، SQLite و منابع سیستم.", reply_markup=keyboard())
 
 
 @router.callback_query(F.data == REPORT, IsAdmin())
@@ -119,21 +129,19 @@ async def health_detail(callback: CallbackQuery, services: ServicesContainer, co
 async def health_settings(callback: CallbackQuery) -> None:
     await callback.answer()
     settings = load_health_settings()
-    await callback.message.edit_text("🔔 <b>تنظیمات گزارش خودکار سلامت</b>\n\nEnable تعیین می‌کند گزارش دوره‌ای فعال باشد.\nInterval فاصله اجرای بررسی است.\nError only در حالت فعال فقط تغییر وضعیت به خطا/بازگشت را گزارش می‌کند و از اسپم جلوگیری می‌شود.", reply_markup=settings_keyboard(settings))
+    await callback.message.edit_text("🔔 <b>تنظیمات گزارش خودکار سلامت</b>\n\nEnable: فعال/غیرفعال کردن گزارش دوره‌ای\nInterval: فاصله اجرای بررسی\nError only: فقط تغییر وضعیت به خطا یا بازگشت را گزارش می‌کند و از اسپم جلوگیری می‌شود.", reply_markup=settings_keyboard(settings))
 
 
 @router.callback_query(F.data == TOGGLE, IsAdmin())
 async def toggle_enabled(callback: CallbackQuery) -> None:
-    settings = load_health_settings()
-    settings = save_health_settings(enabled=not settings["enabled"])
+    settings = save_health_settings(enabled=not load_health_settings()["enabled"])
     await callback.answer("تنظیم Enable تغییر کرد")
     await callback.message.edit_reply_markup(reply_markup=settings_keyboard(settings))
 
 
 @router.callback_query(F.data == ERRORS, IsAdmin())
 async def toggle_errors(callback: CallbackQuery) -> None:
-    settings = load_health_settings()
-    settings = save_health_settings(errors_only=not settings["errors_only"])
+    settings = save_health_settings(errors_only=not load_health_settings()["errors_only"])
     await callback.answer("تنظیم Error only تغییر کرد")
     await callback.message.edit_reply_markup(reply_markup=settings_keyboard(settings))
 
