@@ -24,12 +24,7 @@ def enhanced_servers_keyboard(servers: list[Server]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for server in servers:
         status = "🟢" if server.online else "🔴"
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{status} 🖥 {server.name}",
-                callback_data=f"{PREFIX}server:{server.id}",
-            )
-        )
+        builder.row(InlineKeyboardButton(text=f"{status} 🖥 {server.name}", callback_data=f"{PREFIX}server:{server.id}"))
     builder.row(
         InlineKeyboardButton(text="🔄 همگام‌سازی سرورها", callback_data=NavAdminTools.SYNC_SERVERS),
         InlineKeyboardButton(text="➕ افزودن سرور", callback_data=NavAdminTools.ADD_SERVER),
@@ -41,16 +36,12 @@ def enhanced_servers_keyboard(servers: list[Server]) -> InlineKeyboardMarkup:
 
 def _server_detail_keyboard(server: Server, node_count: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="🔄 بازخوانی سرور و نودها", callback_data=f"{PREFIX}server:{server.id}"),
-    )
+    builder.row(InlineKeyboardButton(text="🔄 بازخوانی سرور و نودها", callback_data=f"{PREFIX}server:{server.id}"))
     builder.row(
         InlineKeyboardButton(text="✏️ ویرایش", callback_data=NavAdminTools.EDIT_SERVER + f"_{server.name}"),
         InlineKeyboardButton(text="📡 Ping", callback_data=NavAdminTools.PING_SERVER + f"_{server.name}"),
     )
-    builder.row(
-        InlineKeyboardButton(text="🗑 حذف سرور", callback_data=NavAdminTools.DELETE_SERVER + f"_{server.name}"),
-    )
+    builder.row(InlineKeyboardButton(text="🗑 حذف سرور", callback_data=NavAdminTools.DELETE_SERVER + f"_{server.name}"))
     builder.row(back_button(NavAdminTools.SERVER_MANAGEMENT))
     builder.row(back_to_main_menu_button())
     return builder.as_markup()
@@ -82,10 +73,7 @@ async def _render_server(callback: CallbackQuery, server: Server, config: Config
     else:
         lines.append("\n⚪️ این سرور نود مدیریتشده‌ای ندارد یا فهرست نودها قابل دریافت نیست.")
 
-    await callback.message.edit_text(
-        "\n".join(lines),
-        reply_markup=_server_detail_keyboard(server, len(nodes)),
-    )
+    await callback.message.edit_text("\n".join(lines), reply_markup=_server_detail_keyboard(server, len(nodes)))
 
 
 @router.callback_query(F.data.startswith(f"{PREFIX}server:"), IsDev())
@@ -119,12 +107,7 @@ def _inbound_selection_keyboard(server: Server, groups: list[dict]) -> InlineKey
     selected = set(server.configured_inbound_ids)
     for group in groups:
         enabled, total = group_counts(group)
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{group['flag']} {group['title']} — {enabled}/{total} فعال",
-                callback_data=f"{PREFIX}noop",
-            )
-        )
+        builder.row(InlineKeyboardButton(text=f"{group['flag']} {group['title']} — {enabled}/{total} فعال", callback_data=f"{PREFIX}noop"))
         for inbound in group.get("inbounds", []):
             mark = "☑️" if int(inbound["id"]) in selected else "⬜️"
             state = "فعال" if inbound.get("enable") else "غیرفعال"
@@ -158,10 +141,7 @@ async def _render_inbounds(callback: CallbackQuery, server: Server, config: Conf
             enabled, total = group_counts(group)
             lines.append(f"{group['flag']} <b>{group['title']}</b> — {enabled}/{total} فعال — <code>{group['address']}</code>")
 
-    await callback.message.edit_text(
-        "\n".join(lines),
-        reply_markup=_inbound_selection_keyboard(server, groups),
-    )
+    await callback.message.edit_text("\n".join(lines), reply_markup=_inbound_selection_keyboard(server, groups))
 
 
 @router.callback_query(F.data.startswith(f"{PREFIX}inbounds:"), IsDev())
@@ -177,7 +157,7 @@ async def callback_topology_inbounds(callback: CallbackQuery, session: AsyncSess
 
 @router.callback_query(F.data.startswith(f"{PREFIX}toggle:"), IsDev())
 async def callback_topology_toggle(callback: CallbackQuery, session: AsyncSession, config: Config) -> None:
-    _, _, _, server_id_text, inbound_id_text = callback.data.split(":")
+    _, _, server_id_text, inbound_id_text = callback.data.split(":")
     server_id = int(server_id_text)
     inbound_id = int(inbound_id_text)
     server = await Server.get_by_id(session=session, id=server_id)
@@ -210,11 +190,7 @@ async def callback_topology_toggle(callback: CallbackQuery, session: AsyncSessio
         message = "اینباند برای ساخت سرویس انتخاب شد."
 
     selected_ids = sorted(selected)
-    await Server.update(
-        session=session,
-        name=server.name,
-        selected_inbound_ids=json.dumps(selected_ids),
-    )
+    await Server.update(session=session, name=server.name, selected_inbound_ids=json.dumps(selected_ids))
     server.selected_inbound_ids = json.dumps(selected_ids)
     await _render_inbounds(callback, server, config, session)
     await callback.answer(message)
