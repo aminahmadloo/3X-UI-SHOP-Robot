@@ -8,12 +8,12 @@ import shutil
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
-from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.services.system_health import _managed_nodes, _status
 from app.bot.services.server_pool import ServerPoolService
+from app.bot.services.system_health import _managed_nodes, _status
 from app.config import Config
 from app.db.models import Server
 
@@ -26,6 +26,7 @@ RECOVERY_SAMPLES = 2
 ALERT_SAMPLES = 3
 MAX_HISTORY = 360
 TARGETS = ("1.1.1.1", "8.8.8.8")
+ORDER = {"unknown": 0, "healthy": 1, "warning": 2, "problem": 3, "critical": 4}
 
 
 def _history_path() -> Path:
@@ -67,6 +68,14 @@ def _severity(loss: float | None, avg: float | None) -> str:
     return "healthy"
 
 
+def _host_from_value(value: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        return ""
+    parsed = urlparse(value if "://" in value else f"//{value}")
+    return parsed.hostname or value.split("/", 1)[0].split(":", 1)[0]
+
+
 def _parse_ping(stdout: str, returncode: int) -> dict[str, Any]:
     loss_match = re.search(r"([0-9]+(?:\.[0-9]+)?)%\s*packet loss", stdout, re.I)
     avg_match = re.search(r"(?:rtt|round-trip).*?=\s*([0-9.]+)/([0-9.]+)/([0-9.]+)/([0-9.]+)", stdout, re.I)
@@ -91,6 +100,8 @@ def _parse_ping(stdout: str, returncode: int) -> dict[str, Any]:
 
 
 async def _ping(host: str) -> dict[str, Any]:
+    if not host:
+        return _status(False, "No ping target") | {"host": host, "available": False, "severity": "unknown"}
     if not shutil.which("ping"):
         return _status(False, "ICMP ping utility is not installed") | {
             "host": host, "available": False, "severity": "unknown"
@@ -101,7 +112,7 @@ async def _ping(host: str) -> dict[str, Any]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=PING_COUNT * PING_TIMEOUT + 5)
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=PING_COUNT * PING_TIMEOUT + 5)
         result = _parse_ping(stdout.decode(errors="replace"), proc.returncode or 0)
         result.update({"host": host, "available": True, "timestamp": int(time.time())})
         return result
@@ -118,12 +129,17 @@ def _aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
     loss = max(float(r.get("loss_percent") or 0) for r in usable)
     avgs = [float(r["avg_ms"]) for r in usable if r.get("avg_ms") is not None]
     avg = max(avgs) if avgs else None
-    severity = max((r.get("severity", "unknown") for r in usable), key=("unknown", "healthy", "warning", "problem", "critical").index)
-    return {"severity": severity, "loss_percent": round(loss, 2), "avg_ms": round(avg, 2) if avg is not None else None, "targets": results}
+    severity = max((r.get("severity", "unknown") for r in usable), key=lambda value: ORDER.get(value, 0))
+    return {
+        "severity": severity,
+        "loss_percent": round(loss, 2),
+        "avg_ms": round(avg, 2) if avg is not None else None,
+        "targets": results,
+    }
 
 
 def _diagnosis(endpoint: dict[str, Any] | None, public: dict[str, Any]) -> str:
-    if not endpoint:
+    if not endpoint or endpoint.get("severity") == "unknown":
         return "اختلال مسیر/خروجی سرور بر اساس تست‌های عمومی قابل ارزیابی نیست."
     es = endpoint.get("severity")
     ps = public.get("severity")
@@ -139,35 +155,38 @@ def _diagnosis(endpoint: dict[str, Any] | None, public: dict[str, Any]) -> str:
 
 
 async def collect_network_health(config: Config, server_pool: ServerPoolService, session: AsyncSession) -> dict[str, Any]:
+    del server_pool  # Reserved for future active route/transport checks.
     db_servers = await Server.get_all(session)
     servers: list[dict[str, Any]] = []
     for server in db_servers:
         public_results = await asyncio.gather(*(_ping(target) for target in TARGETS))
         public = _aggregate(public_results)
-        endpoint = _aggregate([await _ping(server.host)])
-        nodes = []
+        endpoint_host = _host_from_value(server.host)
+        endpoint = _aggregate([await _ping(endpoint_host)])
         try:
             nodes = await _managed_nodes(server, config)
         except Exception:
             nodes = []
-        node_rows = []
+        node_inputs = []
         for node in nodes:
-            address = str(node.get("address") or "").strip()
-            if not address or address == "-":
-                continue
-            result = _aggregate([await _ping(address)])
+            address = _host_from_value(str(node.get("address") or ""))
+            if address:
+                node_inputs.append((node, address))
+        node_results = await asyncio.gather(*(_ping(address) for _, address in node_inputs))
+        node_rows = []
+        for (node, address), ping_result in zip(node_inputs, node_results):
+            result = _aggregate([ping_result])
             node_rows.append({"id": node.get("id"), "name": node.get("name"), "address": address, **result})
         servers.append({
             "id": server.id,
             "name": server.name,
-            "host": server.host,
+            "host": endpoint_host,
             "endpoint": endpoint,
             "public": public,
             "nodes": node_rows,
             "diagnosis": _diagnosis(endpoint, public),
         })
-    report = {"timestamp": int(time.time()), "servers": servers}
-    return report
+    return {"timestamp": int(time.time()), "servers": servers}
 
 
 def _worst(report: dict[str, Any]) -> str:
@@ -176,35 +195,39 @@ def _worst(report: dict[str, Any]) -> str:
         severities.append(server.get("endpoint", {}).get("severity", "unknown"))
         severities.append(server.get("public", {}).get("severity", "unknown"))
         severities.extend(node.get("severity", "unknown") for node in server.get("nodes", []))
-    order = {"unknown": 0, "healthy": 1, "warning": 2, "problem": 3, "critical": 4}
-    return max(severities or ["unknown"], key=lambda value: order.get(value, 0))
+    return max(severities or ["unknown"], key=lambda value: ORDER.get(value, 0))
 
 
 def update_alert_state(report: dict[str, Any]) -> tuple[str | None, str | None]:
     state = _load_state()
     current = _worst(report)
-    previous = state.get("current")
-    bad_count = int(state.get("bad_count", 0))
-    good_count = int(state.get("good_count", 0))
-    if current in {"problem", "critical"}:
-        bad_count += 1
+    previous = state.get("current", "unknown")
+    alert_level = state.get("alert_level", "healthy")
+    bad_count = int(state.get("bad_count", 0)) if current in {"warning", "problem", "critical"} else 0
+    good_count = int(state.get("good_count", 0)) + 1 if current in {"healthy", "unknown"} else 0
+    if current in {"warning", "problem", "critical"}:
         good_count = 0
-    elif current in {"healthy", "warning"}:
-        good_count += 1
-        bad_count = 0
-    state["current"] = current
-    state["bad_count"] = bad_count
-    state["good_count"] = good_count
-    state["last_report"] = report
+
+    alert = None
+    if current in {"warning", "problem", "critical"} and bad_count >= ALERT_SAMPLES:
+        if ORDER.get(current, 0) > ORDER.get(alert_level, 0):
+            alert = "degraded"
+            alert_level = current
+    elif current in {"healthy", "unknown"} and good_count >= RECOVERY_SAMPLES and ORDER.get(alert_level, 0) > ORDER["healthy"]:
+        alert = "recovered"
+        alert_level = "healthy"
+
+    state.update({
+        "current": current,
+        "alert_level": alert_level,
+        "bad_count": bad_count,
+        "good_count": good_count,
+        "last_report": report,
+    })
     history = state.get("history") if isinstance(state.get("history"), list) else []
     history.append({"timestamp": report.get("timestamp"), "severity": current})
     state["history"] = history[-MAX_HISTORY:]
     _save_state(state)
-    alert = None
-    if current in {"problem", "critical"} and bad_count >= ALERT_SAMPLES and previous not in {"problem", "critical"}:
-        alert = "problem"
-    elif current in {"healthy", "warning"} and good_count >= RECOVERY_SAMPLES and previous in {"problem", "critical"}:
-        alert = "recovered"
     return alert, previous
 
 
@@ -232,13 +255,15 @@ def render_network_section(report: dict[str, Any]) -> str:
     lines = ["📡 <b>Network Health</b>"]
     for server in report.get("servers", []):
         public = server.get("public", {})
-        icon = "🟢" if public.get("severity") == "healthy" else "🟡" if public.get("severity") == "warning" else "🔴"
+        severity = public.get("severity")
+        icon = "🟢" if severity == "healthy" else "🟡" if severity == "warning" else "🔴"
         lines.append(
             f"\n{icon} <b>{server.get('name','-')}</b> | Internet: "
             f"{public.get('avg_ms','-')} ms | Loss {public.get('loss_percent','-')}%"
         )
         for node in server.get("nodes", []):
-            nicon = "🟢" if node.get("severity") == "healthy" else "🟡" if node.get("severity") == "warning" else "🔴"
+            severity = node.get("severity")
+            nicon = "🟢" if severity == "healthy" else "🟡" if severity == "warning" else "🔴"
             lines.append(
                 f"{nicon} {node.get('name','-')}: {node.get('avg_ms','-')} ms | Loss {node.get('loss_percent','-')}%"
             )
