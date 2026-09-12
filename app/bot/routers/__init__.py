@@ -23,7 +23,7 @@ from . import (
     wallet,
 )
 from .admin_tools.ai_content_handler import router as ai_content_router
-from .admin_tools import ai_content_daily_posts_handler  # noqa: F401
+from .admin_tools import ai_content_daily_posts_handler
 from .admin_tools.card_payment_handler import router as card_payment_router
 from .admin_tools.card_settings_handler import router as card_settings_router
 from .admin_tools.env_settings_enhancer import router as env_settings_enhancer_router
@@ -148,6 +148,7 @@ def include(app: Application, dispatcher: Dispatcher) -> None:
         channel_management_router,
         channel_management_extras_router,
         channel_management_v2_router,
+        admin_tools.system_health_handler.router,
         admin_tools.admin_tools_handler.router,
         admin_tools.backup_handler.router,
         admin_tools.inbound_management_handler.router,
