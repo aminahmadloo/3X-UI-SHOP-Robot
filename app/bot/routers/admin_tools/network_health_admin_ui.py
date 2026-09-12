@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from aiogram import F, Router
@@ -78,7 +79,6 @@ def _reschedule_network_job() -> None:
     if scheduler is None or not scheduler.running:
         return
     from apscheduler.triggers.interval import IntervalTrigger
-
     seconds = _interval_seconds(load_health_settings())
     job = scheduler.get_job(system_health_task._network_job_id())
     if job is not None:
@@ -90,17 +90,14 @@ def _install_scheduler_hooks() -> None:
         return
     original_start = system_health_task.start_scheduler
     original_restart = system_health_task.restart_scheduler
-
     def wrapped_start(*args, **kwargs):
         result = original_start(*args, **kwargs)
         _reschedule_network_job()
         return result
-
     def wrapped_restart(*args, **kwargs):
         result = original_restart(*args, **kwargs)
         _reschedule_network_job()
         return result
-
     system_health_task.start_scheduler = wrapped_start
     system_health_task.restart_scheduler = wrapped_restart
     system_health_task._network_interval_ui_installed = True
@@ -111,14 +108,12 @@ def install_ui_hooks() -> None:
     if getattr(system_health_handler, "_network_health_ui_installed", False):
         return
     original_keyboard = system_health_handler.keyboard
-
     def wrapped_keyboard() -> InlineKeyboardMarkup:
         markup = original_keyboard()
         button = InlineKeyboardButton(text="🌐 Network Health", callback_data=NETWORK)
         if not any(item.callback_data == NETWORK for row in markup.inline_keyboard for item in row):
             markup.inline_keyboard.insert(max(0, len(markup.inline_keyboard) - 1), [button])
         return markup
-
     system_health_handler.keyboard = wrapped_keyboard
     system_health_handler._network_health_ui_installed = True
 
@@ -126,13 +121,11 @@ def install_ui_hooks() -> None:
 def _render_network_view(report: dict, state: dict, settings: dict) -> str:
     current = state.get("current", "unknown")
     lines = [
-        "🌐 <b>Network Health</b>",
-        "",
+        "🌐 <b>Network Health</b>", "",
         f"وضعیت آخرین نمونه: {_icon(current)} <b>{current}</b>",
         f"آخرین بررسی ثبت‌شده: <code>{_fmt_ts((state.get('last_report') or {}).get('timestamp'))}</code>",
         f"فاصله مانیتور: <b>{_fmt_interval(_interval_seconds(settings))}</b>",
-        f"تعداد نمونه‌های History: <b>{len(state.get('history', []))}</b>",
-        "",
+        f"تعداد نمونه‌های History: <b>{len(state.get('history', []))}</b>", "",
     ]
     if report:
         lines.append(render_network_section(report))
@@ -166,32 +159,66 @@ install_ui_hooks()
 
 @router.callback_query(F.data == NETWORK, IsAdmin())
 async def network_health(callback: CallbackQuery) -> None:
-    """Render the persisted Network Health state immediately; never run ICMP here."""
     await callback.answer()
     if not isinstance(callback.message, Message):
         return
     state = _load_state()
     settings = load_health_settings()
     report = state.get("last_report") if isinstance(state.get("last_report"), dict) else {}
-    await callback.message.edit_text(
-        _render_network_view(report, state, settings),
-        reply_markup=_network_keyboard(),
-    )
+    await callback.message.edit_text(_render_network_view(report, state, settings), reply_markup=_network_keyboard())
 
 
 @router.callback_query(F.data == NETWORK_RUN, IsAdmin())
 async def network_run(callback: CallbackQuery) -> None:
-    """Start a real network check in the background so Telegram is never blocked by ICMP."""
     await callback.answer("بررسی شبکه در پس‌زمینه آغاز شد...")
     if not isinstance(callback.message, Message):
         return
     await callback.message.edit_text(
-        "🌐 <b>بررسی Network Health آغاز شد</b>\n\n"
-        "⏳ تست شبکه در پس‌زمینه انجام می‌شود.\n"
-        "این صفحه بعد از پایان بررسی با نتیجه جدید به‌روزرسانی خواهد شد.",
+        "🌐 <b>بررسی Network Health آغاز شد</b>\n\n⏳ تست شبکه در پس‌زمینه انجام می‌شود.\nاین صفحه بعد از پایان بررسی با نتیجه جدید به‌روزرسانی خواهد شد.",
         reply_markup=_network_keyboard(),
     )
     asyncio.create_task(_run_manual_network_check(callback.message))
+
+
+def _metric(value: object, suffix: str = "") -> str:
+    if value is None:
+        return "-"
+    try:
+        return f"{float(value):.1f}{suffix}"
+    except (TypeError, ValueError):
+        return f"{value}{suffix}"
+
+
+def _history_summary(history: list[dict]) -> list[str]:
+    samples = [item for item in history if isinstance(item, dict)]
+    if not samples:
+        return ["⚪️ هنوز نمونه‌ای ثبت نشده است."]
+    server_stats: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    for sample in samples:
+        for server in sample.get("servers", []):
+            name = str(server.get("name") or "-")
+            for scope, key in (("endpoint", "Endpoint"), ("public", "Internet")):
+                metric = server.get(scope) or {}
+                for field in ("avg_ms", "max_ms", "loss_percent"):
+                    value = metric.get(field)
+                    if isinstance(value, (int, float)):
+                        server_stats[name][f"{key}:{field}"].append(float(value))
+            for node in server.get("nodes", []):
+                name = f"{name} / {node.get('name') or '-'}"
+                for field in ("avg_ms", "max_ms", "loss_percent"):
+                    value = node.get(field)
+                    if isinstance(value, (int, float)):
+                        server_stats[name][f"Node:{field}"].append(float(value))
+    lines = [f"📊 <b>خلاصه {len(samples)} نمونه اخیر</b>"]
+    for name, metrics in server_stats.items():
+        lines.append(f"\n<b>{name}</b>")
+        if metrics.get("Endpoint:avg_ms"):
+            lines.append(f"📡 Endpoint: avg {_metric(sum(metrics['Endpoint:avg_ms']) / len(metrics['Endpoint:avg_ms']), ' ms')} | max {_metric(max(metrics['Endpoint:max_ms']) if metrics.get('Endpoint:max_ms') else None, ' ms')} | loss {_metric(max(metrics['Endpoint:loss_percent']) if metrics.get('Endpoint:loss_percent') else None, '%')}")
+        if metrics.get("Internet:avg_ms"):
+            lines.append(f"🌐 Internet: avg {_metric(sum(metrics['Internet:avg_ms']) / len(metrics['Internet:avg_ms']), ' ms')} | max {_metric(max(metrics['Internet:max_ms']) if metrics.get('Internet:max_ms') else None, ' ms')} | peak loss {_metric(max(metrics['Internet:loss_percent']) if metrics.get('Internet:loss_percent') else None, '%')}")
+        if metrics.get("Node:avg_ms"):
+            lines.append(f"🧩 Node: avg {_metric(sum(metrics['Node:avg_ms']) / len(metrics['Node:avg_ms']), ' ms')} | max {_metric(max(metrics['Node:max_ms']) if metrics.get('Node:max_ms') else None, ' ms')} | peak loss {_metric(max(metrics['Node:loss_percent']) if metrics.get('Node:loss_percent') else None, '%')}")
+    return lines
 
 
 @router.callback_query(F.data == NETWORK_HISTORY, IsAdmin())
@@ -202,18 +229,29 @@ async def network_history(callback: CallbackQuery) -> None:
     history = history[-20:]
     lines = [
         "📈 <b>تاریخچه Network Health</b>",
-        f"\nوضعیت فعلی: {_icon(state.get('current', 'unknown'))} {state.get('current', 'unknown')}",
+        f"وضعیت فعلی: {_icon(state.get('current', 'unknown'))} {state.get('current', 'unknown')}",
         f"آخرین بررسی: <code>{_fmt_ts((state.get('last_report') or {}).get('timestamp'))}</code>",
-        f"فاصله مانیتور: <b>{_fmt_interval(_interval_seconds(load_health_settings()))}</b>",
-        "",
+        f"فاصله مانیتور: <b>{_fmt_interval(_interval_seconds(load_health_settings()))}</b>", "",
     ]
+    lines.extend(_history_summary(history))
+    lines.append("\n<b>آخرین نمونه‌ها</b>")
     if not history:
-        lines.append("⚪️ هنوز نمونه‌ای ثبت نشده است.")
+        lines.append("⚪️ نمونه‌ای برای نمایش وجود ندارد.")
     else:
         for sample in reversed(history):
             severity = sample.get("severity", "unknown")
-            lines.append(f"{_icon(severity)} {_fmt_ts(sample.get('timestamp'))} — <b>{severity}</b>")
-    await callback.message.edit_text("\n".join(lines), reply_markup=_network_keyboard())
+            lines.append(f"\n{_icon(severity)} <b>{_fmt_ts(sample.get('timestamp'))}</b> — {severity}")
+            for server in sample.get("servers", []):
+                endpoint = server.get("endpoint") or {}
+                public = server.get("public") or {}
+                lines.append(f"  🌐 {server.get('name','-')} | EP {_metric(endpoint.get('avg_ms'),' ms')} / loss {_metric(endpoint.get('loss_percent'),'%')} | Internet {_metric(public.get('avg_ms'),' ms')} / loss {_metric(public.get('loss_percent'),'%')}")
+                for node in server.get("nodes", []):
+                    lines.append(f"  🧩 {node.get('name','-')} | {_metric(node.get('avg_ms'),' ms')} | loss {_metric(node.get('loss_percent'),'%')} | max {_metric(node.get('max_ms'),' ms')} | jitter {_metric(node.get('jitter_ms'),' ms')}")
+    text = "\n".join(lines)
+    # Telegram message limit safety: preserve the newest entries if history is large.
+    if len(text) > 3900:
+        text = "\n".join(lines[:12]) + "\n\n⚠️ برای جلوگیری از عبور از محدودیت پیام، فقط بخشی از آخرین نمونه‌ها نمایش داده شد."
+    await callback.message.edit_text(text, reply_markup=_network_keyboard())
 
 
 @router.callback_query(F.data == NETWORK_SETTINGS, IsAdmin())
@@ -221,9 +259,7 @@ async def network_settings(callback: CallbackQuery) -> None:
     await callback.answer()
     settings = load_health_settings()
     await callback.message.edit_text(
-        "⚙️ <b>تنظیمات Network Health</b>\n\n"
-        "مانیتور شبکه مستقل از گزارش دوره‌ای سلامت سیستم اجرا می‌شود.\n"
-        "فاصله قابل انتخاب از ۳۰ ثانیه تا ۶۰ دقیقه است و تغییر آن بدون Restart کانتینر اعمال می‌شود.",
+        "⚙️ <b>تنظیمات Network Health</b>\n\nمانیتور شبکه مستقل از گزارش دوره‌ای سلامت سیستم اجرا می‌شود.\nفاصله قابل انتخاب از ۳۰ ثانیه تا ۶۰ دقیقه است و تغییر آن بدون Restart کانتینر اعمال می‌شود.",
         reply_markup=_settings_keyboard(settings),
     )
 
