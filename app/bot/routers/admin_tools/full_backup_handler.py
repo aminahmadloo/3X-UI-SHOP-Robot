@@ -19,7 +19,6 @@ router = Router(name=__name__)
 
 FULL_BACKUP_MENU = "full_backup:menu"
 FULL_BACKUP_CREATE = "full_backup:create"
-FULL_BACKUP_CANCEL = "full_backup:cancel"
 
 
 def full_backup_keyboard() -> InlineKeyboardMarkup:
@@ -89,3 +88,30 @@ async def create_full_backup_handler(
     finally:
         if path is not None:
             await cleanup_full_backup(path)
+
+
+# The existing Admin Tools router already owns the main management menu. Importing
+# it here keeps this feature self-contained and avoids changing the global router
+# ordering; aiogram supports nested routers as long as there is no circular chain.
+from app.bot.routers.admin_tools import admin_tools_handler  # noqa: E402
+
+_original_admin_tools_keyboard = admin_tools_handler.admin_tools_keyboard
+
+
+def _admin_tools_keyboard_with_full_backup(is_dev: bool) -> InlineKeyboardMarkup:
+    markup = _original_admin_tools_keyboard(is_dev)
+    if not any(
+        button.callback_data == FULL_BACKUP_MENU
+        for row in markup.inline_keyboard
+        for button in row
+    ):
+        insert_at = max(len(markup.inline_keyboard) - 1, 0)
+        markup.inline_keyboard.insert(
+            insert_at,
+            [InlineKeyboardButton(text="💾 Backup کامل ربات", callback_data=FULL_BACKUP_MENU)],
+        )
+    return markup
+
+
+admin_tools_handler.admin_tools_keyboard = _admin_tools_keyboard_with_full_backup
+admin_tools_handler.router.include_router(router)
