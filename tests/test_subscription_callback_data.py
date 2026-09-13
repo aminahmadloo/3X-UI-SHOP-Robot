@@ -34,14 +34,13 @@ class SubscriptionCallbackDataTests(unittest.TestCase):
         self.assertEqual(restored.config_name, data.config_name)
 
     def test_dynamic_gateway_callback_round_trips(self) -> None:
-        data = SubscriptionData(
-            state="pay_aban",
-            devices=1,
-            duration=30,
-            price=760000,
-            plan_id=123,
-            volume_gb=30,
-        )
+        data = SubscriptionData(state=NavSubscription.PAY)
+        data.state = "pay_aban"
+        data.devices = 1
+        data.duration = 30
+        data.price = 760000
+        data.plan_id = 123
+        data.volume_gb = 30
         packed = data.pack()
         self.assertLessEqual(len(packed.encode("utf-8")), 64)
         restored = SubscriptionData.unpack(packed)
