@@ -86,6 +86,36 @@ class VPNService:
                 return name
             number += 1
 
+    async def generate_custom_config_name(
+        self,
+        raw_name: str,
+        volume_gb: int,
+        duration_days: int,
+        tg_id: int,
+    ) -> str:
+        """Generate a custom config name numbered per user/service/custom name.
+
+        The sequence is independent for each Telegram user, service dimensions
+        (volume + duration), and exact custom name. Existing subscriptions are
+        considered so the sequence continues monotonically.
+        """
+        prefix = f"{raw_name}-{volume_gb}GB-{duration_days}D-tg{tg_id}-"
+        max_number = 0
+
+        async with self.session() as session:
+            result = await session.execute(select(Subscription.config_name))
+            for (config_name,) in result.all():
+                if not config_name:
+                    continue
+                name = str(config_name)
+                if not name.startswith(prefix):
+                    continue
+                suffix = name[len(prefix):]
+                if suffix.isdigit():
+                    max_number = max(max_number, int(suffix))
+
+        return f"{prefix}{max_number + 1}"
+
     async def _find_clients(self, user: User) -> list[tuple[Client, Inbound]]:
         """Find every copy of the user's legacy client across all inbounds."""
         connection = await self.server_pool_service.get_connection(user)
