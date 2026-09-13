@@ -218,255 +218,156 @@ class BluPalGateway(PaymentGateway):
             return BluPalPaymentURL(payment_link, invoice_id)
 
         if public_token:
-            return BluPalPaymentURL(
-                f"https://blupal.net/payment/{public_token}",
-                invoice_id,
-            )
+            return BluPalPaymentURL(f"{self.payment_base_url}/{quote(public_token)}", invoice_id)
 
-        raise RuntimeError(
-            f"BluPal invoice {invoice_id} did not contain a usable "
-            "payment_link/public_token"
-        )
+        raise RuntimeError("BluPal invoice did not contain a usable payment_link/public_token")
 
     async def _verify_invoice_matches_transaction(
         self,
         transaction: Transaction,
         invoice: dict[str, Any],
     ) -> None:
-        data = SubscriptionData.deserialize(transaction.subscription)
-        expected_rial = self._to_rial(data.price)
-        remote_amount = int(invoice.get("amount") or 0)
-        final_amount = int(invoice.get("final_amount") or 0)
-        if remote_amount != expected_rial:
-            raise RuntimeError(
-                f"BluPal invoice {transaction.payment_id} amount mismatch: "
-                f"expected={expected_rial}, remote={remote_amount}"
-            )
-        if final_amount < remote_amount or final_amount > remote_amount + 999:
-            raise RuntimeError(
-                f"BluPal invoice {transaction.payment_id} final amount is invalid"
-            )
+        remote_amount = invoice.get("amount")
+        if remote_amount is None:
+            raise RuntimeError("BluPal invoice amount is missing")
 
-    def _validate_created_invoice_response(
-        self, response: dict[str, Any], expected_rial: int
-    ) -> tuple[str, str, int]:
-        logger.info(
-            "BluPal create response keys=%s body=%s",
-            list(response.keys()),
-            response,
-        )
-
-        invoice_id = str(response.get("invoice_id") or "").strip()
-        explicit_payment_link = str(response.get("payment_link") or "").strip()
-
+        expected_rial = self._to_rial(transaction.amount)
         try:
-            remote_amount = int(response.get("amount") or 0)
-            final_amount = int(response.get("final_amount") or 0)
-        except (TypeError, ValueError) as exc:
-            raise RuntimeError("BluPal returned invalid invoice amounts") from exc
+            actual_rial = int(Decimal(str(remote_amount)))
+        except (InvalidOperation, ValueError) as exc:
+            raise RuntimeError(f"BluPal invoice amount is invalid: {remote_amount}") from exc
 
-        if not invoice_id.isdigit() or not explicit_payment_link.startswith("https://blupal.net/payment/"):
-            raise RuntimeError("BluPal returned an incomplete invoice")
-
-        if remote_amount != expected_rial:
+        if actual_rial != expected_rial:
             raise RuntimeError(
-                f"BluPal returned an unexpected invoice amount: "
-                f"expected={expected_rial}, remote={remote_amount}"
+                f"BluPal invoice amount mismatch: expected={expected_rial} actual={actual_rial}"
             )
-
-        if final_amount < remote_amount or final_amount > remote_amount + 999:
-            raise RuntimeError("BluPal returned an invalid final invoice amount")
-
-        return invoice_id, explicit_payment_link, final_amount
 
     async def create_payment(self, data: SubscriptionData) -> str:
-        if not self.is_configured():
-            raise RuntimeError("BluPal is not configured")
-
-        amount_rial = self._to_rial(data.price)
-        order_key = data.serialize()
-        lock = self.storage.redis.lock(
-            f"payment:blupal:create:{data.user_id}:{hashlib.sha256(order_key.encode('utf-8')).hexdigest()}",
-            timeout=180,
-            blocking_timeout=10,
-        )
-        async with lock:
-            existing = await self._find_pending_transaction(data)
-            if existing is not None:
-                try:
-                    reused = await self._reconcile_existing_invoice(existing)
-                    if reused is not None:
-                        return reused
-                except Exception:
-                    logger.warning(
-                        "BluPal existing invoice is not reusable, creating a new invoice. "
-                        "old_invoice=%s user=%s",
-                        existing.payment_id,
-                        data.user_id,
-                        exc_info=True,
-                    )
-
-            payload = {"amount": amount_rial}
-            status, response = await self._request("POST", "/v1/invoices/create", json=payload)
-            if status != 200 or response.get("success") is not True:
-                raise RuntimeError(
-                    f"BluPal invoice creation failed: HTTP {status}, code={self._error_code(response)}"
+        transaction = await self._find_pending_transaction(data)
+        if transaction is not None:
+            try:
+                return await self._reconcile_existing_invoice(transaction) or ""
+            except Exception:
+                logger.exception(
+                    "BluPal existing pending transaction reconciliation failed: payment_id=%s",
+                    transaction.payment_id,
                 )
+                return ""
 
-            invoice_id, payment_url, final_amount = self._validate_created_invoice_response(
-                response, amount_rial
+        amount_rial = self._to_rial(data.amount)
+        payload = {
+            "amount": amount_rial,
+            "description": f"ToonelVPN TG:{data.user_id}",
+            "callback_url": f"{self.config.bot.DOMAIN.rstrip('/')}{self.RETURN_PATH}",
+        }
+        status, body = await self._request("POST", "/v1/invoices", json=payload)
+        if status < 200 or status >= 300 or body.get("success") is False:
+            raise RuntimeError(
+                f"BluPal invoice creation failed: HTTP {status}, code={self._error_code(body)}"
             )
 
-            async with self.session() as db:
-                transaction = await Transaction.create(
-                    session=db,
-                    tg_id=data.user_id,
-                    subscription=data.serialize(),
-                    payment_id=invoice_id,
-                    gateway="blupal",
-                    status=TransactionStatus.PENDING,
-                )
-                if transaction is None:
-                    raise RuntimeError(f"Could not create ToonelVPN transaction for BluPal {invoice_id}")
+        invoice = body.get("data") if isinstance(body.get("data"), dict) else body
+        invoice_id = invoice.get("invoice_id") or invoice.get("id")
+        if invoice_id is None:
+            raise RuntimeError("BluPal invoice creation response did not contain invoice_id")
 
-            logger.info(
-                "BluPal invoice created: invoice=%s user=%s amount_rial=%s final_amount=%s",
-                invoice_id,
-                data.user_id,
-                amount_rial,
-                final_amount,
-            )
-            return BluPalPaymentURL(payment_url, invoice_id)
-
-    async def handle_payment_succeeded(self, payment_id: str) -> None:
-        lock = self.storage.redis.lock(
-            f"payment:blupal:{payment_id}",
-            timeout=180,
-            blocking_timeout=10,
-        )
-        async with lock:
-            async with self.session() as db:
-                transaction = await Transaction.get_by_id(session=db, payment_id=payment_id)
-                if transaction is None:
-                    raise RuntimeError(f"BluPal transaction {payment_id} was not found")
-                if transaction.gateway != "blupal":
-                    raise RuntimeError(f"Payment {payment_id} does not belong to BluPal")
-                if transaction.status == TransactionStatus.COMPLETED:
-                    return
-                if transaction.status == TransactionStatus.CANCELED:
-                    logger.warning("Ignoring success for canceled BluPal transaction %s", payment_id)
-                    return
-
-            invoice = await self.get_invoice(payment_id)
-            if str(invoice.get("status") or "").upper() != "PAID":
-                raise RuntimeError(f"BluPal invoice {payment_id} is not PAID")
-            async with self.session() as db:
-                transaction = await Transaction.get_by_id(session=db, payment_id=payment_id)
-                if transaction is None:
-                    raise RuntimeError(f"BluPal transaction {payment_id} was not found")
-                await self._verify_invoice_matches_transaction(transaction, invoice)
-
-            await self._on_payment_succeeded(payment_id)
-
-    async def handle_payment_canceled(self, payment_id: str) -> None:
+        payment_url = self._payment_url(invoice_id, invoice)
         async with self.session() as db:
-            transaction = await Transaction.get_by_id(session=db, payment_id=payment_id)
-            if transaction is None or transaction.gateway != "blupal":
-                return
-            if transaction.status == TransactionStatus.COMPLETED:
-                return
-        await self._on_payment_canceled(payment_id)
+            await Transaction.create(
+                session=db,
+                tg_id=data.user_id,
+                amount=data.amount,
+                currency=self.currency,
+                status=TransactionStatus.PENDING,
+                payment_id=str(invoice_id),
+                subscription=data.serialize(),
+                gateway="blupal",
+            )
+        return payment_url
 
     async def callback_handler(self, request: Request) -> Response:
         try:
             payload = await request.json()
         except Exception:
+            logger.warning("BluPal webhook received invalid JSON")
             return Response(status=400, text="invalid json")
+
         if not isinstance(payload, dict):
             return Response(status=400, text="invalid payload")
 
-        event = str(payload.get("event") or "").strip()
-        invoice_id = str(payload.get("invoice_id") or "").strip()
-        if event != "payment.completed" or not invoice_id or payload.get("status") != "PAID":
-            return Response(status=400, text="invalid webhook")
+        event = str(payload.get("event") or "").strip().lower()
+        if event and event != "payment.completed":
+            return Response(status=200, text='{"received":true}', content_type="application/json")
+
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+        invoice_id = str(data.get("invoice_id") or data.get("id") or "").strip()
+        status = str(data.get("status") or "").strip().upper()
+
+        if not invoice_id.isdigit():
+            logger.warning("BluPal webhook missing numeric invoice_id")
+            return Response(status=400, text="invalid invoice_id")
+
+        if status and status != "PAID":
+            return Response(status=200, text='{"received":true}', content_type="application/json")
 
         try:
-            async with self.session() as db:
-                transaction = await Transaction.get_by_id(session=db, payment_id=invoice_id)
-                if transaction is None or transaction.gateway != "blupal":
-                    return Response(status=404, text="unknown invoice")
-
             invoice = await self.get_invoice(invoice_id)
+            remote_status = str(invoice.get("status") or "").strip().upper()
+            if remote_status != "PAID":
+                logger.info("BluPal webhook ignored: invoice=%s status=%s", invoice_id, remote_status)
+                return Response(status=200, text='{"received":true}', content_type="application/json")
+
+            transaction = None
+            async with self.session() as db:
+                result = await db.execute(
+                    select(Transaction).where(
+                        Transaction.payment_id == invoice_id,
+                        Transaction.gateway == "blupal",
+                    )
+                )
+                transaction = result.scalars().first()
+
+            if transaction is None:
+                logger.warning("BluPal webhook transaction not found: invoice=%s", invoice_id)
+                return Response(status=200, text='{"received":true}', content_type="application/json")
+
             await self._verify_invoice_matches_transaction(transaction, invoice)
-            if str(invoice.get("status") or "").upper() != "PAID":
-                return Response(status=409, text="invoice not paid")
-
             await self.handle_payment_succeeded(invoice_id)
+            logger.info("BluPal payment completed: invoice=%s", invoice_id)
         except Exception:
-            logger.exception("Failed to process BluPal webhook %s", invoice_id)
-            return Response(status=500, text="processing failed")
+            logger.exception("BluPal webhook processing failed: invoice=%s", invoice_id)
 
-        return Response(status=200, content_type="application/json", text='{"received": true}')
+        return Response(status=200, text='{"received":true}', content_type="application/json")
 
     async def return_handler(self, request: Request) -> Response:
         invoice_id = str(request.query.get("invoice_id") or "").strip()
-        invoice_text = f"شماره فاکتور: <b>{invoice_id}</b>" if invoice_id else ""
-        return Response(
-            text=(
-                "<!doctype html><html lang='fa' dir='rtl'><head>"
-                "<meta charset='utf-8'>"
-                "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-                "<title>بازگشت به ToonelVPN</title>"
-                "<style>"
-                "body{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
-                "background:#f6f7fb;margin:0;padding:32px 16px;text-align:center;color:#202124}"
-                ".card{max-width:520px;margin:40px auto;background:#fff;border:1px solid #e5e7eb;"
-                "border-radius:20px;padding:28px;box-shadow:0 8px 30px rgba(0,0,0,.06)}"
-                "h1{font-size:24px;margin:0 0 14px}p{line-height:1.9;margin:10px 0}"
-                ".invoice{margin:18px 0;padding:12px;border-radius:12px;background:#f3f4f6}"
-                "a{display:inline-block;margin-top:12px;padding:12px 22px;border-radius:12px;"
-                "background:#111827;color:#fff;text-decoration:none}"
-                "</style></head><body><main class='card'>"
-                "<div style='font-size:44px'>✅</div>"
-                "<h1>بازگشت از بلوپال</h1>"
-                "<p>پرداخت شما به ToonelVPN ارسال شد و نتیجه پرداخت از طریق سیستم پرداخت بررسی می‌شود.</p>"
-                f"<div class='invoice'>{invoice_text}</div>"
-                "<p>در صورت موفق بودن پرداخت، تکمیل سفارش به‌صورت خودکار انجام می‌شود.</p>"
-                "<a href='https://t.me/ToonelVpn'>بازگشت به ربات ToonelVPN</a>"
-                "</main></body></html>"
-            ),
-            content_type="text/html",
-            charset="utf-8",
+        invoice_text = (
+            f"<p>شماره فاکتور: <b>{invoice_id}</b></p>"
+            if invoice_id
+            else ""
         )
-
-    async def credit_wallet(self, payment_id: str) -> None:
-        """Use a provider-specific wallet reference while keeping base flows intact."""
-        async with self.session() as db:
-            transaction = await Transaction.get_by_id(session=db, payment_id=payment_id)
-            if transaction is None:
-                raise RuntimeError(f"BluPal transaction {payment_id} was not found")
-            data = SubscriptionData.deserialize(transaction.subscription)
-            user = await User.get(session=db, tg_id=data.user_id)
-            if user is None:
-                raise RuntimeError(f"User {data.user_id} was not found")
-            if data.payment_kind != "wallet_topup":
-                return
-            if transaction.status == TransactionStatus.COMPLETED:
-                return
-
-        await self.services.wallet.credit(
-            user_tg_id=user.tg_id,
-            amount=int(data.price),
-            transaction_type="topup",
-            description="شارژ کیف پول از طریق کارت به کارت هوشمند بلوپال",
-            reference_id=f"blupal:{payment_id}",
-        )
-        async with self.session() as db:
-            await Transaction.update(session=db, payment_id=payment_id, status=TransactionStatus.COMPLETED)
-        balance = await self.services.wallet.get_balance(user.tg_id)
-        await self.bot.send_message(
-            user.tg_id,
-            f"✅ <b>شارژ کیف پول با موفقیت انجام شد.</b>\n\n"
-            f"💰 مبلغ شارژ: <b>{int(data.price):,} تومان</b>\n"
-            f"💳 موجودی جدید: <b>{balance:,} تومان</b>",
-        )
+        html = f"""
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>بازگشت به ToonelVPN</title>
+  <style>
+    body {{ font-family: sans-serif; background: #f5f7fa; margin: 0; padding: 24px; }}
+    .card {{ max-width: 520px; margin: 10vh auto; background: #fff; padding: 28px; border-radius: 18px; box-shadow: 0 8px 30px rgba(0,0,0,.08); text-align: center; }}
+    a {{ display: inline-block; margin-top: 18px; padding: 12px 20px; border-radius: 10px; background: #229ed9; color: #fff; text-decoration: none; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>بازگشت از بلوپال</h1>
+    <p>پرداخت شما به ToonelVPN ارسال شد و نتیجه پرداخت از طریق سیستم پرداخت بررسی می‌شود.</p>
+    {invoice_text}
+    <p>در صورت موفقیت، تکمیل سفارش به‌صورت خودکار انجام می‌شود.</p>
+    <a href="https://t.me/ToonelVpn_bot">بازگشت به ربات ToonelVPN</a>
+  </div>
+</body>
+</html>
+"""
+        return Response(text=html, content_type="text/html", charset="utf-8")
