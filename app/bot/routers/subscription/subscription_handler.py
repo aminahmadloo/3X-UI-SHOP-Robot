@@ -624,11 +624,11 @@ async def message_config_name(
     )
 
     callback_data.config_name = (
+        f"{raw_name}-"
         f"{callback_data.volume_gb}GB-"
         f"{callback_data.duration}D-"
         f"tg{user.tg_id}-"
-        f"1-"
-        f"{raw_name}"
+        f"1"
     )
 
     await state.update_data(
