@@ -17,6 +17,7 @@ from . import (
     system_health_handler,
     system_health_backup_handler,
     network_health_admin_ui,
+    full_backup_handler,
 )
 
 # Install AI channel integration after the AI handler is registered. The
