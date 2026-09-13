@@ -6,10 +6,7 @@ from app.bot.utils.navigation import NavSubscription
 
 class SubscriptionCallbackDataTests(unittest.TestCase):
     def test_subscription_menu_callback_is_under_telegram_limit(self) -> None:
-        data = SubscriptionData(
-            state=NavSubscription.PROCESS,
-            user_id=418272523,
-        )
+        data = SubscriptionData(state=NavSubscription.PROCESS, user_id=418272523)
         packed = data.pack()
         self.assertLessEqual(len(packed.encode("utf-8")), 64)
         self.assertEqual(packed, "subscription:p:0:0:0:0:0:0")
@@ -17,8 +14,6 @@ class SubscriptionCallbackDataTests(unittest.TestCase):
     def test_full_purchase_callback_round_trips_compact_fields(self) -> None:
         data = SubscriptionData(
             state=NavSubscription.PAY_ZARINPAL,
-            is_extend=False,
-            is_change=False,
             user_id=418272523,
             devices=1,
             duration=30,
@@ -37,6 +32,20 @@ class SubscriptionCallbackDataTests(unittest.TestCase):
         self.assertEqual(restored.plan_id, 123)
         self.assertEqual(restored.volume_gb, 30)
         self.assertEqual(restored.config_name, data.config_name)
+
+    def test_dynamic_gateway_callback_round_trips(self) -> None:
+        data = SubscriptionData(
+            state="pay_aban",
+            devices=1,
+            duration=30,
+            price=760000,
+            plan_id=123,
+            volume_gb=30,
+        )
+        packed = data.pack()
+        self.assertLessEqual(len(packed.encode("utf-8")), 64)
+        restored = SubscriptionData.unpack(packed)
+        self.assertEqual(restored.state, "pay_aban")
 
     def test_long_config_name_is_not_put_in_callback(self) -> None:
         data = SubscriptionData(
