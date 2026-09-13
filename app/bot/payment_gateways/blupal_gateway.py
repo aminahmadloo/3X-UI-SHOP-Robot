@@ -49,6 +49,7 @@ class BluPalGateway(PaymentGateway):
     currency = Currency.TOMAN
     callback = "pay_blupal"
     WEBHOOK_PATH = "/webhooks/blupal"
+    RETURN_PATH = "/back"
     DEFAULT_API_BASE_URL = "https://blupal.net/api"
     DEFAULT_PAYMENT_BASE_URL = "https://blupal.net/payment"
 
@@ -68,6 +69,7 @@ class BluPalGateway(PaymentGateway):
         self.api_key = os.getenv("BLUPAL_API_KEY", "").strip()
         self.webhook_url = f"{self.config.bot.DOMAIN.rstrip('/')}{self.WEBHOOK_PATH}"
         self.app.router.add_post(self.WEBHOOK_PATH, self.callback_handler)
+        self.app.router.add_get(self.RETURN_PATH, self.return_handler)
         logger.info("BluPal payment gateway initialized.")
 
     @classmethod
@@ -405,6 +407,37 @@ class BluPalGateway(PaymentGateway):
             return Response(status=500, text="processing failed")
 
         return Response(status=200, content_type="application/json", text='{"received": true}')
+
+    async def return_handler(self, request: Request) -> Response:
+        invoice_id = str(request.query.get("invoice_id") or "").strip()
+        invoice_text = f"شماره فاکتور: <b>{invoice_id}</b>" if invoice_id else ""
+        return Response(
+            text=(
+                "<!doctype html><html lang='fa' dir='rtl'><head>"
+                "<meta charset='utf-8'>"
+                "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                "<title>بازگشت به ToonelVPN</title>"
+                "<style>"
+                "body{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
+                "background:#f6f7fb;margin:0;padding:32px 16px;text-align:center;color:#202124}"
+                ".card{max-width:520px;margin:40px auto;background:#fff;border:1px solid #e5e7eb;"
+                "border-radius:20px;padding:28px;box-shadow:0 8px 30px rgba(0,0,0,.06)}"
+                "h1{font-size:24px;margin:0 0 14px}p{line-height:1.9;margin:10px 0}"
+                ".invoice{margin:18px 0;padding:12px;border-radius:12px;background:#f3f4f6}"
+                "a{display:inline-block;margin-top:12px;padding:12px 22px;border-radius:12px;"
+                "background:#111827;color:#fff;text-decoration:none}"
+                "</style></head><body><main class='card'>"
+                "<div style='font-size:44px'>✅</div>"
+                "<h1>بازگشت از بلوپال</h1>"
+                "<p>پرداخت شما به ToonelVPN ارسال شد و نتیجه پرداخت از طریق سیستم پرداخت بررسی می‌شود.</p>"
+                f"<div class='invoice'>{invoice_text}</div>"
+                "<p>در صورت موفق بودن پرداخت، تکمیل سفارش به‌صورت خودکار انجام می‌شود.</p>"
+                "<a href='https://t.me/ToonelVpn'>بازگشت به ربات ToonelVPN</a>"
+                "</main></body></html>"
+            ),
+            content_type="text/html",
+            charset="utf-8",
+        )
 
     async def credit_wallet(self, payment_id: str) -> None:
         """Use a provider-specific wallet reference while keeping base flows intact."""
