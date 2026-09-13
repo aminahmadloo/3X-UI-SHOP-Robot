@@ -20,11 +20,13 @@ router = Router(name=__name__)
 
 FULL_BACKUP_MENU = "full_backup:menu"
 FULL_BACKUP_CREATE = "full_backup:create"
+FULL_BACKUP_B2_SETTINGS = "full_backup:b2_settings"
 
 
 def full_backup_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="📦 تهیه Backup کامل", callback_data=FULL_BACKUP_CREATE))
+    builder.row(InlineKeyboardButton(text="☁️ تنظیمات Backblaze B2", callback_data=FULL_BACKUP_B2_SETTINGS))
     builder.row(InlineKeyboardButton(text="⬅️ بازگشت", callback_data=NavAdminTools.MAIN))
     return builder.as_markup()
 
@@ -44,8 +46,9 @@ async def full_backup_menu(callback: CallbackQuery, config: Config) -> None:
     await callback.message.edit_text(
         "💾 <b>Backup کامل ربات</b>\n\n"
         "این Backup شامل برنامه مستقر، دیتابیس SQLite، داده‌های runtime، تنظیمات .env و داده‌های Redis است.\n"
-        "برای فایل‌های بزرگ، در صورت فعال بودن B2، یک لینک دانلود موقت ارسال می‌شود."
+        "☁️ Backupهای بزرگ در صورت فعال بودن Storage خارجی در <b>Backblaze B2</b> نگهداری می‌شوند و لینک دانلود موقت ارسال می‌شود."
         + storage_note
+        + "\n\n⚙️ از بخش <b>تنظیمات Backblaze B2</b> می‌توانید فعال‌سازی، Endpoint، Bucket، Key ID، Application Key، Region، مدت اعتبار لینک و Prefix را ویرایش کنید."
         + "\n\n⚠️ فایل Backup شامل اطلاعات محرمانه است و فقط به توسعه‌دهنده اصلی ارسال می‌شود.",
         reply_markup=full_backup_keyboard(),
     )
