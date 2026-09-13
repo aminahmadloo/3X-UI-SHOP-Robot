@@ -103,11 +103,7 @@ class VPNService:
         max_number = 0
 
         async with self.session() as session:
-            result = await session.execute(
-                select(Subscription.config_name).where(
-                    Subscription.config_name.like(f"{prefix}%")
-                )
-            )
+            result = await session.execute(select(Subscription.config_name))
             for (config_name,) in result.all():
                 if not config_name:
                     continue
