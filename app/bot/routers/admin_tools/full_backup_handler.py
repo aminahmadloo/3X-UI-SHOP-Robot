@@ -5,17 +5,13 @@ from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import (
-    CallbackQuery,
-    FSInputFile,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.filters import IsAdmin
 from app.bot.services.full_backup import cleanup_full_backup, create_full_backup
 from app.bot.services.full_backup_storage import BackupStorageConfig
+from app.bot.utils.navigation import NavAdminTools
 from app.config import Config
 from app.db.models import User
 
@@ -34,7 +30,7 @@ def full_backup_keyboard() -> InlineKeyboardMarkup:
         )
     )
     builder.row(
-        InlineKeyboardButton(text="⬅️ بازگشت", callback_data="nav_admin_tools:main")
+        InlineKeyboardButton(text="⬅️ بازگشت", callback_data=NavAdminTools.MAIN)
     )
     return builder.as_markup()
 
