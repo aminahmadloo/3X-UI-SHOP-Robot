@@ -150,7 +150,10 @@ class S3CompatibleBackupStorage:
         connection_class = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
         connection = connection_class(parsed.netloc, timeout=300)
         try:
-            connection.putrequest("PUT", canonical_uri)
+            # http.client adds Host automatically unless skip_host=True. The Host header
+            # is part of our SigV4 canonical request, so sending it twice can make B2
+            # reject an otherwise valid request as malformed (HTTP 400).
+            connection.putrequest("PUT", canonical_uri, skip_host=True)
             for name, value in headers.items():
                 connection.putheader(name, value)
             connection.endheaders()
