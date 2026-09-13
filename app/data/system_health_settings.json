@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "interval_minutes": 5,
+  "errors_only": true,
+  "network_monitor_enabled": true,
+  "network_interval_seconds": 300
+}
