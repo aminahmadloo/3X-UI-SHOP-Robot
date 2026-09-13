@@ -89,15 +89,11 @@ class SubscriptionData(CallbackData, prefix="subscription"):
             f"{self.price:g}:{_b36_encode(self.plan_id)}:{_b36_encode(self.volume_gb)}"
         )
 
-        # Config names are optional routing context. Include them only if they
-        # still fit the Telegram limit; payment handlers restore canonical
-        # values from persisted FSM data when they are omitted.
         config_name = str(self.config_name or "")
         if config_name:
             candidate = f"{payload}:{config_name}"
             if len(candidate.encode("utf-8")) <= 64:
                 flags |= 4
-                payload = payload.replace(f":{flags ^ 4}:" if False else "", "")
                 payload = (
                     f"subscription:{state_code}:{flags}:"
                     f"{_b36_encode(self.devices)}:{_b36_encode(self.duration)}:"
