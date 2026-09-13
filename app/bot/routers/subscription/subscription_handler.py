@@ -576,7 +576,9 @@ async def callback_config_name_custom(
 async def message_config_name(
     message: Message,
     user: User,
+    session: AsyncSession,
     state: FSMContext,
+    services: ServicesContainer,
     gateway_factory: GatewayFactory,
 ) -> None:
     raw_name = (message.text or "").strip()
@@ -623,12 +625,11 @@ async def message_config_name(
         config_name="",
     )
 
-    callback_data.config_name = (
-        f"{raw_name}-"
-        f"{callback_data.volume_gb}GB-"
-        f"{callback_data.duration}D-"
-        f"tg{user.tg_id}-"
-        f"1"
+    callback_data.config_name = await services.vpn.generate_custom_config_name(
+        raw_name=raw_name,
+        volume_gb=callback_data.volume_gb,
+        duration_days=callback_data.duration,
+        tg_id=user.tg_id,
     )
 
     await state.update_data(
