@@ -106,8 +106,12 @@ class VPNService(_BaseVPNService):
         )
 
         try:
+            # py3xui._post() expects a fully-qualified URL.  Calling it with
+            # the relative endpoint bypasses the normal _url() construction
+            # performed by public API methods such as client.add().
+            url = connection.api.client._url(endpoint)
             await connection.api.client._post(
-                endpoint,
+                url,
                 headers,
                 payload,
             )
