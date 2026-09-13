@@ -432,7 +432,7 @@ class BluPalGateway(PaymentGateway):
                 "<p>پرداخت شما به ToonelVPN ارسال شد و نتیجه پرداخت از طریق سیستم پرداخت بررسی می‌شود.</p>"
                 f"<div class='invoice'>{invoice_text}</div>"
                 "<p>در صورت موفق بودن پرداخت، تکمیل سفارش به‌صورت خودکار انجام می‌شود.</p>"
-                "<a href='https://t.me/ToonelVpn'>بازگشت به ربات ToonelVPN</a>"
+                "<a href='https://t.me/ToonelVpn_bot'>بازگشت به ربات ToonelVPN</a>"
                 "</main></body></html>"
             ),
             content_type="text/html",
