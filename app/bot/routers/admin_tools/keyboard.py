@@ -22,7 +22,6 @@ def admin_tools_keyboard(is_dev: bool) -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text="🛒 تنظیمات خرید سرویس|حجم سرویس|زمان سرویس", callback_data=NavAdminTools.SERVICE_PURCHASE_MANAGEMENT))
     builder.row(InlineKeyboardButton(text="⚙️ مدیریت تنظیمات سابسکریپشن", callback_data=NavAdminTools.SUBSCRIPTION_SETTINGS))
     builder.row(InlineKeyboardButton(text=_("admin_tools:button:test_button"), callback_data=NavAdminTools.TEST_ACCOUNT_SETTINGS), InlineKeyboardButton(text=_("admin_tools:button:create_backup"), callback_data=NavAdminTools.CREATE_BACKUP))
-    builder.row(InlineKeyboardButton(text="⚙️ مدیریت سلامت سیستم", callback_data="system_health:menu"))
     if is_dev:
         builder.row(InlineKeyboardButton(text="💾 Backup کامل ربات", callback_data="full_backup:menu"))
     builder.row(InlineKeyboardButton(text=_("admin_tools:button:maintenance_mode"), callback_data=NavAdminTools.MAINTENANCE_MODE), InlineKeyboardButton(text=_("admin_tools:button:restart_bot"), callback_data=NavAdminTools.RESTART_BOT))
@@ -42,50 +41,13 @@ def _plan_button_text(plan: ServicePurchasePlan) -> str:
 def service_purchase_management_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    builder.row(
-        InlineKeyboardButton(
-            text="📅 مدیریت دوره‌های سرویس",
-            callback_data="service_purchase:periods",
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="📈 مدیریت افزایش حجم",
-            callback_data="traffic_admin:management",
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="⏳ تنظیمات افزایش زمان سرویس",
-            callback_data="service_purchase:renewal",
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="📱 مدیریت تعداد دستگاه",
-            callback_data=NavAdminTools.SERVICE_PURCHASE_DEVICES,
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="🎁 مدیریت محصولات ویژه",
-            callback_data="service_purchase:special_products",
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="⚙️ تنظیمات خرید سرویس",
-            callback_data="service_purchase:settings",
-        )
-    )
-
+    builder.row(InlineKeyboardButton(text="📅 مدیریت دوره‌های سرویس", callback_data="service_purchase:periods"))
+    builder.row(InlineKeyboardButton(text="📈 مدیریت افزایش حجم", callback_data="traffic_admin:management"))
+    builder.row(InlineKeyboardButton(text="⏳ تنظیمات افزایش زمان سرویس", callback_data="service_purchase:renewal"))
+    builder.row(InlineKeyboardButton(text="📱 مدیریت تعداد دستگاه", callback_data=NavAdminTools.SERVICE_PURCHASE_DEVICES))
+    builder.row(InlineKeyboardButton(text="🎁 مدیریت محصولات ویژه", callback_data="service_purchase:special_products"))
+    builder.row(InlineKeyboardButton(text="⚙️ تنظیمات خرید سرویس", callback_data="service_purchase:settings"))
     builder.row(back_to_main_menu_button())
-
     return builder.as_markup()
 
 
@@ -118,22 +80,8 @@ def service_purchase_plan_details_keyboard(plan_id: int, service_type: str) -> I
 
 def custom_service_pricing_keyboard(show_button: bool = True) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-
-    builder.row(
-        InlineKeyboardButton(
-            text="🚫 پنهان کردن دکمه خرید سرویس اختصاصی"
-            if show_button
-            else "👁️ نمایش دکمه خرید سرویس اختصاصی",
-            callback_data="custom_service_pricing:toggle_button",
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="✏️ ویرایش مبالغ",
-            callback_data="custom_service_pricing:edit",
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🚫 پنهان کردن دکمه خرید سرویس اختصاصی" if show_button else "👁️ نمایش دکمه خرید سرویس اختصاصی", callback_data="custom_service_pricing:toggle_button"))
+    builder.row(InlineKeyboardButton(text="✏️ ویرایش مبالغ", callback_data="custom_service_pricing:edit"))
     builder.row(InlineKeyboardButton(text="🔄 بازخوانی مقادیر", callback_data=NavAdminTools.CUSTOM_SERVICE_PRICING))
     builder.row(back_button(NavAdminTools.MAIN))
     builder.row(back_to_main_menu_button())
