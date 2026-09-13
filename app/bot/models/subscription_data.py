@@ -51,6 +51,10 @@ def _b36_decode(value: str) -> int:
     return int(value or "0", 36)
 
 
+def _state_value(state: NavSubscription | str) -> str:
+    return state.value if isinstance(state, NavSubscription) else str(state)
+
+
 class SubscriptionData(CallbackData, prefix="subscription"):
     state: NavSubscription
     is_extend: bool = False
@@ -80,7 +84,7 @@ class SubscriptionData(CallbackData, prefix="subscription"):
 
     def pack(self) -> str:
         """Pack only callback-routing data into Telegram's 64-byte budget."""
-        state = self.state.value if isinstance(self.state, NavSubscription) else str(self.state)
+        state = _state_value(self.state)
         state_code = _STATE_TO_CODE.get(state, state)
         flags = (1 if self.is_extend else 0) | (2 if self.is_change else 0)
         payload = (
@@ -112,8 +116,7 @@ class SubscriptionData(CallbackData, prefix="subscription"):
         if len(parts) >= 8 and parts[0] == "subscription" and parts[1] in _CODE_TO_STATE:
             state = _CODE_TO_STATE[parts[1]]
             flags = int(parts[2] or 0)
-            return cls(
-                state=NavSubscription(state) if state in NavSubscription._value2member_map_ else state,
+            kwargs = dict(
                 is_extend=bool(flags & 1),
                 is_change=bool(flags & 2),
                 devices=_b36_decode(parts[3]),
@@ -123,13 +126,19 @@ class SubscriptionData(CallbackData, prefix="subscription"):
                 volume_gb=_b36_decode(parts[7]),
                 config_name=parts[8] if len(parts) > 8 and flags & 4 else "",
             )
+            if state in NavSubscription._value2member_map_:
+                return cls(state=NavSubscription(state), **kwargs)
+            # Dynamic gateway callbacks (e.g. pay_aban/pay_blupal) are valid
+            # states at runtime even though they are not NavSubscription enum
+            # members. model_construct preserves them without validation.
+            return cls.model_construct(state=state, **kwargs)
         return super().unpack(value)
 
     def serialize(self) -> str:
         """Serialize full subscription data for FSM/database storage."""
         return json.dumps(
             {
-                "state": self.state.value,
+                "state": _state_value(self.state),
                 "is_extend": self.is_extend,
                 "is_change": self.is_change,
                 "user_id": self.user_id,
