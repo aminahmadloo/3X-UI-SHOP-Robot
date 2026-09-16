@@ -9,11 +9,12 @@ from aiogram.utils.i18n import I18n
 
 from app.bot.routers import my_services
 from app.bot.routers.my_services import auto_connect
-from app.config import DEFAULT_LANGUAGE, DEFAULT_LOCALES_DIR
+from app.bot.utils.constants import DEFAULT_LANGUAGE, I18N_DOMAIN
+from app.config import DEFAULT_LOCALES_DIR
 
 SUB_URL = "https://sub.elfuu.ir:2096/sub/test-subscription"
 SECRET = "isolated-test-secret"
-I18n.set_current(I18n(path=DEFAULT_LOCALES_DIR, default_locale=DEFAULT_LANGUAGE, domain="messages"))
+I18n.set_current(I18n(path=DEFAULT_LOCALES_DIR, default_locale=DEFAULT_LANGUAGE, domain=I18N_DOMAIN))
 
 
 # PR93 isolated test suite: no production services or credentials are used.
