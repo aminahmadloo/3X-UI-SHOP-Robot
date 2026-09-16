@@ -1,0 +1,23 @@
+name: PR93 isolated test
+
+on:
+  push:
+    branches:
+      - feature/auto-connect-subscription-clients
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Poetry
+        run: pip install poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction
+      - name: Install test runner
+        run: poetry run pip install pytest
+      - name: Run PR93 isolated tests
+        run: poetry run pytest -q tests/test_auto_connect_subscription.py
