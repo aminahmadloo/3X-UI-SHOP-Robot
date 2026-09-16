@@ -56,11 +56,13 @@ async def _send_to_admins(text: str) -> None:
 
 def _network_settings() -> tuple[bool, int, int]:
     settings = load_health_settings()
-    adaptive = bool(settings.get("network_adaptive_enabled", True))
-    normal = int(settings.get("network_interval_seconds", NETWORK_NORMAL_INTERVAL_SECONDS))
+    # Adaptive monitoring is opt-in. Without an explicit persisted setting,
+    # the administrator's selected normal interval is the real scheduler interval.
+    adaptive = bool(settings.get("network_adaptive_enabled", False))
+    normal = int(settings.get("network_interval_seconds", 60))
     incident = int(settings.get("network_incident_interval_seconds", NETWORK_INCIDENT_INTERVAL_SECONDS))
     if normal not in NETWORK_INTERVAL_OPTIONS:
-        normal = NETWORK_NORMAL_INTERVAL_SECONDS
+        normal = 60
     if incident not in NETWORK_INTERVAL_OPTIONS:
         incident = NETWORK_INCIDENT_INTERVAL_SECONDS
     return adaptive, normal, incident
