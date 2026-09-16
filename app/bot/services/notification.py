@@ -50,35 +50,27 @@ class NotificationService:
         if not (message or chat_id):
             logger.error("Failed to send notification: message or chat_id required")
             return None
-
         if message and not bot:
             bot = message.bot
-
         chat_id = message.chat.id if message else chat_id
-
         if duration == 0 and reply_markup is None:
             reply_markup = close_notification_keyboard()
-
         send_method = bot.send_document if document else bot.send_message
         args = {"document": document, "caption": text} if document else {"text": text}
-
         if message_effect_id:
             args["message_effect_id"] = message_effect_id
-
         try:
             notification = await send_method(chat_id=chat_id, reply_markup=reply_markup, **args)
             logger.debug(f"Notification sent to {chat_id}")
         except Exception as exception:
             logger.error(f"Failed to send notification: {exception}")
             return None
-
         if duration > 0:
             await asyncio.sleep(duration)
             try:
                 await notification.delete()
             except Exception as exception:
                 logger.error(f"Failed to delete message {notification.message_id}: {exception}")
-
         return notification
 
     async def notify_by_id(
@@ -126,7 +118,6 @@ class NotificationService:
         if not self.config.bot.ADMINS:
             logger.warning("Admin list is empty. No notifications will be sent.")
             return
-
         for chat_id in self.config.bot.ADMINS:
             await self._notify(
                 text=text,
@@ -168,14 +159,11 @@ class NotificationService:
         subscription_id: int | None = None,
         message_effect_id: str = MESSAGE_EFFECT_IDS["🎉"],
     ) -> None:
-        reply_markup = payment_success_keyboard()
-        if subscription_id is not None:
-            reply_markup = payment_success_keyboard_for_key(
-                subscription_id=subscription_id,
-                key=key,
-                secret=self.config.bot.TOKEN,
-            )
-
+        try:
+            reply_markup = payment_success_keyboard_for_key(key, self.config.bot.TOKEN)
+        except ValueError:
+            logger.exception("Could not build auto-connect purchase-success keyboard")
+            reply_markup = payment_success_keyboard()
         await self.notify_by_id(
             chat_id=user_id,
             text=__("payment:message:purchase_success").format(key=key),
@@ -199,12 +187,7 @@ class NotificationService:
             text = _("payment:message:extend_success").format(
                 duration=format_subscription_period(data.duration)
             )
-
-        await self.notify_by_id(
-            chat_id=user_id,
-            text=text,
-            message_effect_id=message_effect_id,
-        )
+        await self.notify_by_id(chat_id=user_id, text=text, message_effect_id=message_effect_id)
 
     async def notify_change_success(
         self,
