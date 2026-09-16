@@ -16,6 +16,7 @@ from aiogram.utils.i18n import lazy_gettext as __
 
 from app.bot.models.subscription_data import SubscriptionData
 from app.bot.routers.misc.keyboard import close_notification_keyboard
+from app.bot.routers.my_services.auto_connect import payment_success_keyboard_for_key
 from app.bot.routers.subscription.keyboard import payment_success_keyboard
 from app.bot.utils.constants import MESSAGE_EFFECT_IDS
 from app.bot.utils.formatting import format_device_count, format_subscription_period
@@ -164,13 +165,22 @@ class NotificationService:
         self,
         user_id: int,
         key: str,
+        subscription_id: int | None = None,
         message_effect_id: str = MESSAGE_EFFECT_IDS["🎉"],
     ) -> None:
+        reply_markup = payment_success_keyboard()
+        if subscription_id is not None:
+            reply_markup = payment_success_keyboard_for_key(
+                subscription_id=subscription_id,
+                key=key,
+                secret=self.config.bot.TOKEN,
+            )
+
         await self.notify_by_id(
             chat_id=user_id,
             text=__("payment:message:purchase_success").format(key=key),
             message_effect_id=message_effect_id,
-            reply_markup=payment_success_keyboard(),
+            reply_markup=reply_markup,
         )
 
     async def notify_extend_success(
