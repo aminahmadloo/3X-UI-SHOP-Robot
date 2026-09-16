@@ -1,0 +1,1 @@
+Network Health interval tests are covered by tests/test_network_health_interval.py.
