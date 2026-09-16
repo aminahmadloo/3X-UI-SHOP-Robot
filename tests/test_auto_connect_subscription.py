@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 from aiohttp import web
 
 from app.bot.routers import my_services
@@ -23,7 +27,6 @@ def test_all_supported_client_deep_links_are_generated() -> None:
         "shadowrocket": "shadowrocket://add/",
         "streisand": "streisand://import/",
     }
-
     for client, prefix in expected_prefixes.items():
         assert auto_connect._client_deep_link(client, SUB_URL, "Amin").startswith(prefix)
 
@@ -62,3 +65,59 @@ def test_auto_connect_routers_are_attached_without_runtime_patches() -> None:
     assert "my_services_auto_connect_details" in names
     assert "my_services_auto_connect" in names
     assert not hasattr(my_services.client_control_handler.router, "_auto_connect_keyboard_middleware")
+
+
+def _callback(data: str) -> SimpleNamespace:
+    message = SimpleNamespace(edit_text=AsyncMock(), answer_photo=AsyncMock())
+    return SimpleNamespace(data=data, answer=AsyncMock(), message=message)
+
+
+def _service_context() -> tuple[SimpleNamespace, SimpleNamespace, SimpleNamespace]:
+    subscription = SimpleNamespace(id=42, client_id="test-subscription", config_name="Amin", status="active")
+    session_result = SimpleNamespace(scalar_one_or_none=lambda: subscription, scalars=lambda: SimpleNamespace(first=lambda: subscription))
+    session = SimpleNamespace(execute=AsyncMock(return_value=session_result))
+    services = SimpleNamespace(vpn=SimpleNamespace(get_key=AsyncMock(return_value=SUB_URL)))
+    user = SimpleNamespace(id=7, tg_id=123)
+    return user, session, services
+
+
+def test_auto_connect_entry_callback_executes() -> None:
+    async def run() -> None:
+        user, session, services = _service_context()
+        callback = _callback("my_services:auto:42")
+        await auto_connect.callback_auto_connect_entry(callback, user, session, services)
+        callback.answer.assert_awaited_once()
+        callback.message.edit_text.assert_awaited_once()
+        markup = callback.message.edit_text.await_args.kwargs["reply_markup"]
+        assert markup.inline_keyboard[0][0].callback_data == "my_services:auto:android:42"
+        assert markup.inline_keyboard[0][1].callback_data == "my_services:auto:ios:42"
+
+    asyncio.run(run())
+
+
+def test_auto_connect_platform_callback_executes() -> None:
+    async def run() -> None:
+        user, session, services = _service_context()
+        callback = _callback("my_services:auto:android:42")
+        config = SimpleNamespace(bot=SimpleNamespace(TOKEN=SECRET))
+        await auto_connect.callback_auto_connect_platform(callback, user, session, services, config)
+        callback.answer.assert_awaited_once()
+        callback.message.edit_text.assert_awaited_once()
+        markup = callback.message.edit_text.await_args.kwargs["reply_markup"]
+        urls = [row[0].url for row in markup.inline_keyboard if row and row[0].url]
+        assert urls
+        assert all(url.startswith("https://sub.elfuu.ir/connect/") for url in urls)
+
+
+def test_purchase_success_refresh_callback_executes() -> None:
+    async def run() -> None:
+        user, session, services = _service_context()
+        callback = _callback("my_services:af:test-subscription")
+        config = SimpleNamespace(bot=SimpleNamespace(TOKEN=SECRET))
+        await auto_connect.callback_success_refresh(callback, user, session, services, config)
+        callback.answer.assert_awaited_once()
+        callback.message.edit_text.assert_awaited_once()
+        markup = callback.message.edit_text.await_args.kwargs["reply_markup"]
+        assert markup.inline_keyboard[0][0].callback_data == "my_services:auto:test-subscription"
+
+    asyncio.run(run())
