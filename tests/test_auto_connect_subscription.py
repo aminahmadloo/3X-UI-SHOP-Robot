@@ -9,6 +9,7 @@ SUB_URL = "https://sub.elfuu.ir:2096/sub/test-subscription"
 SECRET = "isolated-test-secret"
 
 
+# PR93 isolated test suite: no production services or credentials are used.
 def test_all_supported_client_deep_links_are_generated() -> None:
     expected_prefixes = {
         "v2rayng": "v2rayng://install-sub?url=",
