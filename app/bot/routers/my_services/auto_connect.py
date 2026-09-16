@@ -202,28 +202,13 @@ async def _subscription_by_client_id(
     return (subscription, key) if key else (None, None)
 
 
-def _platform_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="📱 Android", callback_data=f"my_services:auto:{subscription_id}"),
-        InlineKeyboardButton(text="🍎 iOS", callback_data=f"my_services:auto:ios:{subscription_id}"),
-    )
-    builder.row(InlineKeyboardButton(text="⬅️ بازگشت به جزئیات سرویس", callback_data=f"my_services:view:{subscription_id}"))
-    return builder.as_markup()
-
-
 def _clients_keyboard(platform: str, subscription: Subscription, key: str, secret: str) -> InlineKeyboardMarkup:
     client_id = subscription.client_id or _client_id_from_key(key)
     builder = InlineKeyboardBuilder()
     if not client_id:
         return builder.as_markup()
     for client, label in CLIENTS.get(platform, {}).items():
-        builder.row(
-            InlineKeyboardButton(
-                text=label,
-                url=_gateway_url(client_id, client, secret),
-            )
-        )
+        builder.row(InlineKeyboardButton(text=label, url=_gateway_url(client_id, client, secret)))
     builder.row(InlineKeyboardButton(text="⬅️ بازگشت به انتخاب سیستم‌عامل", callback_data=f"my_services:auto:{subscription.id}"))
     builder.row(InlineKeyboardButton(text="🔙 بازگشت به جزئیات سرویس", callback_data=f"my_services:view:{subscription.id}"))
     return builder.as_markup()
@@ -244,10 +229,13 @@ async def callback_auto_connect_entry(
     await callback.answer()
     await callback.message.edit_text(
         "📱 <b>اتصال خودکار</b>\n\nسیستم‌عامل دستگاهت را انتخاب کن:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="📱 Android", callback_data=f"my_services:auto:android:{subscription.id}"),
-            InlineKeyboardButton(text="🍎 iOS", callback_data=f"my_services:auto:ios:{subscription.id}"),
-        ], [InlineKeyboardButton(text="⬅️ بازگشت به جزئیات سرویس", callback_data=f"my_services:view:{subscription.id}")]]),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📱 Android", callback_data=f"my_services:auto:android:{subscription.id}"),
+                InlineKeyboardButton(text="🍎 iOS", callback_data=f"my_services:auto:ios:{subscription.id}"),
+            ],
+            [InlineKeyboardButton(text="⬅️ بازگشت به جزئیات سرویس", callback_data=f"my_services:view:{subscription.id}")],
+        ]),
     )
 
 
