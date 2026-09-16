@@ -14,7 +14,7 @@ from app.db.models import Subscription, User
 router = Router(name="my_services_auto_connect_details")
 
 
-@router.callback_query(F.data.regexp(r"^my_services:auto:[^:]+$"))
+@router.callback_query(F.data.regexp(r"^my_services:auto:(?!\d+$)[^:]+$"))
 async def callback_purchase_success_auto_connect(
     callback: CallbackQuery,
     user: User,
@@ -31,17 +31,16 @@ async def callback_purchase_success_auto_connect(
     if not subscription or not key:
         await callback.answer("این سرویس فعال نیست یا لینک اتصال در دسترس نیست.", show_alert=True)
         return
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📱 Android", callback_data=f"my_services:auto:android:{subscription.id}"),
+        InlineKeyboardButton(text="🍎 iOS", callback_data=f"my_services:auto:ios:{subscription.id}"),
+    )
+    builder.row(InlineKeyboardButton(text="⬅️ بازگشت به جزئیات سرویس", callback_data=f"my_services:view:{subscription.id}"))
     await callback.answer()
     await callback.message.edit_text(
         "📱 <b>اتصال خودکار</b>\n\nسیستم‌عامل دستگاهت را انتخاب کن:",
-        reply_markup=InlineKeyboardBuilder.from_markup(
-            InlineKeyboardBuilder().row(
-                InlineKeyboardButton(text="📱 Android", callback_data=f"my_services:auto:android:{subscription.id}"),
-                InlineKeyboardButton(text="🍎 iOS", callback_data=f"my_services:auto:ios:{subscription.id}"),
-            ).row(
-                InlineKeyboardButton(text="⬅️ بازگشت به جزئیات سرویس", callback_data=f"my_services:view:{subscription.id}")
-            ).as_markup()
-        ),
+        reply_markup=builder.as_markup(),
     )
 
 
