@@ -5,16 +5,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from aiohttp import web
-from aiogram.utils.i18n import I18n
 
 from app.bot.routers import my_services
 from app.bot.routers.my_services import auto_connect
-from app.bot.utils.constants import DEFAULT_LANGUAGE, I18N_DOMAIN
-from app.config import DEFAULT_LOCALES_DIR
 
 SUB_URL = "https://sub.elfuu.ir:2096/sub/test-subscription"
 SECRET = "isolated-test-secret"
-I18n.set_current(I18n(path=DEFAULT_LOCALES_DIR, default_locale=DEFAULT_LANGUAGE, domain=I18N_DOMAIN))
 
 
 # PR93 isolated test suite: no production services or credentials are used.
@@ -123,7 +119,12 @@ def test_purchase_success_refresh_callback_executes() -> None:
         user, session, services = _service_context()
         callback = _callback("my_services:af:test-subscription")
         config = SimpleNamespace(bot=SimpleNamespace(TOKEN=SECRET))
-        await auto_connect.callback_success_refresh(callback, user, session, services, config)
+        original_gettext = auto_connect._
+        auto_connect._ = lambda text: text
+        try:
+            await auto_connect.callback_success_refresh(callback, user, session, services, config)
+        finally:
+            auto_connect._ = original_gettext
         callback.answer.assert_awaited_once()
         callback.message.edit_text.assert_awaited_once()
         markup = callback.message.edit_text.await_args.kwargs["reply_markup"]
