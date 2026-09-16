@@ -7,7 +7,7 @@ import hmac
 import logging
 import os
 from io import BytesIO
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import qrcode
 from aiogram import F, Router
@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.models import ServicesContainer
-from app.bot.utils.navigation import NavMain, NavSupport
+from app.bot.utils.navigation import NavMain
 from app.db.models import Subscription, User
 
 logger = logging.getLogger(__name__)
@@ -80,31 +80,36 @@ def _client_deep_link(client: str, subscription_url: str, name: str) -> str | No
     return None
 
 
-def _gateway_token(subscription_id: int, client: str, secret: str) -> str:
-    payload = f"{subscription_id}:{client}".encode()
+def _client_id_from_key(key: str) -> str | None:
+    path = urlsplit(key).path.rstrip("/")
+    client_id = path.rsplit("/", 1)[-1]
+    return client_id or None
+
+
+def _gateway_token(client_id: str, client: str, secret: str) -> str:
+    payload = f"{client_id}:{client}".encode()
     encoded_payload = base64.urlsafe_b64encode(payload).decode().rstrip("=")
     signature = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()[:32]
     return f"{encoded_payload}.{signature}"
 
 
-def _parse_gateway_token(token: str, secret: str) -> tuple[int, str] | None:
+def _parse_gateway_token(token: str, secret: str) -> tuple[str, str] | None:
     try:
         encoded_payload, signature = token.split(".", 1)
         payload = base64.urlsafe_b64decode(encoded_payload + "=" * (-len(encoded_payload) % 4))
         expected = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()[:32]
         if not hmac.compare_digest(signature, expected):
             return None
-        subscription_id_text, client = payload.decode().split(":", 1)
-        subscription_id = int(subscription_id_text)
-        if client not in {key for clients in CLIENTS.values() for key in clients}:
+        client_id, client = payload.decode().split(":", 1)
+        if not client_id or client not in {key for clients in CLIENTS.values() for key in clients}:
             return None
-        return subscription_id, client
+        return client_id, client
     except (ValueError, UnicodeDecodeError, base64.binascii.Error):
         return None
 
 
-def _gateway_url(subscription_id: int, client: str, secret: str) -> str:
-    return f"{_GATEWAY_BASE_URL}/{_gateway_token(subscription_id, client, secret)}"
+def _gateway_url(client_id: str, client: str, secret: str) -> str:
+    return f"{_GATEWAY_BASE_URL}/{_gateway_token(client_id, client, secret)}"
 
 
 def register_gateway(
@@ -117,21 +122,21 @@ def register_gateway(
         return
 
     async def redirect_to_client(request: web.Request) -> web.StreamResponse:
-        token = request.match_info.get("token", "")
-        parsed = _parse_gateway_token(token, secret)
+        parsed = _parse_gateway_token(request.match_info.get("token", ""), secret)
         if parsed is None:
-            raise web.HTTPNotFound(text="Invalid or expired connection link")
+            raise web.HTTPNotFound(text="Invalid connection link")
 
-        subscription_id, client = parsed
+        client_id, client = parsed
         async with session_factory() as session:
             result = await session.execute(
                 select(Subscription, User)
                 .join(User, Subscription.user_id == User.id)
                 .where(
-                    Subscription.id == subscription_id,
+                    Subscription.client_id == client_id,
                     Subscription.status == "active",
                     Subscription.server_id.is_not(None),
                 )
+                .order_by(Subscription.id.desc())
             )
             row = result.first()
             if row is None:
@@ -176,26 +181,49 @@ async def _active_subscription(
     return (subscription, key) if key else (None, None)
 
 
+async def _subscription_by_client_id(
+    user: User,
+    session: AsyncSession,
+    services: ServicesContainer,
+    client_id: str,
+) -> tuple[Subscription | None, str | None]:
+    result = await session.execute(
+        select(Subscription).where(
+            Subscription.user_id == user.id,
+            Subscription.client_id == client_id,
+            Subscription.status == "active",
+            Subscription.server_id.is_not(None),
+        ).order_by(Subscription.id.desc())
+    )
+    subscription = result.scalars().first()
+    if not subscription:
+        return None, None
+    key = await services.vpn.get_key(user, subscription_id=subscription.id)
+    return (subscription, key) if key else (None, None)
+
+
 def _platform_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="📱 Android", callback_data=f"my_services:auto:platform:android:{subscription_id}"),
-        InlineKeyboardButton(text="🍎 iOS", callback_data=f"my_services:auto:platform:ios:{subscription_id}"),
+        InlineKeyboardButton(text="📱 Android", callback_data=f"my_services:auto:{subscription_id}"),
+        InlineKeyboardButton(text="🍎 iOS", callback_data=f"my_services:auto:ios:{subscription_id}"),
     )
     builder.row(InlineKeyboardButton(text="⬅️ بازگشت به جزئیات سرویس", callback_data=f"my_services:view:{subscription_id}"))
     return builder.as_markup()
 
 
 def _clients_keyboard(platform: str, subscription: Subscription, key: str, secret: str) -> InlineKeyboardMarkup:
+    client_id = subscription.client_id or _client_id_from_key(key)
     builder = InlineKeyboardBuilder()
+    if not client_id:
+        return builder.as_markup()
     for client, label in CLIENTS.get(platform, {}).items():
-        if _client_deep_link(client, key, subscription.config_name):
-            builder.row(
-                InlineKeyboardButton(
-                    text=label,
-                    url=_gateway_url(subscription.id, client, secret),
-                )
+        builder.row(
+            InlineKeyboardButton(
+                text=label,
+                url=_gateway_url(client_id, client, secret),
             )
+        )
     builder.row(InlineKeyboardButton(text="⬅️ بازگشت به انتخاب سیستم‌عامل", callback_data=f"my_services:auto:{subscription.id}"))
     builder.row(InlineKeyboardButton(text="🔙 بازگشت به جزئیات سرویس", callback_data=f"my_services:view:{subscription.id}"))
     return builder.as_markup()
@@ -216,11 +244,14 @@ async def callback_auto_connect_entry(
     await callback.answer()
     await callback.message.edit_text(
         "📱 <b>اتصال خودکار</b>\n\nسیستم‌عامل دستگاهت را انتخاب کن:",
-        reply_markup=_platform_keyboard(subscription.id),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📱 Android", callback_data=f"my_services:auto:android:{subscription.id}"),
+            InlineKeyboardButton(text="🍎 iOS", callback_data=f"my_services:auto:ios:{subscription.id}"),
+        ], [InlineKeyboardButton(text="⬅️ بازگشت به جزئیات سرویس", callback_data=f"my_services:view:{subscription.id}")]]),
     )
 
 
-@router.callback_query(F.data.regexp(r"^my_services:auto:platform:(android|ios):\d+$"))
+@router.callback_query(F.data.regexp(r"^my_services:auto:(android|ios):\d+$"))
 async def callback_auto_connect_platform(
     callback: CallbackQuery,
     user: User,
@@ -229,7 +260,7 @@ async def callback_auto_connect_platform(
     config,
 ) -> None:
     parts = callback.data.split(":")
-    platform, subscription_id = parts[3], int(parts[4])
+    platform, subscription_id = parts[2], int(parts[3])
     subscription, key = await _active_subscription(user, session, services, subscription_id)
     if not subscription or not key:
         await callback.answer("این سرویس فعال نیست یا لینک اتصال در دسترس نیست.", show_alert=True)
@@ -242,15 +273,15 @@ async def callback_auto_connect_platform(
     )
 
 
-@router.callback_query(F.data.regexp(r"^my_services:auto:qr:\d+$"))
+@router.callback_query(F.data.regexp(r"^my_services:aq:.+$"))
 async def callback_success_qr(
     callback: CallbackQuery,
     user: User,
     session: AsyncSession,
     services: ServicesContainer,
 ) -> None:
-    subscription_id = int(callback.data.rsplit(":", 1)[1])
-    subscription, key = await _active_subscription(user, session, services, subscription_id)
+    client_id = callback.data.split(":", 2)[2]
+    subscription, key = await _subscription_by_client_id(user, session, services, client_id)
     if not subscription or not key:
         await callback.answer("این سرویس فعال نیست یا لینک اتصال در دسترس نیست.", show_alert=True)
         return
@@ -266,7 +297,7 @@ async def callback_success_qr(
     asyncio.create_task(_delete_later(sent, 30))
 
 
-@router.callback_query(F.data.regexp(r"^my_services:auto:refresh:\d+$"))
+@router.callback_query(F.data.regexp(r"^my_services:af:.+$"))
 async def callback_success_refresh(
     callback: CallbackQuery,
     user: User,
@@ -274,15 +305,15 @@ async def callback_success_refresh(
     services: ServicesContainer,
     config,
 ) -> None:
-    subscription_id = int(callback.data.rsplit(":", 1)[1])
-    subscription, key = await _active_subscription(user, session, services, subscription_id)
+    client_id = callback.data.split(":", 2)[2]
+    subscription, key = await _subscription_by_client_id(user, session, services, client_id)
     if not subscription or not key:
         await callback.answer("این سرویس فعال نیست یا لینک اتصال در دسترس نیست.", show_alert=True)
         return
     await callback.answer("🔄 لینک اتصال بروزرسانی شد.")
     await callback.message.edit_text(
         _("payment:message:purchase_success").format(key=key),
-        reply_markup=payment_success_keyboard_for_key(subscription.id, key, config.bot.TOKEN),
+        reply_markup=payment_success_keyboard_for_key(key, config.bot.TOKEN),
     )
 
 
@@ -294,15 +325,14 @@ async def _delete_later(message, delay: int) -> None:
         logger.debug("Could not delete temporary auto-connect QR message", exc_info=True)
 
 
-def payment_success_keyboard_for_key(
-    subscription_id: int,
-    key: str,
-    secret: str,
-) -> InlineKeyboardMarkup:
+def payment_success_keyboard_for_key(key: str, secret: str) -> InlineKeyboardMarkup:
+    client_id = _client_id_from_key(key)
+    if not client_id:
+        raise ValueError("Subscription key does not contain a client id")
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="📱 اتصال خودکار", callback_data=f"my_services:auto:{subscription_id}"))
+    builder.row(InlineKeyboardButton(text="📱 اتصال خودکار", callback_data=f"my_services:auto:{client_id}"))
     builder.row(InlineKeyboardButton(text="📋 کپی لینک", copy_text=CopyTextButton(text=key)))
-    builder.row(InlineKeyboardButton(text="📷 QR Code", callback_data=f"my_services:auto:qr:{subscription_id}"))
-    builder.row(InlineKeyboardButton(text="🔄 بروزرسانی", callback_data=f"my_services:auto:refresh:{subscription_id}"))
+    builder.row(InlineKeyboardButton(text="📷 QR Code", callback_data=f"my_services:aq:{client_id}"))
+    builder.row(InlineKeyboardButton(text="🔄 بروزرسانی", callback_data=f"my_services:af:{client_id}"))
     builder.row(InlineKeyboardButton(text="🔙 بازگشت به منوی اصلی", callback_data=NavMain.MAIN_MENU))
     return builder.as_markup()
