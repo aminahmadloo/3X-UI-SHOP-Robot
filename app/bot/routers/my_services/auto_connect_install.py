@@ -1,16 +1,31 @@
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from app.bot.routers.my_services import auto_connect, handler as my_services_handler
 from app.bot.services.notification import NotificationService
 from app.bot.utils.constants import MESSAGE_EFFECT_IDS
 from app.bot.utils.navigation import NavSubscription
-from app.bot.utils.navigation import NavSupport
-from app.bot.utils.navigation import NavMain
 
-# The integration module keeps the existing My Services and payment handlers
-# intact. It only attaches the new router/middleware and replaces the purchase
-# success keyboard builder with the subscription-aware version.
+# Keep the existing My Services and payment handlers intact. This module only
+# attaches the new router/middleware and replaces the purchase-success keyboard
+# with the subscription-aware version.
 auto_connect.NavSubscription = NavSubscription
+
+# NekoBox uses the Clash-compatible import scheme for subscription deep links.
+auto_connect.CLIENTS["android"]["nekobox"] = "NekoBox"
+_original_deep_link = auto_connect._client_deep_link
+
+
+def _deep_link_with_nekobox(client: str, subscription_url: str, name: str) -> str | None:
+    if client == "nekobox":
+        encoded_url = quote(subscription_url, safe="")
+        encoded_name = quote(name or "ToonelVPN", safe="")
+        return f"clash://install-config?url={encoded_url}&name={encoded_name}"
+    return _original_deep_link(client, subscription_url, name)
+
+
+auto_connect._client_deep_link = _deep_link_with_nekobox
 
 if auto_connect.router not in my_services_handler.router.sub_routers:
     my_services_handler.router.include_router(auto_connect.router)
