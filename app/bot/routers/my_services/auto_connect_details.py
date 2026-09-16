@@ -7,11 +7,42 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.models import ServicesContainer
-from app.bot.routers.my_services import handler as my_services_handler
+from app.bot.routers.my_services import auto_connect, handler as my_services_handler
 from app.bot.utils.navigation import NavMain, NavSubscription, NavSupport
 from app.db.models import Subscription, User
 
 router = Router(name="my_services_auto_connect_details")
+
+
+@router.callback_query(F.data.regexp(r"^my_services:auto:[^:]+$"))
+async def callback_purchase_success_auto_connect(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    services: ServicesContainer,
+) -> None:
+    client_id = callback.data.rsplit(":", 1)[1]
+    subscription, key = await auto_connect._subscription_by_client_id(
+        user=user,
+        session=session,
+        services=services,
+        client_id=client_id,
+    )
+    if not subscription or not key:
+        await callback.answer("این سرویس فعال نیست یا لینک اتصال در دسترس نیست.", show_alert=True)
+        return
+    await callback.answer()
+    await callback.message.edit_text(
+        "📱 <b>اتصال خودکار</b>\n\nسیستم‌عامل دستگاهت را انتخاب کن:",
+        reply_markup=InlineKeyboardBuilder.from_markup(
+            InlineKeyboardBuilder().row(
+                InlineKeyboardButton(text="📱 Android", callback_data=f"my_services:auto:android:{subscription.id}"),
+                InlineKeyboardButton(text="🍎 iOS", callback_data=f"my_services:auto:ios:{subscription.id}"),
+            ).row(
+                InlineKeyboardButton(text="⬅️ بازگشت به جزئیات سرویس", callback_data=f"my_services:view:{subscription.id}")
+            ).as_markup()
+        ),
+    )
 
 
 @router.callback_query(F.data.regexp(r"^my_services:view:\d+$"))
@@ -47,48 +78,12 @@ async def callback_my_service_details_with_auto_connect(
 
     _, status_text = _status(subscription)
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="📱 اتصال خودکار",
-            callback_data=f"my_services:auto:{subscription.id}",
-        )
-    )
+    builder.row(InlineKeyboardButton(text="📱 اتصال خودکار", callback_data=f"my_services:auto:{subscription.id}"))
     if subscription.status == "active" and status_text not in {"منقضی شده", "غیرفعال"}:
-        builder.row(
-            InlineKeyboardButton(
-                text="🔗 دریافت لینک اتصال",
-                callback_data=f"my_services:key:{subscription.id}",
-            )
-        )
-        builder.row(
-            InlineKeyboardButton(
-                text="🔄 تمدید سرویس",
-                callback_data=f"main_renewal:service:{subscription.id}",
-            )
-        )
-    builder.row(
-        InlineKeyboardButton(
-            text="🛒 خرید سرویس جدید",
-            callback_data=NavSubscription.BUY,
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="📚 راهنمای اتصال",
-            callback_data=NavSupport.TRAINING,
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="⬅️ بازگشت به سرویس‌های من",
-            callback_data=NavMain.MY_SERVICES,
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 بازگشت به منوی اصلی",
-            callback_data=NavMain.MAIN_MENU,
-            style="danger",
-        )
-    )
+        builder.row(InlineKeyboardButton(text="🔗 دریافت لینک اتصال", callback_data=f"my_services:key:{subscription.id}"))
+        builder.row(InlineKeyboardButton(text="🔄 تمدید سرویس", callback_data=f"main_renewal:service:{subscription.id}"))
+    builder.row(InlineKeyboardButton(text="🛒 خرید سرویس جدید", callback_data=NavSubscription.BUY))
+    builder.row(InlineKeyboardButton(text="📚 راهنمای اتصال", callback_data=NavSupport.TRAINING))
+    builder.row(InlineKeyboardButton(text="⬅️ بازگشت به سرویس‌های من", callback_data=NavMain.MY_SERVICES))
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت به منوی اصلی", callback_data=NavMain.MAIN_MENU, style="danger"))
     await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
