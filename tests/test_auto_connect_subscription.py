@@ -5,12 +5,15 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from aiohttp import web
+from aiogram.utils.i18n import I18n
 
 from app.bot.routers import my_services
 from app.bot.routers.my_services import auto_connect
+from app.config import DEFAULT_LANGUAGE, DEFAULT_LOCALES_DIR
 
 SUB_URL = "https://sub.elfuu.ir:2096/sub/test-subscription"
 SECRET = "isolated-test-secret"
+I18n.set_current(I18n(path=DEFAULT_LOCALES_DIR, default_locale=DEFAULT_LANGUAGE, domain="messages"))
 
 
 # PR93 isolated test suite: no production services or credentials are used.
@@ -74,7 +77,10 @@ def _callback(data: str) -> SimpleNamespace:
 
 def _service_context() -> tuple[SimpleNamespace, SimpleNamespace, SimpleNamespace]:
     subscription = SimpleNamespace(id=42, client_id="test-subscription", config_name="Amin", status="active")
-    session_result = SimpleNamespace(scalar_one_or_none=lambda: subscription, scalars=lambda: SimpleNamespace(first=lambda: subscription))
+    session_result = SimpleNamespace(
+        scalar_one_or_none=lambda: subscription,
+        scalars=lambda: SimpleNamespace(first=lambda: subscription),
+    )
     session = SimpleNamespace(execute=AsyncMock(return_value=session_result))
     services = SimpleNamespace(vpn=SimpleNamespace(get_key=AsyncMock(return_value=SUB_URL)))
     user = SimpleNamespace(id=7, tg_id=123)
@@ -107,6 +113,8 @@ def test_auto_connect_platform_callback_executes() -> None:
         urls = [row[0].url for row in markup.inline_keyboard if row and row[0].url]
         assert urls
         assert all(url.startswith("https://sub.elfuu.ir/connect/") for url in urls)
+
+    asyncio.run(run())
 
 
 def test_purchase_success_refresh_callback_executes() -> None:
