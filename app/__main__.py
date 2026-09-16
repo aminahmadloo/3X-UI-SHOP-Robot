@@ -17,6 +17,7 @@ from app.bot.middlewares import MaintenanceMiddleware
 from app.bot.models import ServicesContainer
 from app.bot.payment_gateways import GatewayFactory
 from app.bot.payment_gateways.variza_gateway import VarizaGateway
+from app.bot.routers.my_services.auto_connect import register_gateway
 from app.bot.utils import commands
 from app.bot.utils.constants import (
     BOT_STARTED_TAG,
@@ -152,6 +153,12 @@ async def main() -> None:
         admins_ids=config.bot.ADMINS,
     )
     routers.include(app=app, dispatcher=dispatcher)
+    register_gateway(
+        app=app,
+        session_factory=db.session,
+        services=services_container,
+        secret=config.bot.TOKEN,
+    )
     register_mini_app(
         app=app,
         db=db,
