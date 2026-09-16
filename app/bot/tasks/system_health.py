@@ -31,7 +31,7 @@ _session_factory: async_sessionmaker[AsyncSession] | None = None
 _last_state: str | None = None
 _network_run_lock = asyncio.Lock()
 
-NETWORK_NORMAL_INTERVAL_SECONDS = 300
+NETWORK_NORMAL_INTERVAL_SECONDS = 60
 NETWORK_INCIDENT_INTERVAL_SECONDS = 60
 NETWORK_INTERVAL_OPTIONS = (30, 60, 120, 300, 600, 900, 1800, 3600)
 
@@ -56,13 +56,16 @@ async def _send_to_admins(text: str) -> None:
 
 def _network_settings() -> tuple[bool, int, int]:
     settings = load_health_settings()
+    # Adaptive Network Health is the intended default behavior:
+    # the administrator's persisted interval is used while healthy and
+    # monitoring temporarily switches to 60 seconds during an incident.
     adaptive = bool(settings.get("network_adaptive_enabled", True))
     normal = int(settings.get("network_interval_seconds", NETWORK_NORMAL_INTERVAL_SECONDS))
-    incident = int(settings.get("network_incident_interval_seconds", NETWORK_INCIDENT_INTERVAL_SECONDS))
+    # Incident monitoring is intentionally fixed at 60 seconds. It is a runtime
+    # mode, not a replacement for the administrator's persisted normal interval.
+    incident = NETWORK_INCIDENT_INTERVAL_SECONDS
     if normal not in NETWORK_INTERVAL_OPTIONS:
         normal = NETWORK_NORMAL_INTERVAL_SECONDS
-    if incident not in NETWORK_INTERVAL_OPTIONS:
-        incident = NETWORK_INCIDENT_INTERVAL_SECONDS
     return adaptive, normal, incident
 
 
@@ -75,9 +78,9 @@ def _network_incident_mode() -> bool:
 
 def _network_interval_seconds() -> int:
     adaptive, normal, incident = _network_settings()
-    if not adaptive:
-        return normal
-    return incident if _network_incident_mode() else normal
+    if adaptive and _network_incident_mode():
+        return incident
+    return normal
 
 
 def _network_ping_count() -> int:
@@ -88,7 +91,7 @@ def _network_ping_count() -> int:
 
 
 def reschedule_network_job() -> None:
-    """Apply the effective adaptive interval without restarting the scheduler."""
+    """Apply the effective adaptive interval without changing the persisted setting."""
     if _scheduler is None or not _scheduler.running:
         return
     job = _scheduler.get_job(_network_job_id())
@@ -97,10 +100,11 @@ def reschedule_network_job() -> None:
     seconds = _network_interval_seconds()
     job.reschedule(trigger=IntervalTrigger(seconds=seconds))
     logger.info(
-        "Network health scheduler interval updated: interval=%ss adaptive=%s incident=%s ping_count=%s",
+        "Network health scheduler interval updated: effective=%ss adaptive=%s incident=%s configured=%ss ping_count=%s",
         seconds,
         _network_settings()[0],
         _network_incident_mode(),
+        _network_settings()[1],
         _network_ping_count(),
     )
 
@@ -124,10 +128,11 @@ async def run_network_once() -> bool:
         ping_count = _network_ping_count()
         effective_interval = _network_interval_seconds()
         logger.info(
-            "Network health check started: adaptive=%s incident=%s interval=%ss ping_count=%s",
+            "Network health check started: adaptive=%s incident=%s effective_interval=%ss configured_interval=%ss ping_count=%s",
             _network_settings()[0],
             _network_incident_mode(),
             effective_interval,
+            _network_settings()[1],
             ping_count,
         )
         try:
@@ -156,7 +161,7 @@ async def run_network_once() -> bool:
             next_interval = _network_interval_seconds()
             next_ping_count = _network_ping_count()
             logger.info(
-                "Network health check completed: severity=%s previous=%s alert=%s servers=%d nodes=%d history=%s duration=%.2fs next_interval=%ss next_ping_count=%s",
+                "Network health check completed: severity=%s previous=%s alert=%s servers=%d nodes=%d history=%s duration=%.2fs next_interval=%ss configured_interval=%ss next_ping_count=%s",
                 current,
                 previous,
                 alert or "none",
@@ -165,12 +170,13 @@ async def run_network_once() -> bool:
                 state_path or "unknown",
                 time.monotonic() - started,
                 next_interval,
+                _network_settings()[1],
                 next_ping_count,
             )
 
-            # Move the scheduler after state persistence so degraded samples immediately
-            # switch the next cycle to incident mode; recovery keeps incident mode until
-            # the existing RECOVERY_SAMPLES threshold is satisfied.
+            # State is persisted before rescheduling. Therefore a degraded sample
+            # immediately changes the next cycle to 60 seconds, while recovery
+            # returns to the persisted administrator-selected interval.
             reschedule_network_job()
 
             if alert == "degraded":
@@ -266,9 +272,9 @@ def start_scheduler(
         NORMAL_PING_COUNT,
         INCIDENT_PING_COUNT,
     )
-    # The Network Health UI historically reschedules this job immediately after
-    # start_scheduler(). Re-apply the effective adaptive interval one event-loop
-    # turn later so the UI cannot accidentally disable adaptive startup behavior.
+    # The Network Health UI has a legacy scheduler hook which also reschedules
+    # this job. Re-apply the effective interval on the next event-loop turn so
+    # that hook cannot replace incident mode with the configured normal interval.
     try:
         asyncio.get_running_loop().call_soon(reschedule_network_job)
     except RuntimeError:
