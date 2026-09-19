@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.bot.routers.admin_tools import ai_content_handler  # noqa: F401
 from app.bot.services.ai_content import (
     DEFAULT_PRODUCTION_CONTROLS,
     DEFAULT_SMART_RULES,
