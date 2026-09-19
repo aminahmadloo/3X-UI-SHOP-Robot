@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import html
 import logging
 from datetime import datetime
 
 from aiogram import Bot
+from aiogram.enums import ParseMode
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
@@ -29,13 +31,13 @@ async def _notify_draft(content) -> None:
     text = (
         "📝 <b>پیش‌نویس جدید توسط AI</b>\n\n"
         f"شناسه: <code>#{content.id}</code>\n"
-        f"عنوان: <b>{content.title}</b>\n\n"
+        f"عنوان: <b>{html.escape(content.title)}</b>\n\n"
         "این محتوا برای انتشار خودکار انتخاب نشده و در بخش پیش‌نویس‌ها منتظر بررسی شماست."
     )
     async with Bot(token=config.bot.TOKEN) as bot:
         for admin_id in config.bot.ADMINS:
             try:
-                await bot.send_message(int(admin_id), text, reply_markup=markup)
+                await bot.send_message(int(admin_id), text, reply_markup=markup, parse_mode=ParseMode.HTML)
             except Exception:
                 logger.exception("Failed to notify admin %s about AI draft %s", admin_id, content.id)
 
