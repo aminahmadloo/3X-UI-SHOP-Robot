@@ -1,0 +1,28 @@
+name: AI Content isolated tests
+
+on:
+  push:
+    branches:
+      - feature/ai-content-production-controls
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-ai-content:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Poetry
+        run: pip install poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction
+      - name: Install test runner
+        run: poetry run pip install pytest pytest-asyncio
+      - name: Run AI Content tests
+        run: poetry run pytest -q tests/test_ai_content.py
