@@ -47,6 +47,7 @@ SMART_CATEGORIES: dict[str, tuple[str, str]] = {
 }
 
 DEFAULT_SMART_RULES = {key: decision for key, (_, decision) in SMART_CATEGORIES.items()}
+DEFAULT_PRODUCTION_CONTROLS = {key: True for key in SMART_CATEGORIES}
 RISK_LEVELS = {"conservative", "balanced", "free"}
 HARD_APPROVAL_CATEGORIES = {"heavy_discount", "important_campaign", "sensitive", "pricing", "legal"}
 
@@ -132,6 +133,7 @@ class AIContentService:
         self,
         topic: str | None = None,
         model: str | None = None,
+        category: str | None = None,
         *,
         recent_context: str | None = None,
         diversity_feedback: str | None = None,
@@ -139,6 +141,7 @@ class AIContentService:
         if not self.api_key:
             raise AIContentError("OPENAI_API_KEY تنظیم نشده است.")
         requested_topic = topic or "یک موضوع جذاب و کاربردی برای اعضای کانال ToonelVPN انتخاب کن."
+        category_instruction = (f"دسته اجباری این تولید: {category}. content_category باید دقیقاً همین مقدار باشد." if category in SMART_CATEGORIES else "دسته را از بین دسته‌های مجاز و فعال انتخاب کن.")
         recent_block = recent_context or "هیچ پست اخیر قابل استفاده برای مقایسه وجود ندارد."
         feedback_block = diversity_feedback or ""
         prompt = f"""
@@ -161,6 +164,7 @@ class AIContentService:
 {feedback_block}
 
 موضوع درخواستی: {requested_topic}
+{category_instruction}
 
 برای هر محتوا یک content_category دقیق از فهرست زیر انتخاب کن:
 {", ".join(SMART_CATEGORIES.keys())}
@@ -250,6 +254,22 @@ CTA را هرگز به‌صورت URL خام تولید نکن. فقط از acti
         return settings
 
     @staticmethod
+    def production_controls(settings: AIContentSettings) -> dict[str, bool]:
+        try:
+            controls = json.loads(settings.production_controls or "{}")
+        except (TypeError, json.JSONDecodeError):
+            controls = {}
+        normalized = dict(DEFAULT_PRODUCTION_CONTROLS)
+        for key, value in controls.items():
+            if key in SMART_CATEGORIES:
+                normalized[key] = bool(value)
+        return normalized
+
+    @staticmethod
+    def enabled_categories(settings: AIContentSettings) -> set[str]:
+        return {key for key, enabled in AIContentService.production_controls(settings).items() if enabled}
+
+    @staticmethod
     def smart_rules(settings: AIContentSettings) -> dict[str, str]:
         try:
             rules = json.loads(settings.smart_rules or "{}")
@@ -295,7 +315,15 @@ CTA را هرگز به‌صورت URL خام تولید نکن. فقط از acti
             rules[key] = "mandatory"
         return rules
 
-    async def create_content(self, session: AsyncSession, channel_id: int, settings: AIContentSettings, topic: str | None = None) -> ChannelContent:
+    async def create_content(self, session: AsyncSession, channel_id: int, settings: AIContentSettings, topic: str | None = None, category: str | None = None) -> ChannelContent:
+        if category is not None and category not in SMART_CATEGORIES:
+            raise AIContentError("دسته محتوای انتخاب‌شده معتبر نیست.")
+        enabled_categories = self.enabled_categories(settings)
+        if not enabled_categories:
+            raise AIContentError("هیچ دسته‌ای برای تولید محتوا فعال نیست.")
+        if category is not None and category not in enabled_categories:
+            raise AIContentError("دسته انتخاب‌شده برای تولید محتوا غیرفعال است.")
+
         recent = await self._recent_contents(session, channel_id)
         recent_context = self._recent_context(recent)
         best_result: dict | None = None
@@ -303,7 +331,7 @@ CTA را هرگز به‌صورت URL خام تولید نکن. فقط از acti
         feedback: str | None = None
 
         for attempt in range(1, MAX_REGENERATION_ATTEMPTS + 1):
-            result = await self.generate(topic=topic, model=settings.model, recent_context=recent_context, diversity_feedback=feedback)
+            result = await self.generate(topic=topic, model=settings.model, category=category, recent_context=recent_context, diversity_feedback=feedback)
             candidate = f"{result.get('title', '')}\n{result.get('body', '')}"
             similarities = [self.similarity(candidate, f"{item.title}\n{item.body or ''}") for item in recent]
             similarity = max(similarities, default=0.0)
@@ -320,6 +348,9 @@ CTA را هرگز به‌صورت URL خام تولید نکن. فقط از acti
         if best_result is None:
             raise AIContentError("AI محتوای متنوع تولید نکرد.")
         result = best_result
+        final_category = str(result.get("content_category") or "sensitive").strip().lower()
+        if final_category not in enabled_categories or (category is not None and final_category != category):
+            raise AIContentError("AI نتوانست محتوایی در دسته مجاز انتخاب‌شده تولید کند.")
 
         if settings.mode == "smart":
             effective_rules = self.risk_adjusted_rules(settings)
