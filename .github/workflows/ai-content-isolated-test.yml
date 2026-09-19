@@ -26,3 +26,23 @@ jobs:
         run: poetry run pip install pytest pytest-asyncio
       - name: Run AI Content tests
         run: poetry run pytest -q tests/test_ai_content.py
+      - name: Isolated SQLite migration upgrade
+        env:
+          BOT_TOKEN: "000000:TEST"
+          BOT_ADMINS: "1"
+          BOT_DEV_ID: "1"
+          BOT_SUPPORT_ID: "1"
+          BOT_DOMAIN: "example.test"
+          XUI_USERNAME: "test"
+          XUI_PASSWORD: "test"
+          DB_NAME: "ai_migration_ci"
+        run: poetry run alembic -c app/db/alembic.ini upgrade head
+      - name: Verify AI production controls migration
+        run: |
+          python - <<'PY'
+          import sqlite3
+          con = sqlite3.connect("app/data/ai_migration_ci.sqlite3")
+          cols = {row[1]: row[2] for row in con.execute("PRAGMA table_info(ai_content_settings)")}
+          assert cols.get("production_controls") == "TEXT", cols
+          print("upgrade verified")
+          PY
