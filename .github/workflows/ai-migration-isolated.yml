@@ -1,0 +1,64 @@
+name: Isolated AI migration test
+
+on:
+  push:
+    branches:
+      - verify-ai-migration-20260920-final
+
+jobs:
+  migration:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
+      BOT_TOKEN: "000000:TEST"
+      BOT_ADMINS: "1"
+      BOT_DEV_ID: "1"
+      BOT_SUPPORT_ID: "1"
+      BOT_DOMAIN: "example.test"
+      XUI_USERNAME: "test"
+      XUI_PASSWORD: "test"
+      DB_NAME: "ai_migration_test"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Poetry
+        run: pip install poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction
+      - name: Upgrade database
+        run: poetry run alembic -c app/db/alembic.ini upgrade head
+      - name: Verify production_controls column
+        run: |
+          python - <<'PY'
+          import sqlite3
+          db = "app/data/ai_migration_test.sqlite3"
+          con = sqlite3.connect(db)
+          cols = {row[1]: row[2] for row in con.execute("PRAGMA table_info(ai_content_settings)")}
+          assert "production_controls" in cols, cols
+          assert cols["production_controls"] == "TEXT", cols
+          print("production_controls:", cols["production_controls"])
+          PY
+      - name: Downgrade latest migration
+        run: poetry run alembic -c app/db/alembic.ini downgrade 20260911_advertising_publication_targets
+      - name: Verify downgrade
+        run: |
+          python - <<'PY'
+          import sqlite3
+          con = sqlite3.connect("app/data/ai_migration_test.sqlite3")
+          cols = {row[1] for row in con.execute("PRAGMA table_info(ai_content_settings)")}
+          assert "production_controls" not in cols, cols
+          print("downgrade verified")
+          PY
+      - name: Re-upgrade latest migration
+        run: poetry run alembic -c app/db/alembic.ini upgrade head
+      - name: Verify re-upgrade
+        run: |
+          python - <<'PY'
+          import sqlite3
+          con = sqlite3.connect("app/data/ai_migration_test.sqlite3")
+          cols = {row[1] for row in con.execute("PRAGMA table_info(ai_content_settings)")}
+          assert "production_controls" in cols, cols
+          print("re-upgrade verified")
+          PY
