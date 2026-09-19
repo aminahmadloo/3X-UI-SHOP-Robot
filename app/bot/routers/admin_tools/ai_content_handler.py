@@ -188,7 +188,9 @@ async def channel_menu_with_ai(callback: CallbackQuery, session: AsyncSession):
 
 
 @router.callback_query(F.data == "channel:ai_content", IsAdmin())
-async def ai_menu(callback: CallbackQuery, session: AsyncSession):
+async def ai_menu(callback: CallbackQuery, session: AsyncSession, state: FSMContext | None = None):
+    if state is not None:
+        await state.clear()
     _, settings = await _settings(session)
     await session.commit()
     enabled = "🟢 فعال" if settings.enabled else "🔴 غیرفعال"
