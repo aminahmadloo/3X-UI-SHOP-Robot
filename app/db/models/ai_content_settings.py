@@ -14,6 +14,7 @@ class AIContentSettings(Base):
     mode: Mapped[str] = mapped_column(String(16), nullable=False, default="approval", server_default="approval")
     model: Mapped[str] = mapped_column(String(64), nullable=False, default="gpt-5.6-luna", server_default="gpt-5.6-luna")
     topics: Mapped[str] = mapped_column(Text, nullable=False, default="آموزشی,خبری,تعامل,معرفی قابلیت,فروش ویژه", server_default="آموزشی,خبری,تعامل,معرفی قابلیت,فروش ویژه")
+    production_controls: Mapped[str] = mapped_column(Text, nullable=False, default="{}", server_default="{}")
     smart_rules: Mapped[str] = mapped_column(Text, nullable=False, default="{}", server_default="{}")
     smart_risk_level: Mapped[str] = mapped_column(String(16), nullable=False, default="balanced", server_default="balanced")
     posts_per_day: Mapped[int] = mapped_column(Integer, nullable=False, default=2, server_default="2")
