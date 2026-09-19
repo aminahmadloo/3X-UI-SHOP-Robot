@@ -202,12 +202,12 @@ async def ai_menu(callback: CallbackQuery, session: AsyncSession, state: FSMCont
 
 
 @router.callback_query(F.data == "ai_content:toggle", IsAdmin())
-async def toggle(callback: CallbackQuery, session: AsyncSession):
+async def toggle(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
     _, settings = await _settings(session)
     settings.enabled = not settings.enabled
     await session.commit()
     await callback.answer("فعال شد" if settings.enabled else "غیرفعال شد")
-    await ai_menu(callback, session)
+    await ai_menu(callback, session, state)
 
 
 @router.callback_query(F.data == "ai_content:mode", IsAdmin())
@@ -226,13 +226,13 @@ async def mode(callback: CallbackQuery, session: AsyncSession):
 
 
 @router.callback_query(F.data.regexp(r"^ai_content:setmode:(approval|auto|smart)$"), IsAdmin())
-async def set_mode(callback: CallbackQuery, session: AsyncSession):
+async def set_mode(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
     _, settings = await _settings(session)
     settings.mode = callback.data.rsplit(":", 1)[1]
     settings.auto_schedule = settings.mode in {"auto", "smart"}
     await session.commit()
     await callback.answer("حالت ذخیره شد")
-    await ai_menu(callback, session)
+    await ai_menu(callback, session, state)
 
 
 @router.callback_query(F.data.regexp(r"^ai_content:smart:page:\d+$"), IsAdmin())
