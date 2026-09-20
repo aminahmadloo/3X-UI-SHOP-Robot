@@ -27,6 +27,7 @@ class PaymentGatewaySettingsState(StatesGroup):
     waiting_zarinpal_payment_base_url = State()
     waiting_aban_token = State()
     waiting_aban_webhook_secret = State()
+    waiting_winapay_merchant_id = State()
 
 
 def _read_env_lines() -> list[str]:
@@ -105,6 +106,10 @@ def menu_markup(settings: PaymentGatewaySettings | None) -> InlineKeyboardMarkup
         text="💳 تنظیمات کارت به کارت واریزا",
         callback_data="paymentgateway:variza",
     )])
+    rows.append([InlineKeyboardButton(
+        text="💳 تنظیمات ویناپی",
+        callback_data="paymentgateway:winapay",
+    )])
     rows.append([InlineKeyboardButton(text="👁️ مدیریت نمایش روش‌های پرداخت", callback_data="paymentgateway:methods")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data=NavAdminTools.MAIN)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -170,6 +175,8 @@ async def show_menu(callback: CallbackQuery, session: AsyncSession, config: Conf
     token = _read_env_value("ABAN_GATEWAY_TOKEN")
     secret = _read_env_value("ABAN_GATEWAY_WEBHOOK_SECRET")
     aban_status = "🟢 آماده اتصال" if token and secret else "🔴 نیازمند تنظیمات"
+    winapay_merchant_id = _read_env_value("WINAPAY_MERCHANT_ID")
+    winapay_status = "🟢 آماده اتصال" if winapay_merchant_id else "🔴 نیازمند تنظیمات"
 
     text = (
         "💳 <b>تنظیمات درگاه‌های پرداخت</b>\n\n"
@@ -180,8 +187,10 @@ async def show_menu(callback: CallbackQuery, session: AsyncSession, config: Conf
         f"مسیر .env: <code>{html.escape(env_url)}</code>\n"
         f"وضعیت مسیر سفارشی: <b>{custom_status}</b>\n\n"
         "💳 <b>پرداخت خودکار کارت به کارت</b>\n"
-        f"وضعیت اتصال آبان گیت: <b>{aban_status}</b>\n"
-        "تنظیمات آبان و واریزا از مسیرهای مستقل مدیریت می‌شوند."
+        f"وضعیت اتصال آبان گیت: <b>{aban_status}</b>\n\n"
+        "💳 <b>ویناپی</b>\n"
+        f"وضعیت اتصال: <b>{winapay_status}</b>\n"
+        "تنظیمات هر درگاه به‌صورت مستقل مدیریت می‌شود."
     )
     await callback.message.edit_text(text, reply_markup=menu_markup(settings))
 
@@ -297,6 +306,68 @@ async def aban_secret_save(message: Message, state: FSMContext) -> None:
         "⚠️ برای اعمال آن در محیط اجرای Bot، کانتینر باید دوباره ایجاد/راه‌اندازی شود.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💳 تنظیمات آبان گیت", callback_data="paymentgateway:aban")],
+            [InlineKeyboardButton(text="🔙 تنظیمات درگاه‌ها", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
+        ]),
+    )
+
+
+@router.callback_query(F.data == "paymentgateway:winapay", IsAdmin())
+async def winapay_settings_menu(callback: CallbackQuery, config: Config) -> None:
+    merchant_id = _read_env_value("WINAPAY_MERCHANT_ID")
+    configured = bool(merchant_id)
+    callback_url = f"{config.bot.DOMAIN.rstrip('/')}/webhooks/winapay"
+    status = "🟢 آماده استفاده" if configured else "🔴 ناقص"
+    text = (
+        "💳 <b>تنظیمات ویناپی</b>\n\n"
+        f"🔑 Merchant ID: <b>{_mask_secret(merchant_id)}</b>\n"
+        f"📡 وضعیت سرویس: <b>{status}</b>\n"
+        f"🔗 Callback URL: <code>{html.escape(callback_url)}</code>\n\n"
+        "Merchant ID از بخش «درگاه‌های من» پنل ویناپی دریافت می‌شود.\n"
+        "⚠️ پس از تغییر Merchant ID، برای اعمال مقدار جدید در Bot باید کانتینر Bot دوباره راه‌اندازی شود.\n"
+        "⚠️ Callback URL بالا باید در تنظیمات درگاه ویناپی ثبت شده باشد."
+    )
+    await callback.answer()
+    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔑 تنظیم / تغییر Merchant ID", callback_data="paymentgateway:winapay_merchant")],
+        [InlineKeyboardButton(text="🔄 تازه‌سازی وضعیت", callback_data="paymentgateway:winapay")],
+        [InlineKeyboardButton(text="🔙 تنظیمات درگاه‌ها", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
+    ]))
+
+
+@router.callback_query(F.data == "paymentgateway:winapay_merchant", IsAdmin())
+async def winapay_merchant_start(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(PaymentGatewaySettingsState.waiting_winapay_merchant_id)
+    await callback.answer()
+    await callback.message.edit_text(
+        "🔑 <b>تنظیم Merchant ID ویناپی</b>\n\n"
+        "Merchant ID را دقیقاً همان‌طور که در پنل ویناپی نمایش داده می‌شود، در یک پیام ارسال کنید.\n\n"
+        "مقدار پس از ذخیره در پنل به‌صورت کامل نمایش داده نمی‌شود.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 انصراف", callback_data="paymentgateway:winapay")],
+        ]),
+    )
+
+
+@router.message(PaymentGatewaySettingsState.waiting_winapay_merchant_id, IsAdmin())
+async def winapay_merchant_save(message: Message, state: FSMContext) -> None:
+    value = (message.text or "").strip()
+    if not value or len(value) < 8:
+        await message.answer("❌ Merchant ID معتبر نیست.")
+        return
+    try:
+        _write_env_value("WINAPAY_MERCHANT_ID", value)
+    except Exception as exc:
+        await state.clear()
+        await message.answer(f"❌ ذخیره Merchant ID انجام نشد.\n<code>{html.escape(str(exc))}</code>")
+        return
+    await state.clear()
+    await message.answer(
+        "✅ <b>Merchant ID ویناپی با موفقیت ذخیره شد.</b>\n\n"
+        "🔐 مقدار کامل در پنل نمایش داده نمی‌شود.\n"
+        "⚠️ برای فعال‌شدن Winapay در GatewayFactory، کانتینر Bot باید دوباره راه‌اندازی شود.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 تنظیمات ویناپی", callback_data="paymentgateway:winapay")],
             [InlineKeyboardButton(text="🔙 تنظیمات درگاه‌ها", callback_data=NavAdminTools.PAYMENT_GATEWAY_SETTINGS)],
         ]),
     )
