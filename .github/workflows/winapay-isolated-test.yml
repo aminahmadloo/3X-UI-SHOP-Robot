@@ -1,0 +1,32 @@
+name: Winapay isolated tests
+
+on:
+  pull_request:
+    paths:
+      - "app/bot/payment_gateways/winapay_gateway.py"
+      - "app/bot/payment_gateways/gateway_factory.py"
+      - "app/bot/models/subscription_data.py"
+      - "app/bot/routers/payment_method_visibility.py"
+      - "app/bot/routers/admin_tools/payment_gateway_settings_handler.py"
+      - "app/db/models/payment_method_settings.py"
+      - "tests/test_winapay_gateway.py"
+      - ".github/workflows/winapay-isolated-test.yml"
+
+jobs:
+  winapay-isolated:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Poetry
+        run: pip install poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction
+      - name: Install test runner
+        run: poetry run pip install pytest
+      - name: Run isolated Winapay tests
+        run: PYTHONPATH=. poetry run pytest -q tests/test_winapay_gateway.py

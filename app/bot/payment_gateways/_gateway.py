@@ -68,7 +68,7 @@ class PaymentGateway(ABC):
                 amount=int(data.price),
                 transaction_type="topup",
                 description="شارژ کیف پول از طریق درگاه بانکی",
-                reference_id=f"zarinpal:{payment_id}",
+                reference_id=f"{transaction.gateway or 'payment'}:{payment_id}",
             )
             async with self.session() as session:
                 await Transaction.update(session=session, payment_id=payment_id, status=TransactionStatus.COMPLETED)

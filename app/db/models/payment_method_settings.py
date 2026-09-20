@@ -33,6 +33,7 @@ class PaymentMethodSettings(Base):
             ("mp_wallet", "💰 کیف پول", 30),
             ("pay_aban", "💳 پرداخت خودکار کارت به کارت", 40),
             ("pay_blupal", "💳 کارت به کارت هوشمند بلوپال", 50),
+            ("pay_winapay", "💳 پرداخت در ویناپی", 60),
         ]
 
         for gateway in gateways:
