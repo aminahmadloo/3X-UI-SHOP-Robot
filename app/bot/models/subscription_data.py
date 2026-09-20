@@ -32,6 +32,7 @@ _STATE_TO_CODE = {
     "pay_aban": "pa",
     "pay_blupal": "pb",
     "pay_variza": "pv",
+    "pay_winapay": "pw",
 }
 _CODE_TO_STATE = {value: key for key, value in _STATE_TO_CODE.items()}
 
