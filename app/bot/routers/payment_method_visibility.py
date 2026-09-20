@@ -158,6 +158,14 @@ async def payment_method_down(callback: CallbackQuery, session: AsyncSession, ga
     await _show_methods(callback, session, gateway_factory)
 
 
+def _online_gateway_label(key: str, gateway: PaymentGateway) -> str:
+    if key == "pay_zarinpal":
+        return "🏦 درگاه پرداخت آنلاین زرین‌پال"
+    if key == "pay_winapay":
+        return "💳 درگاه پرداخت آنلاین ویناپی"
+    return gateway.name
+
+
 def _online_keys(gateways: list[PaymentGateway]) -> list[str]:
     return [
         key
@@ -559,7 +567,7 @@ async def renewal_online_gateway_menu(
             continue
         rows.append([
             InlineKeyboardButton(
-                text=f"{gateway.name} | {int(data.price):,} تومان".replace(",", "."),
+                text=f"{_online_gateway_label(key, gateway)} | {int(data.price):,} تومان".replace(",", "."),
                 callback_data=f"main_renewal:online_select:{subscription.id}:{plan.id}:{key}",
             )
         ])
@@ -659,7 +667,7 @@ async def wallet_online_gateway_menu(
             continue
         rows.append([
             InlineKeyboardButton(
-                text=f"{gateway.name} | {amount:,} تومان".replace(",", "."),
+                text=f"{_online_gateway_label(key, gateway)} | {amount:,} تومان".replace(",", "."),
                 callback_data=f"wallet:online_select:{amount}:{key}",
             )
         ])
