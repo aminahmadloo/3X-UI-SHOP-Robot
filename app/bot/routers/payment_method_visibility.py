@@ -460,7 +460,7 @@ async def subscription_online_gateway_menu(
             continue
         rows.append([
             InlineKeyboardButton(
-                text=f"{gateway.name} | {int(packed.get('price', 0)):,} تومان".replace(",", "."),
+                text=f"{_online_gateway_label(key, gateway)} | {int(packed.get('price', 0)):,} تومان".replace(",", "."),
                 callback_data=f"mp_online_select:subscription:{key}:{int(packed.get('plan_id', 0))}",
             )
         ])
