@@ -146,7 +146,7 @@ class WinapayGateway(PaymentGateway):
             if existing is not None:
                 return f"{self.PAYMENT_START_URL}/{existing.payment_id}"
 
-            invoice_id = f"toonel-{uuid.uuid4().hex}"
+            invoice_id = uuid.uuid4().hex
             description = "پرداخت سفارش ToonelVPN"
             if data.payment_kind == "wallet_topup":
                 description = "شارژ کیف پول ToonelVPN"
