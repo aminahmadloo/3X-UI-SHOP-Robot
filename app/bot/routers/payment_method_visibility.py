@@ -441,6 +441,33 @@ async def _wallet_gateway(callback: CallbackQuery, user: User, session: AsyncSes
     )
 
 
+def _subscription_state_dict(state_data: dict) -> dict | None:
+    packed = state_data.get("subscription_data")
+    if isinstance(packed, dict):
+        return packed
+    if isinstance(packed, str):
+        try:
+            restored = SubscriptionData.deserialize(packed)
+        except Exception:
+            return None
+        return {
+            "is_extend": restored.is_extend,
+            "is_change": restored.is_change,
+            "user_id": restored.user_id,
+            "devices": restored.devices,
+            "duration": restored.duration,
+            "price": restored.price,
+            "original_price": restored.original_price,
+            "discount_percent": restored.discount_percent,
+            "discount_level_title": restored.discount_level_title,
+            "plan_id": restored.plan_id,
+            "volume_gb": restored.volume_gb,
+            "config_name": restored.config_name,
+            "subscription_id": restored.subscription_id,
+        }
+    return None
+
+
 @subscription_handler.router.callback_query(
     F.data.regexp(r"^mp_online:subscription:\d+$")
 )
@@ -449,8 +476,8 @@ async def subscription_online_gateway_menu(
     state: FSMContext,
     gateway_factory: GatewayFactory,
 ) -> None:
-    packed = (await state.get_data()).get("subscription_data")
-    if not isinstance(packed, dict):
+    packed = _subscription_state_dict(await state.get_data())
+    if packed is None:
         await callback.answer("اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید.", show_alert=True)
         return
 
@@ -501,8 +528,8 @@ async def subscription_online_gateway_selected(
     parts = (callback.data or "").split(":")
     key = parts[2]
     plan_id = int(parts[3])
-    packed = (await state.get_data()).get("subscription_data")
-    if not isinstance(packed, dict):
+    packed = _subscription_state_dict(await state.get_data())
+    if packed is None:
         await callback.answer("اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید.", show_alert=True)
         return
 
