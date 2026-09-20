@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from aiogram import F
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,11 +25,15 @@ from app.bot.utils.navigation import NavAdminTools, NavMain, NavSubscription
 from app.db.models import PaymentMethodSettings, User
 
 
+_ONLINE_GATEWAY_KEYS = {"pay_zarinpal", "pay_winapay"}
+
+
 _DEFAULTS = {
     "pay_zarinpal": ("🏦 زرین‌پال", 10),
     "mp_card": ("💳 کارت به کارت", 20),
     "mp_wallet": ("💰 کیف پول", 30),
     "pay_aban": ("💳 پرداخت خودکار کارت به کارت", 40),
+    "pay_winapay": ("💳 پرداخت در ویناپی", 60),
 }
 
 
@@ -153,25 +158,102 @@ async def payment_method_down(callback: CallbackQuery, session: AsyncSession, ga
     await _show_methods(callback, session, gateway_factory)
 
 
-def _managed_keyboard(plan_id: int, price: int, gateways: list[PaymentGateway], back_callback: str) -> InlineKeyboardMarkup:
+def _online_gateway_label(key: str, gateway: PaymentGateway) -> str:
+    if key == "pay_zarinpal":
+        return "🏦 درگاه پرداخت آنلاین زرین‌پال"
+    if key == "pay_winapay":
+        return "💳 درگاه پرداخت آنلاین ویناپی"
+    return gateway.name
+
+
+def _online_gateway_configured(key: str) -> bool:
+    if key == "pay_zarinpal":
+        return os.getenv("SHOP_PAYMENT_ZARINPAL_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+    if key == "pay_winapay":
+        return bool(os.getenv("WINAPAY_MERCHANT_ID", "").strip())
+    return False
+
+
+def _online_keys(gateways: list[PaymentGateway]) -> list[str]:
+    gateway_keys = {_gateway_key(g) for g in gateways}
+    return [
+        key
+        for key in _ordered_keys(gateways)
+        if key in _ONLINE_GATEWAY_KEYS
+        and key in gateway_keys
+        and _online_gateway_configured(key)
+        and _enabled(key)
+    ]
+
+
+def _online_button(
+    gateways: list[PaymentGateway],
+    callback_data: str,
+    price: int,
+) -> InlineKeyboardButton | None:
+    if not _online_keys(gateways):
+        return None
+    return InlineKeyboardButton(
+        text=f"🌐 درگاه پرداخت آنلاین | {price:,} تومان",
+        callback_data=callback_data,
+    )
+
+
+def _managed_keyboard(
+    plan_id: int,
+    price: int,
+    gateways: list[PaymentGateway],
+    back_callback: str,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     gateway_map = {_gateway_key(g): g for g in gateways}
+
+    online = _online_button(
+        gateways,
+        f"mp_online:subscription:{plan_id}",
+        price,
+    )
+    if online is not None:
+        builder.row(online)
+
     for key in _ordered_keys(gateways):
+        if key in _ONLINE_GATEWAY_KEYS:
+            continue
         if key == "mp_card":
-            builder.row(InlineKeyboardButton(text=f"💳 کارت به کارت | {price:,} تومان", callback_data=f"mp_card:{plan_id}"))
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"💳 کارت به کارت | {price:,} تومان",
+                    callback_data=f"mp_card:{plan_id}",
+                )
+            )
         elif key == "mp_wallet":
-            builder.row(InlineKeyboardButton(text=f"💰 کیف پول | {price:,} تومان", callback_data=f"mp_wallet:{plan_id}"))
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"💰 کیف پول | {price:,} تومان",
+                    callback_data=f"mp_wallet:{plan_id}",
+                )
+            )
         elif (gateway := gateway_map.get(key)) is not None:
-            builder.row(InlineKeyboardButton(text=f"{gateway.name} | {price:,} تومان", callback_data=f"mp:{key}:{plan_id}"))
-    builder.row(InlineKeyboardButton(
-        text="◀️ نام کانفیگ",
-        callback_data=back_callback,
-    ))
-    builder.row(InlineKeyboardButton(
-        text="🔙 بازگشت به منوی اصلی",
-        callback_data=NavMain.MAIN_MENU,
-        style="danger",
-    ))
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"{gateway.name} | {price:,} تومان",
+                    callback_data=f"mp:{key}:{plan_id}",
+                )
+            )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="◀️ نام کانفیگ",
+            callback_data=back_callback,
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 بازگشت به منوی اصلی",
+            callback_data=NavMain.MAIN_MENU,
+            style="danger",
+        )
+    )
     return builder.as_markup()
 
 
@@ -203,18 +285,58 @@ def _payment_keyboard(plan, callback_data, gateways, price_override=None) -> Inl
     return builder.as_markup()
 
 
-def _main_renewal(subscription_id: int, plan_id: int, price: int, factory: GatewayFactory) -> InlineKeyboardMarkup:
+def _main_renewal(
+    subscription_id: int,
+    plan_id: int,
+    price: int,
+    factory: GatewayFactory,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     gateways = factory.get_gateways()
     gateway_map = {_gateway_key(g): g for g in gateways}
+
+    online = _online_button(
+        gateways,
+        f"main_renewal:online:{subscription_id}:{plan_id}",
+        price,
+    )
+    if online is not None:
+        builder.row(online)
+
     for key in _ordered_keys(gateways):
+        if key in _ONLINE_GATEWAY_KEYS:
+            continue
         if key == "mp_card":
-            builder.row(InlineKeyboardButton(text=f"💳 کارت به کارت | {price:,} تومان", callback_data=f"{renew_service_handler.CARD_PREFIX}{subscription_id}:{plan_id}"))
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"💳 کارت به کارت | {price:,} تومان",
+                    callback_data=f"{renew_service_handler.CARD_PREFIX}{subscription_id}:{plan_id}",
+                )
+            )
         elif key == "mp_wallet":
-            builder.row(InlineKeyboardButton(text=f"👛 پرداخت از کیف پول | {price:,} تومان", callback_data=f"main_renewal:wallet:{subscription_id}:{plan_id}"))
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"👛 پرداخت از کیف پول | {price:,} تومان",
+                    callback_data=f"main_renewal:wallet:{subscription_id}:{plan_id}",
+                )
+            )
         elif (gateway := gateway_map.get(key)) is not None:
-            builder.row(InlineKeyboardButton(text=f"{gateway.name} | {price:,} تومان", callback_data=f"{renew_service_handler.GATEWAY_PREFIX}{subscription_id}:{plan_id}:{key}"))
-    builder.row(InlineKeyboardButton(text="🔙 تغییر سرویس", callback_data=f"{renew_service_handler.SERVICE_CALLBACK_PREFIX}{subscription_id}"))
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"{gateway.name} | {price:,} تومان",
+                    callback_data=(
+                        f"{renew_service_handler.GATEWAY_PREFIX}"
+                        f"{subscription_id}:{plan_id}:{key}"
+                    ),
+                )
+            )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 تغییر سرویس",
+            callback_data=f"{renew_service_handler.SERVICE_CALLBACK_PREFIX}{subscription_id}",
+        )
+    )
     builder.row(renew_service_handler._home_button())
     return builder.as_markup()
 
@@ -241,24 +363,50 @@ def _wallet_gateway_keys() -> list[str]:
         keys = [k for k in keys if k != "pay_zarinpal"]
     if not aban_configured:
         keys = [k for k in keys if k != "pay_aban"]
+    winapay_configured = bool(os.getenv("WINAPAY_MERCHANT_ID", "").strip())
+    if not winapay_configured:
+        keys = [k for k in keys if k != "pay_winapay"]
     return keys
 
 
 def _wallet_keyboard(language: str, amount: int) -> InlineKeyboardMarkup:
     if language == "en":
-        gateway_label, card_label, back = "🏦 Bank gateway", "💳 Card-to-card", "🔙 Back"
+        online_label, card_label, back = "🌐 Online payment gateway", "💳 Card-to-card", "🔙 Back"
     elif language == "ru":
-        gateway_label, card_label, back = "🏦 Банковский шлюз", "💳 Перевод с карты на карту", "🔙 Назад"
+        online_label, card_label, back = "🌐 Онлайн-платёж", "💳 Перевод с карты на карту", "🔙 Назад"
     else:
-        gateway_label, card_label, back = "🏦 درگاه بانکی", "💳 کارت به کارت", "🔙 بازگشت"
+        online_label, card_label, back = "🌐 درگاه پرداخت آنلاین", "💳 کارت به کارت", "🔙 بازگشت"
+
     rows: list[list[InlineKeyboardButton]] = []
-    for key in _wallet_gateway_keys():
-        if key == "pay_zarinpal":
-            rows.append([InlineKeyboardButton(text=gateway_label, callback_data=f"wallet:method:gateway:{amount}:pay_zarinpal")])
-        elif key == "mp_card":
-            rows.append([InlineKeyboardButton(text=card_label, callback_data=f"wallet:method:card:{amount}")])
+    keys = _wallet_gateway_keys()
+    online_keys = [key for key in keys if key in _ONLINE_GATEWAY_KEYS]
+
+    if online_keys:
+        rows.append([
+            InlineKeyboardButton(
+                text=online_label,
+                callback_data=f"wallet:online:{amount}",
+            )
+        ])
+
+    for key in keys:
+        if key in _ONLINE_GATEWAY_KEYS:
+            continue
+        if key == "mp_card":
+            rows.append([
+                InlineKeyboardButton(
+                    text=card_label,
+                    callback_data=f"wallet:method:card:{amount}",
+                )
+            ])
         elif key == "pay_aban":
-            rows.append([InlineKeyboardButton(text="💳 پرداخت خودکار کارت به کارت", callback_data=f"wallet:method:gateway:{amount}:pay_aban")])
+            rows.append([
+                InlineKeyboardButton(
+                    text="💳 پرداخت خودکار کارت به کارت",
+                    callback_data=f"wallet:method:gateway:{amount}:pay_aban",
+                )
+            ])
+
     rows.append([InlineKeyboardButton(text=back, callback_data=NavMain.WALLET)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -293,6 +441,341 @@ async def _wallet_gateway(callback: CallbackQuery, user: User, session: AsyncSes
     )
 
 
+def _subscription_state_dict(state_data: dict) -> dict | None:
+    packed = state_data.get("subscription_data")
+    if isinstance(packed, dict):
+        return packed
+    if isinstance(packed, str):
+        try:
+            restored = SubscriptionData.deserialize(packed)
+        except Exception:
+            return None
+        return {
+            "is_extend": restored.is_extend,
+            "is_change": restored.is_change,
+            "user_id": restored.user_id,
+            "devices": restored.devices,
+            "duration": restored.duration,
+            "price": restored.price,
+            "original_price": restored.original_price,
+            "discount_percent": restored.discount_percent,
+            "discount_level_title": restored.discount_level_title,
+            "plan_id": restored.plan_id,
+            "volume_gb": restored.volume_gb,
+            "config_name": restored.config_name,
+            "subscription_id": restored.subscription_id,
+        }
+    return None
+
+
+@subscription_handler.router.callback_query(
+    F.data.regexp(r"^mp_online:subscription:\d+$")
+)
+async def subscription_online_gateway_menu(
+    callback: CallbackQuery,
+    state: FSMContext,
+    gateway_factory: GatewayFactory,
+) -> None:
+    packed = _subscription_state_dict(await state.get_data())
+    if packed is None:
+        await callback.answer("اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید.", show_alert=True)
+        return
+
+    details = (
+        "🌐 <b>درگاه پرداخت آنلاین</b>\n\n"
+        f"📝 نام کانفیگ: <code>{packed.get('config_name', '')}</code>\n"
+        f"💾 پلن: <b>{packed.get('volume_gb', 0)}GB | {packed.get('duration', 0)} روز</b>\n"
+        f"💰 مبلغ پلن انتخابی: <b>{int(packed.get('original_price', packed.get('price', 0))):,}</b> تومان\n"
+        f"🎁 تخفیف {packed.get('discount_level_title') or 'سطح پایه'}: <b>{int(packed.get('discount_percent', 0))}%</b>\n"
+        f"💳 مبلغ قابل پرداخت: <b>{int(packed.get('price', 0)):,}</b> تومان\n\n"
+        "درگاه پرداخت آنلاین را انتخاب کنید:"
+    ).replace(",", ".")
+
+    keys = _online_keys(gateway_factory.get_gateways())
+    rows = []
+    for key in keys:
+        gateway = next((g for g in gateway_factory.get_gateways() if _gateway_key(g) == key), None)
+        if gateway is None or not _enabled(key):
+            continue
+        rows.append([
+            InlineKeyboardButton(
+                text=f"{_online_gateway_label(key, gateway)} | {int(packed.get('price', 0)):,} تومان".replace(",", "."),
+                callback_data=f"mp_online_select:subscription:{key}:{int(packed.get('plan_id', 0))}",
+            )
+        ])
+    rows.append([
+        InlineKeyboardButton(
+            text="🔙 تغییر روش پرداخت",
+            callback_data=f"mp_back:{int(packed.get('plan_id', 0))}",
+        )
+    ])
+    await callback.answer()
+    await callback.message.edit_text(
+        details,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
+@subscription_handler.router.callback_query(
+    F.data.regexp(r"^mp_online_select:subscription:pay_[^:]+:\d+$")
+)
+async def subscription_online_gateway_selected(
+    callback: CallbackQuery,
+    user: User,
+    state: FSMContext,
+    gateway_factory: GatewayFactory,
+) -> None:
+    parts = (callback.data or "").split(":")
+    key = parts[2]
+    plan_id = int(parts[3])
+    packed = _subscription_state_dict(await state.get_data())
+    if packed is None:
+        await callback.answer("اطلاعات سفارش منقضی شده است. لطفاً دوباره پلن را انتخاب کنید.", show_alert=True)
+        return
+
+    data = SubscriptionData(
+        state=NavSubscription.CONFIG_NAME,
+        is_extend=packed.get("is_extend", False),
+        is_change=packed.get("is_change", False),
+        user_id=packed.get("user_id", user.tg_id),
+        devices=packed.get("devices", 0),
+        duration=packed.get("duration", 0),
+        price=packed.get("price", 0),
+        original_price=packed.get("original_price", 0),
+        discount_percent=packed.get("discount_percent", 0),
+        discount_level_title=packed.get("discount_level_title", ""),
+        plan_id=plan_id,
+        volume_gb=packed.get("volume_gb", 0),
+        config_name=packed.get("config_name", ""),
+    )
+
+    if data.user_id != user.tg_id:
+        await callback.answer("خطا در اطلاعات سفارش.", show_alert=True)
+        return
+
+    try:
+        gateway = gateway_factory.get_gateway(key)
+        pay_url = await gateway.create_payment(data)
+    except Exception:
+        await callback.answer("❌ ایجاد لینک پرداخت آنلاین انجام نشد. لطفاً دوباره تلاش کنید.", show_alert=True)
+        return
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "🧾 <b>سفارش شما</b>\n\n"
+        f"📝 نام کانفیگ: <code>{data.config_name}</code>\n"
+        f"💾 حجم: <b>{data.volume_gb} گیگ</b>\n"
+        f"📅 مدت: <b>{data.duration} روز</b>\n"
+        f"💰 مبلغ قابل پرداخت: <b>{int(data.price):,}</b> تومان".replace(",", ".") +
+        "\n\nبرای تکمیل پرداخت روی دکمه زیر بزنید:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"💳 {gateway.name}", url=pay_url)],
+            [InlineKeyboardButton(text="🔙 تغییر روش پرداخت", callback_data=f"mp_online:subscription:{plan_id}")],
+            [InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU)],
+        ]),
+    )
+
+
+@renew_service_handler.router.callback_query(
+    F.data.regexp(r"^main_renewal:online:\d+:\d+$")
+)
+async def renewal_online_gateway_menu(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    services,
+    state: FSMContext,
+    gateway_factory: GatewayFactory,
+) -> None:
+    parts = (callback.data or "").split(":")
+    subscription_id, plan_id = int(parts[2]), int(parts[3])
+    resolved = await renew_service_handler._resolve_renewal_payment_data(
+        session, user, subscription_id, plan_id, services
+    )
+    if resolved is None:
+        await callback.answer("❌ سرویس یا پلن اصلی دیگر معتبر نیست.", show_alert=True)
+        return
+    subscription, plan, data = resolved
+    await state.update_data(subscription_data=data.serialize())
+
+    rows = []
+    gateway_map = {_gateway_key(g): g for g in gateway_factory.get_gateways()}
+    for key in _online_keys(gateway_factory.get_gateways()):
+        gateway = gateway_map.get(key)
+        if gateway is None or not _enabled(key):
+            continue
+        rows.append([
+            InlineKeyboardButton(
+                text=f"{_online_gateway_label(key, gateway)} | {int(data.price):,} تومان".replace(",", "."),
+                callback_data=f"main_renewal:online_select:{subscription.id}:{plan.id}:{key}",
+            )
+        ])
+    rows.append([
+        InlineKeyboardButton(
+            text="🔙 تغییر روش پرداخت",
+            callback_data=f"{renew_service_handler.PAYMENT_METHODS_PREFIX}{subscription.id}:{plan.id}",
+        )
+    ])
+    await callback.answer()
+    await callback.message.edit_text(
+        "🌐 <b>درگاه پرداخت آنلاین</b>\n\n"
+        f"🟢 <b>سرویس:</b> <code>{subscription.config_name}</code>\n"
+        f"📦 حجم افزوده: <b>{plan.volume_gb} GB</b>\n"
+        f"📅 زمان افزوده: <b>{plan.duration_days} روز</b>\n"
+        f"💰 مبلغ پلن: <b>{int(data.original_price):,}</b> تومان\n"
+        f"🎁 تخفیف {data.discount_level_title or 'سطح پایه'}: <b>{data.discount_percent}%</b>\n"
+        f"💳 مبلغ قابل پرداخت: <b>{int(data.price):,}</b> تومان\n\n"
+        "درگاه پرداخت آنلاین را انتخاب کنید:".replace(",", "."),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
+@renew_service_handler.router.callback_query(
+    F.data.regexp(r"^main_renewal:online_select:\d+:\d+:pay_[^:]+$")
+)
+async def renewal_online_gateway_selected(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    services,
+    state: FSMContext,
+    gateway_factory: GatewayFactory,
+) -> None:
+    parts = (callback.data or "").split(":")
+    subscription_id, plan_id, key = int(parts[2]), int(parts[3]), parts[4]
+    if await has_pending_payment(session, user.tg_id):
+        await callback.answer("⏳ یک درخواست پرداخت شما در حال بررسی است.", show_alert=True)
+        return
+    resolved = await renew_service_handler._resolve_renewal_payment_data(
+        session, user, subscription_id, plan_id, services
+    )
+    if resolved is None:
+        await callback.answer("❌ سرویس یا پلن اصلی دیگر معتبر نیست.", show_alert=True)
+        return
+    subscription, plan, data = resolved
+    await state.update_data(subscription_data=data.serialize())
+    try:
+        gateway = gateway_factory.get_gateway(key)
+        pay_url = await gateway.create_payment(data)
+    except Exception:
+        await callback.answer("❌ ایجاد لینک پرداخت آنلاین تمدید انجام نشد. لطفاً دوباره تلاش کنید.", show_alert=True)
+        return
+    await callback.answer()
+    await callback.message.edit_text(
+        "🧾 <b>پرداخت تمدید سرویس</b>\n\n"
+        f"🟢 <b>سرویس:</b> <code>{subscription.config_name}</code>\n"
+        f"📦 حجم افزوده: <b>{plan.volume_gb} GB</b>\n"
+        f"📅 زمان افزوده: <b>{plan.duration_days} روز</b>\n"
+        f"💰 مبلغ پلن: <b>{int(data.original_price):,}</b> تومان\n"
+        f"🎁 تخفیف {data.discount_level_title or 'سطح پایه'}: <b>{data.discount_percent}%</b>\n"
+        f"💳 مبلغ قابل پرداخت: <b>{int(data.price):,}</b> تومان\n\n"
+        "برای تکمیل پرداخت روی دکمه زیر بزنید:".replace(",", "."),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"💳 {gateway.name}", url=pay_url)],
+            [InlineKeyboardButton(
+                text="🔙 تغییر روش پرداخت",
+                callback_data=f"main_renewal:online:{subscription.id}:{plan.id}",
+            )],
+            [InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=renew_service_handler.ENTRY_CALLBACK)],
+        ]),
+    )
+
+
+@wallet_gateway_payment.router.callback_query(
+    F.data.regexp(r"^wallet:online:\d+$")
+)
+async def wallet_online_gateway_menu(
+    callback: CallbackQuery,
+    gateway_factory: GatewayFactory,
+) -> None:
+    # amount is parsed below from callback data to keep the handler independent
+    # of FSM state and persistent wallet UI.
+    try:
+        amount = int((callback.data or "").split(":")[2])
+    except (TypeError, ValueError, IndexError):
+        await callback.answer("❌ مبلغ شارژ نامعتبر است.", show_alert=True)
+        return
+
+    rows = []
+    gateway_map = {_gateway_key(g): g for g in gateway_factory.get_gateways()}
+    for key in _wallet_gateway_keys():
+        if key not in _ONLINE_GATEWAY_KEYS:
+            continue
+        gateway = gateway_map.get(key)
+        if gateway is None or not _enabled(key):
+            continue
+        rows.append([
+            InlineKeyboardButton(
+                text=f"{_online_gateway_label(key, gateway)} | {amount:,} تومان".replace(",", "."),
+                callback_data=f"wallet:online_select:{amount}:{key}",
+            )
+        ])
+    rows.append([
+        InlineKeyboardButton(
+            text="🔙 تغییر روش پرداخت",
+            callback_data=NavMain.WALLET,
+        )
+    ])
+    await callback.answer()
+    await callback.message.edit_text(
+        "🌐 <b>درگاه پرداخت آنلاین</b>\n\n"
+        f"💰 مبلغ شارژ کیف پول: <b>{amount:,}</b> تومان\n\n"
+        "درگاه پرداخت آنلاین را انتخاب کنید:".replace(",", "."),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
+@wallet_gateway_payment.router.callback_query(
+    F.data.regexp(r"^wallet:online_select:\d+:pay_[^:]+$")
+)
+async def wallet_online_gateway_selected(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    gateway_factory: GatewayFactory,
+) -> None:
+    parts = (callback.data or "").split(":")
+    amount, key = int(parts[2]), parts[3]
+    if amount <= 0 or not _enabled(key):
+        await callback.answer("❌ این روش پرداخت در حال حاضر فعال نیست.", show_alert=True)
+        return
+    if await has_pending_payment(session, user.tg_id):
+        await callback.answer("⏳ یک درخواست پرداخت شما در حال بررسی است.", show_alert=True)
+        return
+
+    try:
+        gateway = gateway_factory.get_gateway(key)
+        data = SubscriptionData(
+            state=NavSubscription.CONFIG_NAME,
+            is_extend=False,
+            is_change=False,
+            user_id=user.tg_id,
+            devices=0,
+            duration=0,
+            price=amount,
+            plan_id=0,
+            volume_gb=0,
+            config_name="wallet_topup",
+            payment_kind="wallet_topup",
+        )
+        pay_url = await gateway.create_payment(data)
+    except Exception:
+        await callback.answer("❌ ایجاد لینک پرداخت آنلاین شارژ کیف پول انجام نشد. لطفاً دوباره تلاش کنید.", show_alert=True)
+        return
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "🏦 <b>شارژ کیف پول</b>\n\n"
+        f"💰 مبلغ شارژ: <b>{amount:,}</b> تومان\n\n"
+        "برای تکمیل پرداخت روی دکمه زیر بزنید:".replace(",", "."),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"💳 {gateway.name}", url=pay_url)],
+            [InlineKeyboardButton(text="🔙 تغییر روش پرداخت", callback_data=f"wallet:online:{amount}")],
+            [InlineKeyboardButton(text="🏠 منوی اصلی", callback_data=NavMain.MAIN_MENU)],
+        ]),
+    )
+
+
 def install() -> None:
     payment_gateway_admin.payment_methods_markup = _admin_markup
     payment_gateway_admin.show_payment_methods = _show_methods
@@ -305,7 +788,7 @@ def install() -> None:
     subscription_keyboard.managed_payment_method_keyboard_traffic = lambda sid, p, price, gateways: _managed_keyboard(p, price, gateways, f"traffic:add:{sid}")
     subscription_keyboard.managed_payment_method_keyboard_renewal = lambda p, price, gateways: _managed_keyboard(p, price, gateways, f"renewal:service:{p}")
     wallet_handler.payment_method_keyboard = _wallet_keyboard
-    wallet_gateway_payment.router.callback_query(F.data.regexp(r"^wallet:method:gateway:\d+:(?:pay_zarinpal|pay_aban)$"))(_wallet_gateway)
+    wallet_gateway_payment.router.callback_query(F.data.regexp(r"^wallet:method:gateway:\d+:(?:pay_aban)$"))(_wallet_gateway)
 
 
 install()
