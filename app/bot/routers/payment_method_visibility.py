@@ -421,41 +421,6 @@ async def _wallet_gateway(callback: CallbackQuery, user: User, session: AsyncSes
     )
 
 
-async def _online_gateway_menu(
-    callback: CallbackQuery,
-    gateways: list[PaymentGateway],
-    title: str,
-    details: str,
-    callback_prefix: str,
-    price: int,
-) -> None:
-    rows: list[list[InlineKeyboardButton]] = []
-    gateway_map = {_gateway_key(g): g for g in gateways}
-
-    for key in _online_keys(gateways):
-        gateway = gateway_map.get(key)
-        if gateway is None or not _enabled(key):
-            continue
-        rows.append([
-            InlineKeyboardButton(
-                text=f"{gateway.name} | {price:,} تومان",
-                callback_data=f"{callback_prefix}:{key}",
-            )
-        ])
-
-    rows.append([
-        InlineKeyboardButton(
-            text="🔙 تغییر روش پرداخت",
-            callback_data="__BACK__",
-        )
-    ])
-    await callback.answer()
-    await callback.message.edit_text(
-        details,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
-    )
-
-
 @subscription_handler.router.callback_query(
     F.data.regexp(r"^mp_online:subscription:\d+$")
 )
@@ -674,7 +639,6 @@ async def renewal_online_gateway_selected(
 )
 async def wallet_online_gateway_menu(
     callback: CallbackQuery,
-    amount: int,
     gateway_factory: GatewayFactory,
 ) -> None:
     # amount is parsed below from callback data to keep the handler independent
