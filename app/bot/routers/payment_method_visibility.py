@@ -29,6 +29,7 @@ _DEFAULTS = {
     "mp_card": ("💳 کارت به کارت", 20),
     "mp_wallet": ("💰 کیف پول", 30),
     "pay_aban": ("💳 پرداخت خودکار کارت به کارت", 40),
+    "pay_winapay": ("💳 پرداخت در ویناپی", 60),
 }
 
 
@@ -241,6 +242,9 @@ def _wallet_gateway_keys() -> list[str]:
         keys = [k for k in keys if k != "pay_zarinpal"]
     if not aban_configured:
         keys = [k for k in keys if k != "pay_aban"]
+    winapay_configured = bool(os.getenv("WINAPAY_MERCHANT_ID", "").strip())
+    if not winapay_configured:
+        keys = [k for k in keys if k != "pay_winapay"]
     return keys
 
 
@@ -259,6 +263,8 @@ def _wallet_keyboard(language: str, amount: int) -> InlineKeyboardMarkup:
             rows.append([InlineKeyboardButton(text=card_label, callback_data=f"wallet:method:card:{amount}")])
         elif key == "pay_aban":
             rows.append([InlineKeyboardButton(text="💳 پرداخت خودکار کارت به کارت", callback_data=f"wallet:method:gateway:{amount}:pay_aban")])
+        elif key == "pay_winapay":
+            rows.append([InlineKeyboardButton(text="💳 پرداخت در ویناپی", callback_data=f"wallet:method:gateway:{amount}:pay_winapay")])
     rows.append([InlineKeyboardButton(text=back, callback_data=NavMain.WALLET)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -305,7 +311,7 @@ def install() -> None:
     subscription_keyboard.managed_payment_method_keyboard_traffic = lambda sid, p, price, gateways: _managed_keyboard(p, price, gateways, f"traffic:add:{sid}")
     subscription_keyboard.managed_payment_method_keyboard_renewal = lambda p, price, gateways: _managed_keyboard(p, price, gateways, f"renewal:service:{p}")
     wallet_handler.payment_method_keyboard = _wallet_keyboard
-    wallet_gateway_payment.router.callback_query(F.data.regexp(r"^wallet:method:gateway:\d+:(?:pay_zarinpal|pay_aban)$"))(_wallet_gateway)
+    wallet_gateway_payment.router.callback_query(F.data.regexp(r"^wallet:method:gateway:\d+:(?:pay_zarinpal|pay_aban|pay_winapay)$"))(_wallet_gateway)
 
 
 install()
