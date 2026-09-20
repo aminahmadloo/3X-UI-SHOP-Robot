@@ -166,11 +166,23 @@ def _online_gateway_label(key: str, gateway: PaymentGateway) -> str:
     return gateway.name
 
 
+def _online_gateway_configured(key: str) -> bool:
+    if key == "pay_zarinpal":
+        return os.getenv("SHOP_PAYMENT_ZARINPAL_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+    if key == "pay_winapay":
+        return bool(os.getenv("WINAPAY_MERCHANT_ID", "").strip())
+    return False
+
+
 def _online_keys(gateways: list[PaymentGateway]) -> list[str]:
+    gateway_keys = {_gateway_key(g) for g in gateways}
     return [
         key
         for key in _ordered_keys(gateways)
         if key in _ONLINE_GATEWAY_KEYS
+        and key in gateway_keys
+        and _online_gateway_configured(key)
+        and _enabled(key)
     ]
 
 
