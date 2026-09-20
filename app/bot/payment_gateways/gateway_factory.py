@@ -11,6 +11,7 @@ from ._gateway import PaymentGateway
 from .aban_gateway import AbanGateway
 from .blupal_gateway import BluPalGateway
 from .zarinpal import ZarinPal
+from .winapay_gateway import WinapayGateway
 
 
 class GatewayFactory:
@@ -42,3 +43,5 @@ class GatewayFactory:
             self.register_gateway(AbanGateway(*dependencies))
         if BluPalGateway.is_configured():
             self.register_gateway(BluPalGateway(*dependencies))
+        if WinapayGateway.is_configured():
+            self.register_gateway(WinapayGateway(*dependencies))
