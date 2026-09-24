@@ -14,7 +14,7 @@ class BluPalGatewayTests(unittest.TestCase):
         result = BluPalGateway._validate_created_invoice_response(
             {
                 "invoice_id": "123456",
-                "payment_link": "https://blupal.net/payment/123456",
+                "payment_link": "https://blupal.top/payment/123456",
                 "amount": 1_000_000,
                 "final_amount": 1_000_042,
             },
@@ -22,7 +22,7 @@ class BluPalGatewayTests(unittest.TestCase):
         )
         self.assertEqual(
             result,
-            ("123456", "https://blupal.net/payment/123456", 1_000_042),
+            ("123456", "https://blupal.top/payment/123456", 1_000_042),
         )
 
     def test_rejects_created_invoice_amount_mismatch(self) -> None:
@@ -30,7 +30,7 @@ class BluPalGatewayTests(unittest.TestCase):
             BluPalGateway._validate_created_invoice_response(
                 {
                     "invoice_id": "123456",
-                    "payment_link": "https://blupal.net/payment/123456",
+                    "payment_link": "https://blupal.top/payment/123456",
                     "amount": 999_999,
                     "final_amount": 1_000_042,
                 },
@@ -40,7 +40,7 @@ class BluPalGatewayTests(unittest.TestCase):
     def test_rejects_created_invoice_final_amount_outside_range(self) -> None:
         base = {
             "invoice_id": "123456",
-            "payment_link": "https://blupal.net/payment/123456",
+            "payment_link": "https://blupal.top/payment/123456",
             "amount": 1_000_000,
         }
 
@@ -61,7 +61,7 @@ class BluPalGatewayTests(unittest.TestCase):
             BluPalGateway._validate_created_invoice_response(
                 {
                     "invoice_id": "abc",
-                    "payment_link": "https://blupal.net/payment/abc",
+                    "payment_link": "https://blupal.top/payment/abc",
                     "amount": 1_000_000,
                     "final_amount": 1_000_001,
                 },
