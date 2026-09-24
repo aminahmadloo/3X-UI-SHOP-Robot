@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
@@ -16,7 +17,7 @@ from app.bot.services import ServicesContainer
 from app.bot.states.test_account_settings import TestAccountSettingsStates
 from app.bot.tasks.test_account_cleanup import reschedule_cleanup
 from app.bot.utils.navigation import NavAdminTools
-from app.db.models import TestAccount, TestAccountSettings
+from app.db.models import TestAccount, TestAccountSettings, User
 
 router = Router(name=__name__)
 
@@ -73,8 +74,26 @@ def _keyboard(settings: TestAccountSettings) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text="♻️ فاصله استفاده مجدد",
+                    callback_data="test_account_settings:reuse_after_days",
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="🕐 تغییر فاصله پاکسازی",
                     callback_data="test_account_settings:cleanup_interval",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔄 ریست استفاده برای همه",
+                    callback_data="test_account_settings:reset_all",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="👤 ریست استفاده یک کاربر",
+                    callback_data="test_account_settings:reset_user",
                 )
             ],
             [
@@ -118,6 +137,13 @@ async def _render(
         f"وضعیت: {status}\n"
         f"حجم هر تست: <b>{settings.volume_mb} MB</b>\n"
         f"مدت هر تست: <b>{settings.duration_days} روز</b>\n"
+        f"فاصله استفاده مجدد: <b>{settings.reuse_after_days} روز</b>\n"
+        f"ریست سراسری: <b>{settings.reset_at.strftime('%Y-%m-%d %H:%M')} UTC</b>\n"
+        if settings.reset_at
+        else
+        f"مدت هر تست: <b>{settings.duration_days} روز</b>\n"
+        f"فاصله استفاده مجدد: <b>{settings.reuse_after_days} روز</b>\n"
+        "ریست سراسری: <b>ندارد</b>\n"
         f"پاکسازی خودکار: <b>هر {settings.cleanup_interval_hours} ساعت</b>\n\n"
         f"تعداد تست‌های ثبت‌شده: <b>{total_used}</b>\n"
         f"تست‌های فعال فعلی: <b>{active}</b>\n\n"
