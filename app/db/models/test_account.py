@@ -18,6 +18,16 @@ class TestAccountSettings(Base):
     cleanup_interval_hours: Mapped[int] = mapped_column(
         Integer, nullable=False, default=12
     )
+    # 0 preserves the historical one-time-only behavior. A positive value
+    # allows a user to request a new test after this many days since their
+    # most recent completed test account.
+    reuse_after_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    # One-off global reset marker. Historical test records remain untouched.
+    reset_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
 
     @classmethod
     async def get(cls, session: AsyncSession) -> Self | None:
@@ -35,6 +45,8 @@ class TestAccountSettings(Base):
             volume_mb=200,
             duration_days=2,
             cleanup_interval_hours=12,
+            reuse_after_days=0,
+            reset_at=None,
         )
         session.add(item)
         await session.commit()
