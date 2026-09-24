@@ -48,20 +48,20 @@ class BluPalGatewayTests(unittest.TestCase):
         }
 
         with self.assertRaises(RuntimeError):
-            BluPalGateway._validate_created_invoice_response(
+            self.gateway._validate_created_invoice_response(
                 {**base, "final_amount": 999_999},
                 1_000_000,
             )
 
         with self.assertRaises(RuntimeError):
-            BluPalGateway._validate_created_invoice_response(
+            self.gateway._validate_created_invoice_response(
                 {**base, "final_amount": 1_001_000},
                 1_000_000,
             )
 
     def test_rejects_invalid_created_invoice_id(self) -> None:
         with self.assertRaises(RuntimeError):
-            BluPalGateway._validate_created_invoice_response(
+            self.gateway._validate_created_invoice_response(
                 {
                     "invoice_id": "abc",
                     "payment_link": "https://blupal.top/payment/abc",
