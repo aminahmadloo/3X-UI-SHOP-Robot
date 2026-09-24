@@ -549,6 +549,8 @@ async def save_reset_one_test_account_user(
 
     user.trial_reset_at = datetime.utcnow()
     await session.commit()
+
+    state_data = await state.get_data()
     await state.clear()
 
     confirmation = await message.answer(
@@ -556,7 +558,6 @@ async def save_reset_one_test_account_user(
         reply_markup=await _keyboard_after_refresh(session),
     )
 
-    state_data = await state.get_data()
     prompt_message_id = state_data.get("prompt_message_id")
     prompt_chat_id = state_data.get("prompt_chat_id")
     if prompt_message_id and prompt_chat_id:
