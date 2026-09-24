@@ -5,13 +5,16 @@ from app.bot.payment_gateways.blupal_gateway import BluPalGateway
 
 
 class BluPalGatewayTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.gateway = object.__new__(BluPalGateway)
+
     def test_toman_to_rial_conversion(self) -> None:
         self.assertEqual(BluPalGateway._to_rial(100_000), 1_000_000)
         self.assertEqual(BluPalGateway._to_rial(Decimal("1250.5")), 12_505)
 
 
     def test_validates_created_invoice_response(self) -> None:
-        result = BluPalGateway._validate_created_invoice_response(
+        result = self.gateway._validate_created_invoice_response(
             {
                 "invoice_id": "123456",
                 "payment_link": "https://blupal.top/payment/123456",
