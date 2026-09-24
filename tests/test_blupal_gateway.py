@@ -30,7 +30,7 @@ class BluPalGatewayTests(unittest.TestCase):
 
     def test_rejects_created_invoice_amount_mismatch(self) -> None:
         with self.assertRaises(RuntimeError):
-            BluPalGateway._validate_created_invoice_response(
+            self.gateway._validate_created_invoice_response(
                 {
                     "invoice_id": "123456",
                     "payment_link": "https://blupal.top/payment/123456",
