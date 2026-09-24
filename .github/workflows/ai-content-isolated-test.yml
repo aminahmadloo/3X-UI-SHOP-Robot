@@ -61,9 +61,6 @@ jobs:
           BOT_DOMAIN: "example.test"
           XUI_USERNAME: "test"
           XUI_PASSWORD: "test"
-          BOT_DOMAIN: "example.test"
-          XUI_USERNAME: "test"
-          XUI_PASSWORD: "test"
           DB_NAME: "ai_migration_ci"
         run: poetry run alembic -c app/db/alembic.ini upgrade 20260920_ai_content_production
       - name: Verify AI production controls migration
@@ -101,6 +98,7 @@ jobs:
           BOT_ADMINS: "1"
           BOT_DEV_ID: "1"
           BOT_SUPPORT_ID: "1"
+          BOT_DOMAIN: "example.test"
           DB_NAME: "ai_migration_ci"
         run: poetry run alembic -c app/db/alembic.ini upgrade 20260920_ai_content_production
       - name: Verify AI production controls re-upgrade
