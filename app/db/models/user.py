@@ -60,6 +60,9 @@ class User(Base):
         "Promocode", back_populates="activated_user"
     )
     is_trial_used: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # One-off per-user reset marker for the test-account eligibility policy.
+    # This does not erase the historical is_trial_used flag.
+    trial_reset_at: Mapped[datetime | None] = mapped_column(nullable=True)
     referrals_sent: Mapped[list["Referral"]] = relationship(  # type: ignore
         "Referral",
         foreign_keys="Referral.referrer_tg_id",
