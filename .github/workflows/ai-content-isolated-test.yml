@@ -99,6 +99,8 @@ jobs:
           BOT_DEV_ID: "1"
           BOT_SUPPORT_ID: "1"
           BOT_DOMAIN: "example.test"
+          XUI_USERNAME: "test"
+          XUI_PASSWORD: "test"
           DB_NAME: "ai_migration_ci"
         run: poetry run alembic -c app/db/alembic.ini upgrade 20260920_ai_content_production
       - name: Verify AI production controls re-upgrade
@@ -106,7 +108,7 @@ jobs:
           python - <<'PY'
           import sqlite3
           con = sqlite3.connect("app/data/ai_migration_ci.sqlite3")
-          cols = {row[1] for row in con.execute("PRAGMA table_info(ai_content_settings)")}
-          assert "production_controls" in cols, cols
+          cols = {row[1]: row[2] for row in con.execute("PRAGMA table_info(ai_content_settings)")}
+          assert cols.get("production_controls") == "TEXT", cols
           print("re-upgrade verified")
           PY
