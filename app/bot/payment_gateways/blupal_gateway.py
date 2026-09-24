@@ -50,8 +50,8 @@ class BluPalGateway(PaymentGateway):
     callback = "pay_blupal"
     WEBHOOK_PATH = "/webhooks/blupal"
     RETURN_PATH = "/back"
-    DEFAULT_API_BASE_URL = "https://blupal.net/api"
-    DEFAULT_PAYMENT_BASE_URL = "https://blupal.net/payment"
+    DEFAULT_API_BASE_URL = "https://blupal.top/api"
+    DEFAULT_PAYMENT_BASE_URL = "https://blupal.top/payment"
 
     def __init__(
         self,
@@ -219,7 +219,7 @@ class BluPalGateway(PaymentGateway):
 
         if public_token:
             return BluPalPaymentURL(
-                f"https://blupal.net/payment/{public_token}",
+                f"https://blupal.top/payment/{public_token}",
                 invoice_id,
             )
 
@@ -265,7 +265,7 @@ class BluPalGateway(PaymentGateway):
         except (TypeError, ValueError) as exc:
             raise RuntimeError("BluPal returned invalid invoice amounts") from exc
 
-        if not invoice_id.isdigit() or not explicit_payment_link.startswith("https://blupal.net/payment/"):
+        if not invoice_id.isdigit() or not explicit_payment_link.startswith("https://blupal.top/payment/"):
             raise RuntimeError("BluPal returned an incomplete invoice")
 
         if remote_amount != expected_rial:
