@@ -73,77 +73,84 @@ def _latest(created_at, status="deleted"):
 
 class TestTestAccountReuseEligibility(unittest.IsolatedAsyncioTestCase):
     async def test_never_used_user_is_eligible(self):
+        user = _user(is_trial_used=False)
         service = _service(_settings())
-        service.session_factory = _SessionFactory(_FakeSession([None, None, None]))
-        self.assertTrue(await service.is_test_account_available(_user(is_trial_used=False)))
+        service.session_factory = _SessionFactory(_FakeSession([user, None, None]))
+        self.assertTrue(await service.is_test_account_available(user))
 
     async def test_used_user_is_blocked_when_reuse_is_disabled(self):
+        user = _user()
         service = _service(_settings(reuse_after_days=0))
         service.session_factory = _SessionFactory(
-            _FakeSession([None, None, _latest(datetime.utcnow() - timedelta(days=365))])
+            _FakeSession([user, None, _latest(datetime.utcnow() - timedelta(days=365))])
         )
-        self.assertFalse(await service.is_test_account_available(_user()))
+        self.assertFalse(await service.is_test_account_available(user))
 
     async def test_reuse_after_days_allows_old_test(self):
+        user = _user()
         service = _service(_settings(reuse_after_days=30))
         service.session_factory = _SessionFactory(
-            _FakeSession([None, None, _latest(datetime.utcnow() - timedelta(days=31))])
+            _FakeSession([user, None, _latest(datetime.utcnow() - timedelta(days=31))])
         )
-        self.assertTrue(await service.is_test_account_available(_user()))
+        self.assertTrue(await service.is_test_account_available(user))
 
     async def test_reuse_after_days_blocks_recent_test(self):
+        user = _user()
         service = _service(_settings(reuse_after_days=30))
         service.session_factory = _SessionFactory(
-            _FakeSession([None, None, _latest(datetime.utcnow() - timedelta(days=29, hours=23))])
+            _FakeSession([user, None, _latest(datetime.utcnow() - timedelta(days=29, hours=23))])
         )
-        self.assertFalse(await service.is_test_account_available(_user()))
+        self.assertFalse(await service.is_test_account_available(user))
 
     async def test_per_user_reset_allows_previous_test(self):
         reset_at = datetime.utcnow()
+        user = _user(trial_reset_at=reset_at)
         service = _service(_settings())
         service.session_factory = _SessionFactory(
-            _FakeSession([None, None, _latest(reset_at - timedelta(seconds=1))])
+            _FakeSession([user, None, _latest(reset_at - timedelta(seconds=1))])
         )
-        self.assertTrue(
-            await service.is_test_account_available(_user(trial_reset_at=reset_at))
-        )
+        self.assertTrue(await service.is_test_account_available(user))
 
     async def test_global_reset_allows_previous_test(self):
         reset_at = datetime.utcnow()
+        user = _user()
         service = _service(_settings(reset_at=reset_at))
         service.session_factory = _SessionFactory(
-            _FakeSession([None, None, _latest(reset_at - timedelta(seconds=1))])
+            _FakeSession([user, None, _latest(reset_at - timedelta(seconds=1))])
         )
-        self.assertTrue(await service.is_test_account_available(_user()))
+        self.assertTrue(await service.is_test_account_available(user))
 
     async def test_active_test_still_blocks_reuse(self):
+        user = _user()
         service = _service(_settings(reuse_after_days=3650))
         service.session_factory = _SessionFactory(
-            _FakeSession([None, _latest(datetime.utcnow(), status="active")])
+            _FakeSession([user, _latest(datetime.utcnow(), status="active")])
         )
-        self.assertFalse(await service.is_test_account_available(_user()))
+        self.assertFalse(await service.is_test_account_available(user))
 
     async def test_trial_history_flag_is_preserved(self):
+        user = _user(is_trial_used=True)
         service = _service(_settings(reuse_after_days=30))
         service.session_factory = _SessionFactory(
-            _FakeSession([None, None, _latest(datetime.utcnow() - timedelta(days=31))])
+            _FakeSession([user, None, _latest(datetime.utcnow() - timedelta(days=31))])
         )
-        user = _user(is_trial_used=True)
         self.assertTrue(await service.is_test_account_available(user))
         self.assertTrue(user.is_trial_used)
 
     async def test_reset_does_not_make_newer_test_eligible(self):
         reset_at = datetime.utcnow()
+        user = _user()
         service = _service(_settings(reset_at=reset_at))
         service.session_factory = _SessionFactory(
-            _FakeSession([None, None, _latest(reset_at + timedelta(seconds=1))])
+            _FakeSession([user, None, _latest(reset_at + timedelta(seconds=1))])
         )
-        self.assertFalse(await service.is_test_account_available(_user()))
+        self.assertFalse(await service.is_test_account_available(user))
 
     async def test_disabled_test_accounts_are_not_available(self):
+        user = _user()
         service = _service(_settings(enabled=False))
-        service.session_factory = _SessionFactory(_FakeSession([]))
-        self.assertFalse(await service.is_test_account_available(_user()))
+        service.session_factory = _SessionFactory([])
+        self.assertFalse(await service.is_test_account_available(user))
 
 
 if __name__ == "__main__":
