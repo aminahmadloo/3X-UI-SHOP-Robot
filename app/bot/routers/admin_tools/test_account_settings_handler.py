@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
@@ -16,7 +17,7 @@ from app.bot.services import ServicesContainer
 from app.bot.states.test_account_settings import TestAccountSettingsStates
 from app.bot.tasks.test_account_cleanup import reschedule_cleanup
 from app.bot.utils.navigation import NavAdminTools
-from app.db.models import TestAccount, TestAccountSettings
+from app.db.models import TestAccount, TestAccountSettings, User
 
 router = Router(name=__name__)
 
@@ -73,8 +74,26 @@ def _keyboard(settings: TestAccountSettings) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text="♻️ فاصله استفاده مجدد",
+                    callback_data="test_account_settings:reuse_after_days",
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="🕐 تغییر فاصله پاکسازی",
                     callback_data="test_account_settings:cleanup_interval",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔄 ریست استفاده برای همه",
+                    callback_data="test_account_settings:reset_all",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="👤 ریست استفاده یک کاربر",
+                    callback_data="test_account_settings:reset_user",
                 )
             ],
             [
@@ -112,17 +131,24 @@ async def _render(
     active = int(result.scalar_one() or 0)
 
     status = "🟢 فعال" if settings.enabled else "🔴 غیرفعال"
+    reset_text = (
+        f"{settings.reset_at.strftime('%Y-%m-%d %H:%M')} UTC"
+        if settings.reset_at
+        else "ندارد"
+    )
 
     text = (
         "🎁 <b>مدیریت اکانت تست</b>\n\n"
         f"وضعیت: {status}\n"
         f"حجم هر تست: <b>{settings.volume_mb} MB</b>\n"
         f"مدت هر تست: <b>{settings.duration_days} روز</b>\n"
+        f"فاصله استفاده مجدد: <b>{settings.reuse_after_days} روز</b>\n"
+        f"ریست سراسری: <b>{reset_text}</b>\n"
         f"پاکسازی خودکار: <b>هر {settings.cleanup_interval_hours} ساعت</b>\n\n"
         f"تعداد تست‌های ثبت‌شده: <b>{total_used}</b>\n"
         f"تست‌های فعال فعلی: <b>{active}</b>\n\n"
-        "هر کاربر فقط یک بار می‌تواند اکانت تست دریافت کند و "
-        "سابقه آن حتی پس از حذف Client از 3X-UI حفظ می‌شود."
+        "سابقه تست‌ها حفظ می‌شود. با تعیین فاصله استفاده مجدد، "
+        "کاربر پس از گذشت آن مدت از آخرین تست می‌تواند دوباره تست بگیرد."
     )
 
     await callback.message.edit_text(
@@ -390,6 +416,165 @@ async def save_cleanup_interval(
         confirmation.message_id,
         5.0,
     )
+
+
+@router.callback_query(
+    F.data == "test_account_settings:reuse_after_days",
+    IsAdmin(),
+)
+async def edit_reuse_after_days(
+    callback: CallbackQuery,
+    state: FSMContext,
+) -> None:
+    await state.set_state(TestAccountSettingsStates.waiting_reuse_after_days)
+    await callback.answer()
+    prompt = await callback.message.answer(
+        "♻️ <b>فاصله استفاده مجدد از اکانت تست</b>\n\n"
+        "تعداد روز از آخرین تست را وارد کنید.\n"
+        "عدد <code>0</code> یعنی هر کاربر فقط یک بار مجاز باشد.\n"
+        "مثلاً: <code>30</code>"
+    )
+    await state.update_data(
+        prompt_message_id=prompt.message_id,
+        prompt_chat_id=prompt.chat.id,
+    )
+
+
+@router.message(
+    TestAccountSettingsStates.waiting_reuse_after_days,
+    IsAdmin(),
+)
+async def save_reuse_after_days(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    try:
+        value = int((message.text or "").strip())
+        if value < 0 or value > 3650:
+            raise ValueError
+    except ValueError:
+        await message.answer(
+            "❌ مقدار نامعتبر است. عددی بین ۰ تا ۳۶۵۰ روز وارد کنید."
+        )
+        return
+
+    state_data = await state.get_data()
+    settings = await TestAccountSettings.get_or_create(session)
+    settings.reuse_after_days = value
+    await session.commit()
+    await state.clear()
+
+    text = (
+        "✅ فاصله استفاده مجدد ذخیره شد.\n"
+        f"از این پس فاصله مجاز: <b>{value} روز</b>"
+        if value
+        else
+        "✅ حالت یک‌بارمصرف فعال شد."
+    )
+    confirmation = await message.answer(
+        text,
+        reply_markup=_keyboard(settings),
+    )
+
+    prompt_message_id = state_data.get("prompt_message_id")
+    prompt_chat_id = state_data.get("prompt_chat_id")
+    if prompt_message_id and prompt_chat_id:
+        _schedule_delete(message.bot, prompt_chat_id, prompt_message_id, 5.0)
+    _schedule_delete(
+        message.bot,
+        confirmation.chat.id,
+        confirmation.message_id,
+        5.0,
+    )
+
+
+@router.callback_query(
+    F.data == "test_account_settings:reset_all",
+    IsAdmin(),
+)
+async def reset_all_test_account_users(
+    callback: CallbackQuery,
+    session: AsyncSession,
+) -> None:
+    settings = await TestAccountSettings.get_or_create(session)
+    settings.reset_at = datetime.utcnow()
+    await session.commit()
+    await callback.answer("ریست سراسری انجام شد.", show_alert=True)
+    await _render(callback, session)
+
+
+@router.callback_query(
+    F.data == "test_account_settings:reset_user",
+    IsAdmin(),
+)
+async def reset_one_test_account_user(
+    callback: CallbackQuery,
+    state: FSMContext,
+) -> None:
+    await state.set_state(TestAccountSettingsStates.waiting_reset_user_id)
+    await callback.answer()
+    prompt = await callback.message.answer(
+        "👤 <b>ریست استفاده یک کاربر</b>\n\n"
+        "Telegram ID کاربر را وارد کنید.\n"
+        "مثلاً: <code>78797797</code>"
+    )
+    await state.update_data(
+        prompt_message_id=prompt.message_id,
+        prompt_chat_id=prompt.chat.id,
+    )
+
+
+@router.message(
+    TestAccountSettingsStates.waiting_reset_user_id,
+    IsAdmin(),
+)
+async def save_reset_one_test_account_user(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    try:
+        tg_id = int((message.text or "").strip())
+        if tg_id <= 0:
+            raise ValueError
+    except ValueError:
+        await message.answer("❌ Telegram ID نامعتبر است.")
+        return
+
+    user = await User.get(session=session, tg_id=tg_id)
+    if user is None:
+        await message.answer("❌ کاربر پیدا نشد.")
+        return
+
+    user.trial_reset_at = datetime.utcnow()
+    await session.commit()
+
+    state_data = await state.get_data()
+    await state.clear()
+
+    confirmation = await message.answer(
+        f"✅ امکان استفاده مجدد برای کاربر <code>{tg_id}</code> ریست شد.",
+        reply_markup=await _keyboard_after_refresh(session),
+    )
+
+    prompt_message_id = state_data.get("prompt_message_id")
+    prompt_chat_id = state_data.get("prompt_chat_id")
+    if prompt_message_id and prompt_chat_id:
+        _schedule_delete(message.bot, prompt_chat_id, prompt_message_id, 5.0)
+    _schedule_delete(
+        message.bot,
+        confirmation.chat.id,
+        confirmation.message_id,
+        5.0,
+    )
+
+
+async def _keyboard_after_refresh(
+    session: AsyncSession,
+) -> InlineKeyboardMarkup:
+    settings = await TestAccountSettings.get_or_create(session)
+    return _keyboard(settings)
 
 
 @router.callback_query(

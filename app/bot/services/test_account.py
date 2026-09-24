@@ -35,6 +35,75 @@ class TestAccountService:
     async def get_settings(self, session: AsyncSession) -> TestAccountSettings:
         return await TestAccountSettings.get_or_create(session)
 
+    async def is_test_account_available(self, user: User) -> bool:
+        """Return whether the user is currently eligible for a test account.
+
+        Eligibility is based on the test-account history, not by erasing the
+        historical is_trial_used flag. This supports both one-off admin resets
+        and a configurable reuse cooldown.
+        """
+        async with self.session_factory() as session:
+            settings = await self.get_settings(session)
+            if not settings.enabled:
+                return False
+
+            fresh_user = await User.get(session=session, tg_id=user.tg_id)
+            if fresh_user is None:
+                return False
+
+            result = await session.execute(
+                select(TestAccount)
+                .where(
+                    TestAccount.telegram_user_id == user.tg_id,
+                    TestAccount.status.in_(["active", "pending"]),
+                )
+                .order_by(TestAccount.id.desc())
+                .limit(1)
+            )
+            if result.scalar_one_or_none() is not None:
+                return False
+
+            result = await session.execute(
+                select(TestAccount)
+                .where(
+                    TestAccount.telegram_user_id == user.tg_id,
+                    TestAccount.status != "failed",
+                )
+                .order_by(TestAccount.created_at.desc(), TestAccount.id.desc())
+                .limit(1)
+            )
+            latest_test = result.scalar_one_or_none()
+
+            if latest_test is None:
+                return not fresh_user.is_trial_used
+
+            now = datetime.utcnow()
+
+            # A per-user reset only makes tests before the reset eligible.
+            if (
+                fresh_user.trial_reset_at is not None
+                and latest_test.created_at < fresh_user.trial_reset_at
+            ):
+                return True
+
+            # A global reset is a one-off policy change; history is preserved.
+            if (
+                settings.reset_at is not None
+                and latest_test.created_at < settings.reset_at
+            ):
+                return True
+
+            # Positive value enables recurring tests. Zero preserves the
+            # historical one-time-only behavior.
+            if settings.reuse_after_days > 0:
+                reusable_after = now - timedelta(
+                    days=int(settings.reuse_after_days)
+                )
+                if latest_test.created_at <= reusable_after:
+                    return True
+
+            return False
+
     async def create_test_account(self, user: User) -> tuple[str, TestAccount] | None:
         async with self.session_factory() as session:
             settings = await self.get_settings(session)
@@ -44,7 +113,10 @@ class TestAccountService:
 
             fresh_user = await User.get(session=session, tg_id=user.tg_id)
 
-            if fresh_user and fresh_user.is_trial_used:
+            if fresh_user is None:
+                return None
+
+            if not await self.is_test_account_available(fresh_user):
                 return None
 
             existing_records = await TestAccount.get_all_by_telegram_id(
