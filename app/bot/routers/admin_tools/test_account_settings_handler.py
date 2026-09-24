@@ -131,6 +131,11 @@ async def _render(
     active = int(result.scalar_one() or 0)
 
     status = "🟢 فعال" if settings.enabled else "🔴 غیرفعال"
+    reset_text = (
+        f"{settings.reset_at.strftime('%Y-%m-%d %H:%M')} UTC"
+        if settings.reset_at
+        else "ندارد"
+    )
 
     text = (
         "🎁 <b>مدیریت اکانت تست</b>\n\n"
@@ -138,17 +143,12 @@ async def _render(
         f"حجم هر تست: <b>{settings.volume_mb} MB</b>\n"
         f"مدت هر تست: <b>{settings.duration_days} روز</b>\n"
         f"فاصله استفاده مجدد: <b>{settings.reuse_after_days} روز</b>\n"
-        f"ریست سراسری: <b>{settings.reset_at.strftime('%Y-%m-%d %H:%M')} UTC</b>\n"
-        if settings.reset_at
-        else
-        f"مدت هر تست: <b>{settings.duration_days} روز</b>\n"
-        f"فاصله استفاده مجدد: <b>{settings.reuse_after_days} روز</b>\n"
-        "ریست سراسری: <b>ندارد</b>\n"
+        f"ریست سراسری: <b>{reset_text}</b>\n"
         f"پاکسازی خودکار: <b>هر {settings.cleanup_interval_hours} ساعت</b>\n\n"
         f"تعداد تست‌های ثبت‌شده: <b>{total_used}</b>\n"
         f"تست‌های فعال فعلی: <b>{active}</b>\n\n"
-        "هر کاربر فقط یک بار می‌تواند اکانت تست دریافت کند و "
-        "سابقه آن حتی پس از حذف Client از 3X-UI حفظ می‌شود."
+        "سابقه تست‌ها حفظ می‌شود. با تعیین فاصله استفاده مجدد، "
+        "کاربر پس از گذشت آن مدت از آخرین تست می‌تواند دوباره تست بگیرد."
     )
 
     await callback.message.edit_text(
