@@ -47,7 +47,7 @@ def _menu() -> InlineKeyboardMarkup:
 
 def _show_text(config) -> str:
     api_key = _read(BLUPAL_KEY)
-    base_url = _read(BLUPAL_BASE) or "https://blupal.net/api"
+    base_url = _read(BLUPAL_BASE) or "https://blupal.top/api"
     webhook = f"{config.bot.DOMAIN.rstrip('/')}{BLUPAL_WEBHOOK_PATH}"
     mode = "Sandbox" if api_key.startswith("blu_test_") else "Live" if api_key.startswith("blu_live_") else "نامشخص"
     return (
@@ -107,7 +107,7 @@ async def blupal_key_save(message: Message, state: FSMContext) -> None:
     try:
         _write(BLUPAL_KEY, value)
         if not _read(BLUPAL_BASE):
-            _write(BLUPAL_BASE, "https://blupal.net/api")
+            _write(BLUPAL_BASE, "https://blupal.top/api")
     except Exception as exc:
         await state.clear()
         await message.answer(f"❌ ذخیره API Key انجام نشد.\n<code>{html.escape(str(exc))}</code>")
