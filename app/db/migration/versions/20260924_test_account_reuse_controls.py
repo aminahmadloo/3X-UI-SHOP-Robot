@@ -42,6 +42,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("users", "trial_reset_at")
-    op.drop_column("test_account_settings", "reset_at")
-    op.drop_column("test_account_settings", "reuse_after_days")
+    with op.batch_alter_table("users") as batch_op:
+        batch_op.drop_column("trial_reset_at")
+
+    with op.batch_alter_table("test_account_settings") as batch_op:
+        batch_op.drop_column("reset_at")
+        batch_op.drop_column("reuse_after_days")
