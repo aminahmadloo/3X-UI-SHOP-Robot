@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.bot.models import ServicesContainer
 from app.bot.utils.constants import MAIN_MESSAGE_ID_KEY, PREVIOUS_CALLBACK_KEY
+from app.bot.utils.jalali import format_jalali
 from app.bot.utils.navigation import NavMain, NavSubscription
 from app.db.models import User
 
@@ -28,8 +29,10 @@ async def callback_get_trial(
         await services.notification.notify_by_id(
             chat_id=user.tg_id,
             text=(
-                "⚠️ در حال حاضر امکان دریافت اکانت تست برای شما وجود ندارد.\n"
-                "اگر زمان مجاز استفاده مجدد فرا رسیده باشد، دوباره درخواست کنید."
+                "⚠️ شما قبلاً اکانت تست دریافت کرده‌اید و در حال حاضر امکان "
+                "دریافت اکانت تست جدید برای شما فعال نیست.\n\n"
+                "اگر استفاده مجدد برای حساب شما مجاز باشد، پس از پایان زمان انتظار "
+                "می‌توانید دوباره درخواست کنید."
             ),
             duration=5,
         )
@@ -56,8 +59,26 @@ async def callback_get_trial(
         await services.notification.show_popup(callback=callback, text=text)
         return
 
-    subscription_key, _record = result
-    text = f"🎁 <b>لینک اشتراک اکانت تست:</b>\n\n<code>{subscription_key}</code>"
+    subscription_key, record = result
+
+    quota_mb = max(1, round(record.quota_bytes / services.test_account.BYTES_PER_MB))
+    duration_hours = max(
+        1,
+        round((record.expires_at - record.created_at).total_seconds() / 3600),
+    )
+    if duration_hours % 24 == 0:
+        duration_text = f"{duration_hours // 24} روز"
+    else:
+        duration_text = f"{duration_hours} ساعت"
+
+    text = (
+        "🎁 <b>اکانت تست شما با موفقیت ایجاد شد.</b>\n\n"
+        f"📦 حجم: <b>{quota_mb} مگابایت</b>\n"
+        f"⏱ مدت اعتبار: <b>{duration_text}</b>\n"
+        f"📅 تاریخ انقضا: <b>{format_jalali(record.expires_at)}</b>\n\n"
+        f"🔗 <b>لینک اشتراک:</b>\n"
+        f"<code>{subscription_key}</code>"
+    )
     markup = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔗 لینک اشتراک تست", url=subscription_key)],
