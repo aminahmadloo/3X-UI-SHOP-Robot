@@ -11,10 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.bot.filters import IsAdmin
+from app.bot.models import ServicesContainer
 from app.bot.utils.constants import TransactionStatus
 from app.bot.utils.jalali import format_jalali
 from app.bot.utils.navigation import NavAdminTools
-from app.db.models import Subscription, Transaction, User, Wallet
+from app.db.models import CardPayment, Subscription, Transaction, User, Wallet, WalletTransaction
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -32,6 +33,28 @@ FILTER_LABELS = {
 
 class UserManagementStates(StatesGroup):
     search = State()
+    wallet_charge_amount = State()
+    wallet_charge_confirm = State()
+
+
+def _filter_rows(filter_name: str) -> list[list[InlineKeyboardButton]]:
+    labels = {
+        "all": "👥 همه کاربران",
+        "active": "🟢 اشتراک فعال",
+        "expired": "🔴 منقضی/بدون فعال",
+        "buyers": "💳 خریداران موفق",
+        "trial": "🎁 دارای اکانت تست",
+        "wallet": "💰 دارای موجودی",
+    }
+    names = ("all", "active", "expired", "buyers", "trial", "wallet")
+    buttons = [
+        InlineKeyboardButton(
+            text=("✅ " if name == filter_name else "") + labels[name],
+            callback_data=f"{NavAdminTools.USER_FILTER}:{name}:0",
+        )
+        for name in names
+    ]
+    return [buttons[:2], buttons[2:4], buttons[4:6]]
 
 
 def _filter_condition(name: str):
@@ -68,16 +91,7 @@ def _filter_condition(name: str):
 def _management_keyboard(page: int, total: int, filter_name: str = "all") -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text="🔎 جستجو با ID / Username / نام", callback_data=NavAdminTools.USER_SEARCH)],
-        [
-            InlineKeyboardButton(text="👥 همه", callback_data=f"{NavAdminTools.USER_FILTER}:all:0"),
-            InlineKeyboardButton(text="🟢 فعال", callback_data=f"{NavAdminTools.USER_FILTER}:active:0"),
-            InlineKeyboardButton(text="🔴 منقضی", callback_data=f"{NavAdminTools.USER_FILTER}:expired:0"),
-        ],
-        [
-            InlineKeyboardButton(text="💳 خریداران", callback_data=f"{NavAdminTools.USER_FILTER}:buyers:0"),
-            InlineKeyboardButton(text="🎁 تست", callback_data=f"{NavAdminTools.USER_FILTER}:trial:0"),
-            InlineKeyboardButton(text="💰 کیف پول", callback_data=f"{NavAdminTools.USER_FILTER}:wallet:0"),
-        ],
+        *_filter_rows(filter_name),
     ]
     navigation = []
     if page > 0:
@@ -93,13 +107,14 @@ def _management_keyboard(page: int, total: int, filter_name: str = "all") -> Inl
 def _user_list_keyboard(users: list[User], page: int, total: int, filter_name: str) -> InlineKeyboardMarkup:
     rows = []
     for item in users:
-        name = item.first_name or "بدون نام"
-        username = f" @{item.username}" if item.username else ""
+        name = html.escape(item.first_name or "بدون نام")
+        username = f" @{html.escape(item.username)}" if item.username else ""
         rows.append([InlineKeyboardButton(
             text=f"👤 {name}{username}",
             callback_data=f"{NavAdminTools.USER_DETAILS}:{item.tg_id}:{page}:{filter_name}",
         )])
     rows.append([InlineKeyboardButton(text="🔎 جستجوی کاربر", callback_data=NavAdminTools.USER_SEARCH)])
+    rows.extend(_filter_rows(filter_name))
     navigation = []
     if page > 0:
         navigation.append(InlineKeyboardButton(text="⬅️ قبلی", callback_data=f"{NavAdminTools.USER_PAGE}:{filter_name}:{page - 1}"))
@@ -274,6 +289,11 @@ def _subscription_status(subscription: Subscription) -> str:
 
 def _details_keyboard(tg_id: int, page: int, filter_name: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="💳 سوابق پرداخت", callback_data=f"{NavAdminTools.USER_PAYMENTS}:{tg_id}:{page}:{filter_name}"),
+            InlineKeyboardButton(text="💰 گردش کیف پول", callback_data=f"{NavAdminTools.USER_WALLET_LEDGER}:{tg_id}:{page}:{filter_name}"),
+        ],
+        [InlineKeyboardButton(text="⚙️ عملیات مدیریتی", callback_data=f"{NavAdminTools.USER_MANAGE}:{tg_id}:{page}:{filter_name}")],
         [InlineKeyboardButton(text="👤 مشاهده پروفایل تلگرام", url=f"tg://user?id={tg_id}")],
         [InlineKeyboardButton(text="🔄 بروزرسانی اطلاعات تلگرام", callback_data=f"{NavAdminTools.USER_REFRESH}:{tg_id}:{page}:{filter_name}")],
         [InlineKeyboardButton(text="🔙 بازگشت به لیست", callback_data=f"{NavAdminTools.USER_PAGE}:{filter_name}:{page}")],
@@ -315,6 +335,249 @@ def _user_details_text(user: User, subscriptions: list[Subscription], wallet: Wa
             )
     return "\n".join(lines)
 
+
+
+def _user_back_keyboard(tg_id: int, page: int, filter_name: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👤 بازگشت به جزئیات کاربر", callback_data=f"{NavAdminTools.USER_DETAILS}:{tg_id}:{page}:{filter_name}")],
+        [InlineKeyboardButton(text="🔙 بازگشت به لیست", callback_data=f"{NavAdminTools.USER_PAGE}:{filter_name}:{page}")],
+    ])
+
+
+def _status_label(status: object) -> str:
+    value = getattr(status, "value", status)
+    return {
+        "completed": "✅ موفق",
+        "pending": "⏳ در انتظار",
+        "canceled": "❌ لغو شده",
+        "cancelled": "❌ لغو شده",
+        "failed": "⚠️ ناموفق",
+    }.get(str(value), html.escape(str(value)))
+
+
+@router.callback_query(F.data.startswith(f"{NavAdminTools.USER_PAYMENTS}:"), IsAdmin())
+async def callback_user_payments(callback: CallbackQuery, session: AsyncSession) -> None:
+    _, tg_id_raw, page_raw, filter_name = callback.data.split(":", 3)
+    tg_id = int(tg_id_raw)
+    transactions = list((await session.execute(
+        select(Transaction)
+        .where(Transaction.tg_id == tg_id)
+        .order_by(Transaction.created_at.desc(), Transaction.id.desc())
+        .limit(10)
+    )).scalars())
+    card_payments = list((await session.execute(
+        select(CardPayment)
+        .where(CardPayment.user_tg_id == tg_id)
+        .order_by(CardPayment.created_at.desc(), CardPayment.id.desc())
+        .limit(10)
+    )).scalars())
+
+    lines = ["💳 <b>سوابق پرداخت کاربر</b>", "", f"🆔 <code>{tg_id}</code>"]
+    if not transactions and not card_payments:
+        lines.append("❌ سابقه پرداختی ثبت نشده است.")
+    if transactions:
+        lines.append("\n🌐 <b>تراکنش‌های درگاه</b>")
+        for item in transactions:
+            created = format_jalali(item.created_at) if item.created_at else "-"
+            gateway = html.escape(item.gateway or "نامشخص")
+            plan = html.escape(item.subscription or "-")
+            lines.append(
+                f"• #{item.id} | {gateway} | {_status_label(item.status)}\n"
+                f"  🧾 <code>{html.escape(item.payment_id)}</code> | {plan} | {created}"
+            )
+    if card_payments:
+        lines.append("\n💳 <b>پرداخت‌های کارت‌به‌کارت</b>")
+        for item in card_payments:
+            created = format_jalali(item.created_at) if item.created_at else "-"
+            tracking = html.escape(item.tracking_code or f"#{item.id}")
+            lines.append(
+                f"• #{item.id} | {item.amount:,} تومان | {_status_label(item.status)}\n"
+                f"  🧾 <code>{tracking}</code> | {html.escape(item.payment_type)} | {created}"
+            )
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=_user_back_keyboard(tg_id, int(page_raw), filter_name),
+    )
+
+
+@router.callback_query(F.data.startswith(f"{NavAdminTools.USER_WALLET_LEDGER}:"), IsAdmin())
+async def callback_user_wallet_ledger(callback: CallbackQuery, session: AsyncSession) -> None:
+    _, tg_id_raw, page_raw, filter_name = callback.data.split(":", 3)
+    tg_id = int(tg_id_raw)
+    wallet = await Wallet.get(session, tg_id)
+    entries = list((await session.execute(
+        select(WalletTransaction)
+        .where(WalletTransaction.user_tg_id == tg_id)
+        .order_by(WalletTransaction.created_at.desc(), WalletTransaction.id.desc())
+        .limit(15)
+    )).scalars())
+
+    balance = wallet.balance if wallet else 0
+    lines = [
+        "💰 <b>گردش کیف پول کاربر</b>", "",
+        f"🆔 <code>{tg_id}</code>",
+        f"💳 موجودی فعلی: <b>{balance:,} تومان</b>",
+    ]
+    if not entries:
+        lines.append("\n❌ گردش مالی کیف پول ثبت نشده است.")
+    else:
+        lines.append("\n📒 <b>آخرین تراکنش‌ها</b>")
+        for item in entries:
+            created = format_jalali(item.created_at) if item.created_at else "-"
+            amount = f"+{item.amount:,}" if item.amount > 0 else f"{item.amount:,}"
+            description = html.escape(item.description or item.transaction_type)
+            lines.append(
+                f"• <b>{amount} تومان</b> | {html.escape(item.transaction_type)} | {created}\n"
+                f"  {description}"
+            )
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=_user_back_keyboard(tg_id, int(page_raw), filter_name),
+    )
+
+
+@router.callback_query(F.data.startswith(f"{NavAdminTools.USER_MANAGE}:"), IsAdmin())
+async def callback_user_manage(callback: CallbackQuery, session: AsyncSession) -> None:
+    _, tg_id_raw, page_raw, filter_name = callback.data.split(":", 3)
+    tg_id = int(tg_id_raw)
+    target = await User.get(session=session, tg_id=tg_id)
+    if not target:
+        await callback.answer("کاربر پیدا نشد.", show_alert=True)
+        return
+    await callback.answer()
+    await callback.message.edit_text(
+        "⚙️ <b>عملیات مدیریتی کاربر</b>\n\n"
+        f"🆔 <code>{tg_id}</code>\n"
+        f"👤 {html.escape(target.first_name or 'بدون نام')}\n\n"
+        "عملیات فعلی عمداً محدود و کنترل‌شده هستند:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💰 شارژ دستی کیف پول", callback_data=f"{NavAdminTools.USER_MANAGE_CHARGE}:{tg_id}:{page_raw}:{filter_name}")],
+            [InlineKeyboardButton(text="🔄 بروزرسانی اطلاعات تلگرام", callback_data=f"{NavAdminTools.USER_REFRESH}:{tg_id}:{page_raw}:{filter_name}")],
+            [InlineKeyboardButton(text="🔙 بازگشت به جزئیات", callback_data=f"{NavAdminTools.USER_DETAILS}:{tg_id}:{page_raw}:{filter_name}")],
+        ]),
+    )
+
+
+@router.callback_query(F.data.startswith(f"{NavAdminTools.USER_MANAGE_CHARGE}:"), IsAdmin())
+async def callback_user_manage_charge(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    _, tg_id_raw, page_raw, filter_name = callback.data.split(":", 3)
+    tg_id = int(tg_id_raw)
+    target = await User.get(session=session, tg_id=tg_id)
+    if not target:
+        await callback.answer("کاربر پیدا نشد.", show_alert=True)
+        return
+    await state.clear()
+    await state.update_data(wallet_charge_user_id=tg_id, wallet_charge_page=int(page_raw), wallet_charge_filter=filter_name)
+    await state.set_state(UserManagementStates.wallet_charge_amount)
+    await callback.answer()
+    await callback.message.edit_text(
+        "💰 <b>شارژ دستی کیف پول</b>\n\n"
+        f"👤 کاربر: <code>{tg_id}</code>\n"
+        "مبلغ شارژ را به تومان وارد کنید.\n"
+        "پس از ورود مبلغ، مرحله تأیید نهایی نمایش داده می‌شود.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ انصراف", callback_data=NavAdminTools.USER_MANAGE_CHARGE_CANCEL)]
+        ]),
+    )
+
+
+@router.message(UserManagementStates.wallet_charge_amount, IsAdmin())
+async def process_user_wallet_charge_amount(message: Message, state: FSMContext) -> None:
+    raw = (message.text or "").strip().replace(",", "").replace("٬", "")
+    if not raw.isdigit() or int(raw) <= 0:
+        await message.answer("❌ مبلغ نامعتبر است. فقط یک عدد مثبت به تومان وارد کنید.")
+        return
+    data = await state.get_data()
+    amount = int(raw)
+    await state.update_data(wallet_charge_amount=amount)
+    await state.set_state(UserManagementStates.wallet_charge_confirm)
+    await message.answer(
+        "⚠️ <b>تأیید شارژ کیف پول</b>\n\n"
+        f"👤 کاربر: <code>{data['wallet_charge_user_id']}</code>\n"
+        f"💰 مبلغ: <b>{amount:,} تومان</b>\n\n"
+        "با تأیید، مبلغ واقعاً به کیف پول کاربر اضافه می‌شود.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ تأیید و شارژ", callback_data=NavAdminTools.USER_MANAGE_CHARGE_CONFIRM)],
+            [InlineKeyboardButton(text="❌ لغو", callback_data=NavAdminTools.USER_MANAGE_CHARGE_CANCEL)],
+        ]),
+    )
+
+
+@router.callback_query(F.data == NavAdminTools.USER_MANAGE_CHARGE_CONFIRM, IsAdmin())
+async def callback_user_wallet_charge_confirm(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+    services: ServicesContainer,
+) -> None:
+    data = await state.get_data()
+    target_id = data.get("wallet_charge_user_id")
+    amount = data.get("wallet_charge_amount")
+    page = int(data.get("wallet_charge_page", 0))
+    filter_name = data.get("wallet_charge_filter", "all")
+    if not target_id or not amount or int(amount) <= 0:
+        await state.clear()
+        await callback.answer("اطلاعات شارژ منقضی شده است.", show_alert=True)
+        return
+
+    target = await User.get(session=session, tg_id=int(target_id))
+    if not target:
+        await state.clear()
+        await callback.answer("کاربر پیدا نشد.", show_alert=True)
+        return
+
+    try:
+        balance = await services.wallet.credit(
+            user_tg_id=int(target_id),
+            amount=int(amount),
+            transaction_type="admin_manual_topup",
+            description=f"شارژ دستی توسط مدیر {user.tg_id}",
+            reference_id=f"admin_manual_topup:{user.tg_id}:{target_id}:{callback.id}",
+        )
+    except Exception as exc:
+        logger.exception("Admin wallet credit failed for target %s: %s", target_id, exc)
+        await callback.answer("❌ شارژ انجام نشد.", show_alert=True)
+        return
+
+    await state.clear()
+    await callback.answer("✅ کیف پول شارژ شد.")
+    await callback.message.edit_text(
+        f"✅ <b>شارژ با موفقیت انجام شد</b>\n\n"
+        f"👤 کاربر: <code>{target_id}</code>\n"
+        f"💰 مبلغ: <b>{int(amount):,} تومان</b>\n"
+        f"💳 موجودی جدید: <b>{balance:,} تومان</b>\n"
+        f"👨‍💼 مدیر: <code>{user.tg_id}</code>",
+        reply_markup=_details_keyboard(int(target_id), page, filter_name),
+    )
+
+
+@router.callback_query(F.data == NavAdminTools.USER_MANAGE_CHARGE_CANCEL, IsAdmin())
+async def callback_user_wallet_charge_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    target_id = data.get("wallet_charge_user_id")
+    page = int(data.get("wallet_charge_page", 0))
+    filter_name = data.get("wallet_charge_filter", "all")
+    await state.clear()
+    await callback.answer("عملیات لغو شد.")
+    if target_id:
+        await callback.message.edit_text(
+            "⚙️ <b>عملیات مدیریتی کاربر</b>\n\n"
+            f"🆔 <code>{target_id}</code>\n"
+            "عملیات لغو شد.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="💰 شارژ دستی کیف پول", callback_data=f"{NavAdminTools.USER_MANAGE_CHARGE}:{target_id}:{page}:{filter_name}")],
+                [InlineKeyboardButton(text="🔙 بازگشت به جزئیات", callback_data=f"{NavAdminTools.USER_DETAILS}:{target_id}:{page}:{filter_name}")],
+            ]),
+        )
+    else:
+        await callback.message.edit_text("❌ عملیات لغو شد.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 مدیریت کاربران", callback_data=NavAdminTools.USER_EDITOR)]
+        ]))
 
 @router.callback_query(F.data.startswith(f"{NavAdminTools.USER_DETAILS}:"), IsAdmin())
 async def callback_user_details(callback: CallbackQuery, session: AsyncSession) -> None:
