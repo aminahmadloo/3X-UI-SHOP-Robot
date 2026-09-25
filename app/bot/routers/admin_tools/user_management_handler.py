@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.bot.filters import IsAdmin
+from app.bot.utils.constants import TransactionStatus
 from app.bot.utils.jalali import format_jalali
 from app.bot.utils.navigation import NavAdminTools
 from app.db.models import Subscription, Transaction, User, Wallet
@@ -49,7 +50,7 @@ def _filter_condition(name: str):
     ))
     completed_tx = exists(select(Transaction.id).where(
         Transaction.tg_id == User.tg_id,
-        Transaction.status == "completed",
+        Transaction.status == TransactionStatus.COMPLETED,
     ))
     wallet = exists(select(Wallet.id).where(
         Wallet.user_tg_id == User.tg_id,
@@ -92,8 +93,8 @@ def _management_keyboard(page: int, total: int, filter_name: str = "all") -> Inl
 def _user_list_keyboard(users: list[User], page: int, total: int, filter_name: str) -> InlineKeyboardMarkup:
     rows = []
     for item in users:
-        name = html.escape(item.first_name or "بدون نام")
-        username = f" @{html.escape(item.username)}" if item.username else ""
+        name = item.first_name or "بدون نام"
+        username = f" @{item.username}" if item.username else ""
         rows.append([InlineKeyboardButton(
             text=f"👤 {name}{username}",
             callback_data=f"{NavAdminTools.USER_DETAILS}:{item.tg_id}:{page}:{filter_name}",
@@ -336,7 +337,6 @@ async def callback_user_refresh(callback: CallbackQuery, session: AsyncSession) 
     _, tg_id_raw, page_raw, filter_name = callback.data.split(":", 3)
     tg_id = int(tg_id_raw)
     page = int(page_raw)
-    tg_id = int(tg_id_raw)
 
     user = await User.get(session=session, tg_id=tg_id)
     if not user:
