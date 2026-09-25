@@ -14,6 +14,7 @@ from . import (
     subscription_settings_handler,
     statistics_handler,
     user_handler,
+    user_management_handler,
     system_health_handler,
     system_health_backup_handler,
     network_health_admin_ui,
