@@ -91,6 +91,7 @@ class NavAdminTools(str, Enum):
     USER_PAGE = "user_page"
     USER_DETAILS = "user_details"
     USER_SEARCH = "user_search"
+    USER_FILTER = "user_filter"
     USER_REFRESH = "user_refresh"
     INVITE_EDITOR = "invite_editor"
     CREATE_INVITE = "create_invite"
