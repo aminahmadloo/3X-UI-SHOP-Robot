@@ -29,6 +29,8 @@ jobs:
         run: poetry run pytest -q tests/test_ai_content.py
       - name: Run test-account reuse and reset tests
         run: poetry run pytest -q tests/test_test_account_reuse.py
+      - name: Run production user-facing regression tests
+        run: poetry run pytest -q tests/test_production_user_facing_fixes.py
       - name: Isolated SQLite migration setup
         env:
           BOT_TOKEN: "000000:TEST"
