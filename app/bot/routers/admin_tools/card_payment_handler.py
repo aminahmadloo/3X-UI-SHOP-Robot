@@ -208,7 +208,7 @@ async def manual_charge_user(message: Message, state: FSMContext, session) -> No
     if not raw.isdigit():
         await message.answer("❌ آیدی تلگرام باید عددی باشد.")
         return
-    target = await session.get(User, int(raw))
+    target = await User.get(session, int(raw))
     if not target:
         await message.answer("❌ کاربری با این آیدی در ربات پیدا نشد.")
         return
