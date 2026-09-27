@@ -408,6 +408,7 @@ class VPNService:
                 return None
 
             client_id = str(target.client_id)
+            subscription_client_id = client_id
             server_host = None
 
             if target.server_id is not None:
@@ -425,6 +426,29 @@ class VPNService:
                     if server_connection is not None:
                         server_host = server_connection.server.host
 
+                        # 3X-UI resolves /sub/<id> by the client's sub_id,
+                        # not by the client's UUID. Toonel stores the UUID in
+                        # Subscription.client_id, so resolve the live sub_id
+                        # before building the subscription URL.
+                        try:
+                            inbounds = await get_inbounds(server_connection.api)
+                            for inbound in inbounds:
+                                for live_client in inbound.settings.clients or []:
+                                    live_id = str(getattr(live_client, "id", "") or "").strip()
+                                    if live_id == client_id:
+                                        live_sub_id = str(getattr(live_client, "sub_id", "") or "").strip()
+                                        if live_sub_id:
+                                            subscription_client_id = live_sub_id
+                                        break
+                                if subscription_client_id != client_id:
+                                    break
+                        except Exception as exception:
+                            logger.warning(
+                                "Could not resolve live 3X-UI sub_id for subscription %s: %s",
+                                target.id,
+                                exception,
+                            )
+
             settings = await SubscriptionSettings.get_or_create(session)
             base_host = settings.domain or server_host or (user.server.host if user.server else None)
             if not base_host:
@@ -437,7 +461,7 @@ class VPNService:
                 path=settings.path,
             )
 
-        key = f"{subscription_base}{client_id}"
+        key = f"{subscription_base}{subscription_client_id}"
         logger.info(
             "Subscription key generated from subscription %s for user %s.",
             target.id,
@@ -588,6 +612,9 @@ class VPNService:
                         client_id = str(
                             getattr(client, "id", "") or ""
                         ).strip()
+                        client_sub_id = str(
+                            getattr(client, "sub_id", "") or ""
+                        ).strip()
 
                         if not client_id:
                             logger.warning(
@@ -623,8 +650,11 @@ class VPNService:
                             or client_id
                         )
 
+                        # 3X-UI subscription endpoints are keyed by
+                        # Client.sub_id, not Client.id (UUID).
+                        subscription_id_value = client_sub_id or client_id
                         connection_key = (
-                            f"{subscription_base}{client_id}"
+                            f"{subscription_base}{subscription_id_value}"
                         )
 
                         keys.append(
