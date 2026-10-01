@@ -141,7 +141,7 @@ install_base_packages() {
 
 install_docker() {
   step "نصب Docker Engine و Compose Plugin"
-  if ! command -v docker >/dev/null 2>&1; then
+  if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
     install -m 0755 -d /etc/apt/keyrings
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
     chmod a+r /etc/apt/keyrings/docker.asc
@@ -217,6 +217,23 @@ collect_configuration() {
   prompt_secret_optional BLUPAL_API_KEY "BluPal API Key"
   prompt_secret_optional WINAPAY_MERCHANT_ID "Winapay Merchant ID"
 
+  prompt_yes_no VARIZA_ENABLED "فعال‌سازی Variza" "N"
+  if [[ "$VARIZA_ENABLED" == "true" ]]; then
+    prompt_secret_required VARIZA_API_KEY "Variza API Key"
+    prompt_secret_required VARIZA_WEBHOOK_SECRET "Variza Webhook Secret"
+    prompt_optional VARIZA_API_BASE_URL "Variza API Base URL" "https://variza.ir/api/v1"
+    prompt_optional VARIZA_CARD_LAST_4 "Variza Card Last 4" ""
+    prompt_optional VARIZA_EXPIRES_IN "Variza Link Lifetime" "1h"
+    prompt_optional VARIZA_RETURN_URL "Variza Return URL" ""
+  else
+    VARIZA_API_KEY=""
+    VARIZA_WEBHOOK_SECRET=""
+    VARIZA_API_BASE_URL="https://variza.ir/api/v1"
+    VARIZA_CARD_LAST_4=""
+    VARIZA_EXPIRES_IN="1h"
+    VARIZA_RETURN_URL=""
+  fi
+
   prompt_secret_optional OPENAI_API_KEY "OpenAI API Key"
   prompt_yes_no FULL_BACKUP_STORAGE_ENABLED "فعال‌سازی Full Backup Storage (B2)" "N"
 
@@ -262,6 +279,15 @@ write_env() {
     [[ -n "$ABAN_GATEWAY_WEBHOOK_SECRET" ]] && printf 'ABAN_GATEWAY_WEBHOOK_SECRET=%q\n' "$ABAN_GATEWAY_WEBHOOK_SECRET"
     [[ -n "$BLUPAL_API_KEY" ]] && printf 'BLUPAL_API_KEY=%q\n' "$BLUPAL_API_KEY"
     [[ -n "$WINAPAY_MERCHANT_ID" ]] && printf 'WINAPAY_MERCHANT_ID=%q\n' "$WINAPAY_MERCHANT_ID"
+    printf 'VARIZA_ENABLED=%q\n' "$VARIZA_ENABLED"
+    if [[ "$VARIZA_ENABLED" == "true" ]]; then
+      printf 'VARIZA_API_KEY=%q\n' "$VARIZA_API_KEY"
+      printf 'VARIZA_WEBHOOK_SECRET=%q\n' "$VARIZA_WEBHOOK_SECRET"
+      printf 'VARIZA_API_BASE_URL=%q\n' "$VARIZA_API_BASE_URL"
+      [[ -n "$VARIZA_CARD_LAST_4" ]] && printf 'VARIZA_CARD_LAST_4=%q\n' "$VARIZA_CARD_LAST_4"
+      printf 'VARIZA_EXPIRES_IN=%q\n' "$VARIZA_EXPIRES_IN"
+      [[ -n "$VARIZA_RETURN_URL" ]] && printf 'VARIZA_RETURN_URL=%q\n' "$VARIZA_RETURN_URL"
+    fi
     [[ -n "$OPENAI_API_KEY" ]] && printf 'OPENAI_API_KEY=%q\n' "$OPENAI_API_KEY"
 
     printf 'FULL_BACKUP_STORAGE_ENABLED=%q\n' "$FULL_BACKUP_STORAGE_ENABLED"
@@ -397,13 +423,15 @@ main() {
   fi
 
   step "بررسی اولیه"
+  check_github_auth
   check_ports
   check_dns
+  check_github_auth
 
-  collect_configuration
   install_base_packages
   install_docker
   download_repo
+  collect_configuration
   write_env
   prepare_runtime
   configure_nginx
