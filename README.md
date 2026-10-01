@@ -115,7 +115,7 @@ Because this repository is private, the server must first have GitHub CLI instal
 Run the installer with:
 
 ```bash
-GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/3X-UI-SHOP-Robot/contents/install.sh?ref=main" | bash'
+GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN,XUI_SHOP_ROBOT_REF bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/ToonelVpn/contents/install.sh?ref=main" | bash'
 ```
 
 The installer:
@@ -136,7 +136,7 @@ The installer:
 For an installation from a specific Git ref:
 
 ```bash
-3X-UI-SHOP-ROBOT_REF=main GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/3X-UI-SHOP-Robot/contents/install.sh?ref=main" | bash'
+XUI_SHOP_ROBOT_REF=main GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN,XUI_SHOP_ROBOT_REF bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/ToonelVpn/contents/install.sh?ref=main" | bash'
 ```
 
 
