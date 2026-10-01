@@ -124,10 +124,10 @@
 مخزن پروژه خصوصی است؛ بنابراین دسترسی GitHub باید روی سیستمی که Installer را اجرا می‌کند فراهم باشد:
 
 ```bash
-GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN,XUI_SHOP_ROBOT_REF bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/ToonelVpn/contents/install.sh?ref=main" | bash'
+GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN,XUI_SHOP_ROBOT_REF bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/3X-UI-SHOP-Robot/contents/install.sh?ref=main" | bash'
 ```
 
-> **نکته:** نام فنی مخزن GitHub در این دستور فعلاً `ToonelVpn` است. این نام با نام محصول **3X-UI-SHOP-Robot** یکی نیست و پس از Rename واقعی مخزن باید به‌روزرسانی شود.
+
 
 > **مهم:** این Installer برای نصب تمیز است. SQLite، Redis، کاربران، سرویس‌های قبلی و وضعیت 3X-UI را از سرور قبلی منتقل نمی‌کند. مهاجرت سرور موجود باید با Backup/Restore جداگانه انجام شود.
 
