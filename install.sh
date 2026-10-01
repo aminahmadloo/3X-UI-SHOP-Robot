@@ -98,6 +98,16 @@ validate_domain() {
   [[ "$BOT_DOMAIN" == *.* ]] || fail "BOT_DOMAIN معتبر به نظر نمی‌رسد."
 }
 
+check_github_auth() {
+  [[ -n "${GH_TOKEN:-}" ]] || fail "این Repository خصوصی است. GH_TOKEN با دسترسی Contents: Read لازم است."
+  curl -fsSL -o /dev/null \
+    -H "Accept: application/vnd.github+json" \
+    -H "Authorization: Bearer $GH_TOKEN" \
+    -H "X-GitHub-Api-Version: 2026-03-10" \
+    "https://api.github.com/repos/$REPO" || fail "دسترسی GH_TOKEN به Repository تایید نشد."
+  ok "دسترسی GitHub تایید شد."
+}
+
 check_ports() {
   local busy
   for port in 80 443; do
@@ -195,7 +205,7 @@ collect_configuration() {
   step "مرحله ۳/۳ — درگاه‌ها (اختیاری؛ Enter = رد کردن)"
   echo "هر درگاه را بعداً هم می‌توان از .env تنظیم کرد."
   prompt_secret_optional ZARINPAL_MERCHANT_ID "ZarinPal Merchant ID"
-  prompt_optional ZARINPAL_PAYMENT_BASE_URL "ZarinPal Payment Base URL" "https://payment.$BOT_DOMAIN"
+  prompt_optional ZARINPAL_PAYMENT_BASE_URL "ZarinPal Payment Base URL" ""
 
   prompt_secret_optional ABAN_GATEWAY_TOKEN "AbanGateway Token"
   if [[ -n "$ABAN_GATEWAY_TOKEN" ]]; then
