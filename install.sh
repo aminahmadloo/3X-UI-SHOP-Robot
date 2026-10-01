@@ -385,11 +385,16 @@ health_check() {
     fail "Bot container بالا نمانده است."
   fi
 
-  curl -fsS --max-time 10 "https://$BOT_DOMAIN/webhook" >/dev/null || {
-    echo "⚠️ HTTPS endpoint check failed. آخرین لاگ Bot:"
-    docker compose logs --tail=60 bot
-    fail "Health check وب ناموفق بود."
-  }
+  local http_code
+  http_code="$(curl -ksS --max-time 10 -o /dev/null -w "%{http_code}" "https://$BOT_DOMAIN/webhook" || true)"
+  case "$http_code" in
+    200|404|405) ;;
+    *)
+      echo "⚠️ HTTPS endpoint check failed (HTTP $http_code). آخرین لاگ Bot:"
+      docker compose logs --tail=60 bot
+      fail "Health check وب ناموفق بود."
+      ;;
+  esac
 
   ok "Bot container و HTTPS endpoint سالم هستند."
 }
@@ -426,7 +431,6 @@ main() {
   check_github_auth
   check_ports
   check_dns
-  check_github_auth
 
   install_base_packages
   install_docker
