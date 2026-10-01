@@ -4,7 +4,7 @@
 # Nginx, Let's Encrypt, .env and optional payment gateways, then health-checks it.
 set -Eeuo pipefail
 
-REPO="aminahmadloo/ToonelVpn"
+REPO="aminahmadloo/3X-UI-SHOP-Robot"
 REF="${XUI_SHOP_ROBOT_REF:-main}"
 PROJECT_DIR="/opt/3x-ui-shop-robot"
 ARCHIVE="/tmp/3x-ui-shop-robot-install-$$.tar.gz"
