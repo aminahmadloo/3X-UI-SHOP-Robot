@@ -1,315 +1,319 @@
-<div align="center" markdown>
+<div dir="rtl" align="right">
 
-<p align="center">
-    <a href="https://github.com/snoups/3xui-shop/blob/main/README.md"><u><b>ENGLISH</b></u></a> •
-    <a href="https://github.com/snoups/3xui-shop/blob/main/README.ru_RU.md"><u><b>РУССКИЙ</b></u></a>
-</p>
+# 3X-UI-SHOP-Robot
 
-![3xui-shop](https://github.com/user-attachments/assets/282d10db-a355-4c65-a2cf-eb0e8ec8eed1)
+ربات فروش و مدیریت اشتراک VPN در تلگرام، با قابلیت اتصال به پنل **3X-UI**.
 
-**This project is a Telegram bot for selling VPN subscriptions. It works with 3X-UI.**
+## فهرست مطالب
 
-<p align="center">
-    <a href="#overview">Overview</a> •
-    <a href="#installation-guide">Installation guide</a> •
-</p>
+- [معرفی پروژه](#معرفی-پروژه)
+- [قابلیت‌ها](#قابلیت‌ها)
+- [پنل مدیریت](#پنل-مدیریت)
+- [وضعیت قابلیت‌ها](#وضعیت-قابلیت‌ها)
+- [نصب روی VPS جدید](#نصب-روی-vps-جدید)
+- [نصب دستی با Docker](#نصب-دستی-با-docker)
+- [تنظیم متغیرهای محیطی](#تنظیم-متغیرهای-محیطی)
+- [تنظیم پلن‌های اشتراک](#تنظیم-پلن‌های-اشتراک)
+- [تنظیم YooKassa](#تنظیم-yookassa)
+- [تنظیم YooMoney](#تنظیم-yoomoney)
+- [تنظیم 3X-UI](#تنظیم-3x-ui)
+- [تنظیم سیستم دعوت و دوره آزمایشی](#تنظیم-سیستم-دعوت-و-دوره-آزمایشی)
 
-![GitHub License](https://img.shields.io/github/license/snoups/3xui-shop)
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/snoups/3xui-shop/total)
-![GitHub Release](https://img.shields.io/github/v/release/snoups/3xui-shop)
-![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/snoups/3xui-shop)
+---
 
+## معرفی پروژه
 
-[![Static Badge](https://img.shields.io/badge/public_channel-white?style=social&logo=Telegram&logoColor=blue&logoSize=auto&labelColor=white&link=https%3A%2F%2Ft.me%2Fsn0ups)](https://t.me/sn0ups)
-[![Static Badge](https://img.shields.io/badge/contact_me-white?style=social&logo=Telegram&logoColor=blue&logoSize=auto&labelColor=white&link=https%3A%2F%2Ft.me%2Fsnoups)](https://t.me/snoups)
-![GitHub Repo stars](https://img.shields.io/github/stars/snoups/3xui-shop)
-</div>
+**3X-UI-SHOP-Robot** یک راهکار برای خودکارسازی فروش اشتراک VPN از طریق تلگرام است.
 
->[!WARNING]
->**This repository is no longer maintained.**  
-**The bot has moved to a new panel and now has its own new [repository](https://github.com/snoups/remnashop/) with an improved architecture, expanded functionality, and better stability — all built thanks to Remnawave.**
->
->**[Check out the new project](https://github.com/snoups/remnashop/) — it’s faster, cleaner, and much more capable!**
+ربات از API پنل **3X-UI** برای مدیریت کاربران و اشتراک‌ها استفاده می‌کند و برای مدیریت سرورها، کاربران، پرداخت‌ها و اشتراک‌ها طراحی شده است.
 
-<a id="overview"></a>
+## قابلیت‌ها
 
-## 📝 Overview
+### مدیریت سرورها
+- افزودن، حذف، غیرفعال‌کردن و بررسی سرورها
+- توزیع خودکار کاربران جدید بین سرورها
+- مدیریت سرورها بدون راه‌اندازی مجدد ربات
+- امکان توسعه برای جایگزینی سرورها
 
-**3X-UI-SHOP** is a comprehensive solution designed to automate the sale of VPN subscriptions through Telegram.
-The bot uses the **3X-UI** panel API for client management and supports multiple payment methods, including
-**Cryptomus**, **Heleket**, **YooKassa**, **YooMoney**, and **Telegram Stars**.
+### سیستم کدها
+- ایجاد، ویرایش و حذف کدها
+- تعریف کد برای افزایش مدت اشتراک
+- قابلیت توسعه برای کدهای تبلیغاتی و تخفیف
 
-The bot enables efficient subscription sales with advanced features:
+### اعلان‌ها
+- ارسال پیام به یک کاربر یا همه کاربران
+- ویرایش آخرین اعلان
+- قالب‌بندی متن با HTML
+- پیش‌نمایش اعلان پیش از ارسال
+- اعلان‌های سیستمی برای توسعه‌دهنده و مدیران
 
-- **Server Manager**
-    - Add, remove, disable, and check servers in the pool
-    - Automatically distribute new clients across servers
-    - Manage servers without restarting or reconfiguring the bot
-    - ~~Replace a server with another one~~
-- **Promocode System**
-    - Create, edit, and delete promocodes
-    - Promocodes for adding extra subscription time
-    - ~~Promocodes with discounts~~
-- **Notifications**
-    - Send messages to a specific user or all users
-    - Edit the last sent notification
-    - Format text using HTML
-    - Preview notifications before sending
-    - System notifications for the developer and administrators
-- **Two-Level Referral Program** (by [@Heimlet](https://github.com/Heimlet))
-    - View referral statistics
-    - Reward users for inviting new members
-    - Support for two-tier referral rewards
-- **Trial Period** (by [@Heimlet](https://github.com/Heimlet))
-    - Provide free trial subscription
-    - Extend trial period for referred users
-    - Configure and disable the trial period
-- **Flexible Payment System**
-    - Change the default currency
-    - Easily extendable architecture for adding new payment gateways
-    - ~~Add, edit, and delete subscription plans at any time~~
-    - ~~Change the display order of payment options~~
-- **~~User Editor~~**
-    - ~~View user information~~
-    - ~~View referral statistics~~
-    - ~~View payment history and activated promocodes~~
-    - ~~View server information~~
-    - ~~Edit user subscriptions~~
-    - ~~Block or unblock users~~
-    - ~~Quick access to a user via forwarded messages~~
-    - ~~Personal discounts for users~~
+### سیستم دعوت دو سطحی
+- مشاهده آمار دعوت‌ها
+- پاداش به کاربران بابت دعوت کاربران جدید
+- پشتیبانی از پاداش سطح اول و دوم
 
-### ⚙️ Admin Panel
-The bot includes a user-friendly admin panel with tools for efficient management.
-Administrators do not have access to server management.
+### دوره آزمایشی
+- ارائه اشتراک آزمایشی رایگان
+- امکان تعریف دوره متفاوت برای کاربران دعوت‌شده
+- فعال یا غیرفعال‌کردن دوره آزمایشی
 
-- **`Server Manager`**: Add, remove, disable, and check servers in the pool
-- **`Statistics`**: View usage analytics and performance data
-- **`User Editor`**: Manage user accounts and subscriptions
-- **`Promocode Editor`**: Create, edit, and delete promocodes
-- **`Notification Sender`**: Send custom notifications to users
-- **`Database Backup`**: Create and send database backups
-- **`Maintenance Mode`**: Disable user access during updates or fixes
+### سیستم پرداخت
+- تعیین واحد پول پیش‌فرض
+- ساختار قابل توسعه برای افزودن درگاه‌های جدید
+- پشتیبانی از روش‌های پرداخت فعال‌شده در پروژه
 
+## پنل مدیریت
 
-### 🚧 Current Tasks
-- [x] Trial period
-- [x] Referral system
-- [ ] Statistics
-- [ ] User editor
-- [ ] Plans editor
-- [ ] Flexible server pool
-- [ ] Custom promocodes
+پنل مدیریت برای کنترل بخش‌های مختلف سامانه در نظر گرفته شده است:
 
-<a id="installation-guide"></a>
+- **مدیریت سرورها:** افزودن، حذف، غیرفعال‌کردن و بررسی سرورها
+- **آمار:** مشاهده اطلاعات آماری و عملکرد سامانه
+- **مدیریت کاربران:** مدیریت حساب و اشتراک کاربران
+- **مدیریت کدها:** ایجاد، ویرایش و حذف کدهای تبلیغاتی
+- **ارسال اعلان:** ارسال پیام سفارشی برای کاربران
+- **پشتیبان‌گیری پایگاه داده:** ایجاد و ارسال نسخه پشتیبان
+- **حالت تعمیرات:** محدودکردن دسترسی کاربران هنگام به‌روزرسانی یا رفع اشکال
 
-## 🛠️ Installation guide
-<a id="production-installer"></a>
+## وضعیت قابلیت‌ها
 
-### 🚀 Fresh VPS Production Installer
+- [x] دوره آزمایشی
+- [x] سیستم دعوت
+- [ ] آمار
+- [ ] ویرایشگر کاربران
+- [ ] ویرایشگر پلن‌ها
+- [ ] مدیریت انعطاف‌پذیر مجموعه سرورها
+- [ ] کدهای تبلیغاتی سفارشی
 
-For a fresh Ubuntu 22.04/24.04/26.04 VPS, the repository includes a production bootstrap installer at `/install.sh`.
+# نصب روی VPS جدید
 
-Because this repository is private, the server must first have GitHub CLI installed and authenticated to an account that can read this repository. GitHub recommends `gh auth login` for CLI authentication and fine-grained tokens can be limited to repository Contents: Read. 
+## نصب خودکار Production
 
-Run the installer with:
+برای یک VPS تازه با **Ubuntu 22.04، 24.04 یا 26.04**، پروژه اسکریپت نصب خودکار را در فایل `/install.sh` ارائه می‌کند.
+
+از آنجا که مخزن GitHub خصوصی است، سرور باید ابتدا **GitHub CLI** داشته باشد و با حسابی احراز هویت شده باشد که دسترسی خواندن این مخزن را دارد.
+
+### اجرای نصب
 
 ```bash
 GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN,XUI_SHOP_ROBOT_REF bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/ToonelVpn/contents/install.sh?ref=main" | bash'
 ```
 
-The installer:
-
-- validates Ubuntu version, architecture, ports, DNS and GitHub access before making changes;
-- installs Docker Engine + Compose Plugin from Docker's official APT repository;
-- installs and configures Nginx;
-- obtains and installs Let's Encrypt TLS and runs a renewal dry-run;
-- creates `.env` with mode `600`;
-- asks for essential configuration first and optional payment/storage settings later;
-- leaves optional gateways disabled when their credentials are skipped;
-- creates `plans.json` from `plans.example.json` on a clean install;
-- builds and starts the current 3X-UI-SHOP-Robot containers;
-- performs a final container and HTTPS health check.
-
-> **Important:** HTTP-01 validation requires inbound TCP port 80 to be reachable from the Internet. If the DNS record is not pointing to the new VPS yet, the installer stops before installation. 
-
-For an installation from a specific Git ref:
+### نصب از Ref مشخص
 
 ```bash
 XUI_SHOP_ROBOT_REF=main GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN,XUI_SHOP_ROBOT_REF bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/ToonelVpn/contents/install.sh?ref=main" | bash'
 ```
 
+### نصب‌کننده چه کارهایی انجام می‌دهد؟
 
-### Dependencies
+- نسخه Ubuntu و معماری سیستم را بررسی می‌کند.
+- وضعیت پورت‌ها، DNS و دسترسی GitHub را بررسی می‌کند.
+- Docker Engine و Docker Compose را از مخزن رسمی Docker نصب می‌کند.
+- Nginx را نصب و پیکربندی می‌کند.
+- گواهی TLS از Let's Encrypt دریافت می‌کند.
+- تمدید گواهی را با `dry-run` آزمایش می‌کند.
+- فایل `.env` را با سطح دسترسی `600` ایجاد می‌کند.
+- ابتدا تنظیمات ضروری و سپس تنظیمات اختیاری را دریافت می‌کند.
+- در صورت واردنشدن اطلاعات یک درگاه اختیاری، آن درگاه را فعال نمی‌کند.
+- در نصب تمیز، `plans.json` را از `plans.example.json` ایجاد می‌کند.
+- کانتینرهای 3X-UI-SHOP-Robot را Build و اجرا می‌کند.
+- در پایان وضعیت کانتینر و HTTPS را بررسی می‌کند.
 
-Before starting the installation, make sure you have the installed [**Docker**](https://www.docker.com/)
+> **نکته مهم:** برای اعتبارسنجی HTTP-01، پورت TCP شماره 80 باید از اینترنت قابل دسترسی باشد و DNS دامنه نیز باید به VPS جدید اشاره کند.
 
-### Docker Installation
+> **نکته:** این نصب‌کننده برای VPS جدید طراحی شده و به‌صورت خودکار SQLite، Redis، کاربران قبلی یا وضعیت 3X-UI را از سرور قبلی بازیابی نمی‌کند. برای مهاجرت سرور موجود، ابتدا باید Backup و Restore جداگانه انجام شود.
 
-1. **Install & Upgrade:**
-   ```bash
-   bash <(curl -Ls https://raw.githubusercontent.com/snoups/3xui-shop/main/scripts/install.sh) -q
-   cd 3xui-shop
-   ```
+# نصب دستی با Docker
 
-2. **Set up environment variables and plans:**
-- Copy `plans.example.json` to `plans.json` and `.env.example` to `.env`:
-    ```bash
-    cp plans.example.json plans.json
-    cp .env.example .env
-    ```
-    > Update `plans.json` file with your subscription plans. [(Subscription Plans Configuration)](#subscription-plans-configuration) 
+## پیش‌نیاز
 
-    > Update `.env` file with your configuration. [(Environment Variables Configuration)](#environment-variables-configuration)
+Docker و Docker Compose باید روی سرور نصب باشند.
 
-3. **Build the Docker image:**
-   ```bash
-   docker compose build
-   ```
+## تنظیم فایل‌ها
 
-4. **Run the Docker container:**
-   ```bash
-   docker compose up -d
-   ```
+```bash
+cp plans.example.json plans.json
+cp .env.example .env
+```
 
-### Environment Variables Configuration
+سپس `plans.json` و `.env` را مطابق تنظیمات خود تکمیل کنید.
 
-| Variable | Required | Default | Description |
-|-|-|-|-|
-| LETSENCRYPT_EMAIL | 🔴 | - | Email for generating certificates |
-| | | |
-| BOT_TOKEN | 🔴 | - | Telegram bot token |
-| BOT_ADMINS | ⭕ | - | List of admin IDs (e.g., 123456789,987654321) |
-| BOT_DEV_ID | 🔴 | - | ID of the bot developer |
-| BOT_SUPPORT_ID | 🔴 | - | ID of the support person |
-| BOT_DOMAIN | 🔴 | - | Domain of the bot (e.g., 3xui-shop.com) |
-| BOT_PORT | ⭕ | 8080 | Port of the bot |
-| | | |
-| SHOP_EMAIL | ⭕ | support@3xui-shop.com | Email for receipts |
-| SHOP_CURRENCY | ⭕ | RUB | Currency for buttons (e.g., RUB, USD, XTR) |
-| SHOP_TRIAL_ENABLED | ⭕ | True | Enable trial subscription for new users |
-| SHOP_TRIAL_PERIOD | ⭕ | 3 | Duration of the trial subscription in days |
-| SHOP_REFERRED_TRIAL_ENABLED | ⭕ | False | Enable extended trial period for referred users |
-| SHOP_REFERRED_TRIAL_PERIOD | ⭕ | 7 | Duration of the extended trial for referred users (in days) |
-| SHOP_REFERRER_REWARD_ENABLED | ⭕ | True | Enable the two-level referral reward system |
-| SHOP_REFERRER_LEVEL_ONE_PERIOD | ⭕ | 10 | Reward in days for the first-level referrer (inviter) |
-| SHOP_REFERRER_LEVEL_TWO_PERIOD | ⭕ | 3 | Reward in days for the second-level referrer (inviter of the inviter). |
-| SHOP_BONUS_DEVICES_COUNT | ⭕ | 1 | Default Device Limit for Promocode, Trial, and Referral Users (Based on Plan Settings) |
-| SHOP_PAYMENT_STARS_ENABLED | ⭕ | True | Enable Telegram stars payment |
-| SHOP_PAYMENT_CRYPTOMUS_ENABLED | ⭕ | False | Enable Cryptomus payment |
-| SHOP_PAYMENT_HELEKET_ENABLED | ⭕ | False | Enable Heleket payment |
-| SHOP_PAYMENT_YOOKASSA_ENABLED | ⭕ | False | Enable Yookassa payment |
-| SHOP_PAYMENT_YOOMONEY_ENABLED | ⭕ | False | Enable Yoomoney payment |
-| | | |
-| XUI_USERNAME | 🔴 | - | Username for authentication in the 3X-UI panel |
-| XUI_PASSWORD | 🔴 | - | Password for authentication in the 3X-UI panel |
-| XUI_TOKEN | ⭕ | - | Token for authentication (if configured in the panel) |
-| XUI_SUBSCRIPTION_PORT | ⭕ | 2096 | Port for subscription |
-| XUI_SUBSCRIPTION_PATH | ⭕ | /user/ | Path for subscription |
-| | | |
-| CRYPTOMUS_API_KEY | ⭕ | - | API key for Cryptomus payment |
-| CRYPTOMUS_MERCHANT_ID | ⭕ | - | Merchant ID for Cryptomus payment |
-| | | |
-| HELEKET_API_KEY | ⭕ | - | API key for Heleket payment |
-| HELEKET_MERCHANT_ID | ⭕ | - | Merchant ID for Heleket payment |
-| | | |
-| YOOKASSA_TOKEN | ⭕ | - | Token for YooKassa payment |
-| YOOKASSA_SHOP_ID | ⭕ | - | Shop ID for YooKassa payment |
-| | | |
-| YOOMONEY_WALLET_ID | ⭕ | - | Wallet ID for Yoomoney payment |
-| YOOMONEY_NOTIFICATION_SECRET | ⭕ | - | Notification secret key for Yoomoney payment |
-| | | |
-| LOG_LEVEL | ⭕ | DEBUG | Log level (e.g., INFO, DEBUG) |
-| LOG_FORMAT | ⭕ | %(asctime)s \| %(name)s \| %(levelname)s \| %(message)s | Log format |
-| LOG_ARCHIVE_FORMAT | ⭕ | zip | Log archive format (e.g., zip, gz) |
+## ساخت Image
 
+```bash
+docker compose build
+```
 
-### Subscription Plans Configuration
+## اجرای ربات
+
+```bash
+docker compose up -d
+```
+
+# تنظیم متغیرهای محیطی
+
+| متغیر | الزامی | مقدار پیش‌فرض | توضیح |
+|---|---|---|---|
+| `LETSENCRYPT_EMAIL` | 🔴 | - | ایمیل دریافت گواهی |
+| `BOT_TOKEN` | 🔴 | - | توکن ربات تلگرام |
+| `BOT_ADMINS` | ⭕ | - | شناسه مدیران |
+| `BOT_DEV_ID` | 🔴 | - | شناسه توسعه‌دهنده |
+| `BOT_SUPPORT_ID` | 🔴 | - | شناسه پشتیبانی |
+| `BOT_DOMAIN` | 🔴 | - | دامنه ربات |
+| `BOT_PORT` | ⭕ | `8080` | پورت داخلی ربات |
+| `SHOP_EMAIL` | ⭕ | - | ایمیل رسیدها |
+| `SHOP_CURRENCY` | ⭕ | - | واحد پول |
+| `SHOP_TRIAL_ENABLED` | ⭕ | `True` | فعال‌کردن دوره آزمایشی |
+| `SHOP_TRIAL_PERIOD` | ⭕ | `3` | مدت دوره آزمایشی برحسب روز |
+| `SHOP_REFERRED_TRIAL_ENABLED` | ⭕ | `False` | دوره آزمایشی کاربران دعوت‌شده |
+| `SHOP_REFERRED_TRIAL_PERIOD` | ⭕ | `7` | مدت دوره ویژه دعوت‌شده |
+| `SHOP_REFERRER_REWARD_ENABLED` | ⭕ | `True` | پاداش سیستم دعوت |
+| `SHOP_REFERRER_LEVEL_ONE_PERIOD` | ⭕ | `10` | پاداش سطح اول برحسب روز |
+| `SHOP_REFERRER_LEVEL_TWO_PERIOD` | ⭕ | `3` | پاداش سطح دوم برحسب روز |
+| `SHOP_BONUS_DEVICES_COUNT` | ⭕ | `1` | تعداد پیش‌فرض دستگاه |
+| `SHOP_PAYMENT_STARS_ENABLED` | ⭕ | `True` | پرداخت با Telegram Stars |
+| `SHOP_PAYMENT_CRYPTOMUS_ENABLED` | ⭕ | `False` | فعال‌سازی Cryptomus |
+| `SHOP_PAYMENT_HELEKET_ENABLED` | ⭕ | `False` | فعال‌سازی Heleket |
+| `SHOP_PAYMENT_YOOKASSA_ENABLED` | ⭕ | `False` | فعال‌سازی YooKassa |
+| `SHOP_PAYMENT_YOOMONEY_ENABLED` | ⭕ | `False` | فعال‌سازی YooMoney |
+| `XUI_USERNAME` | 🔴 | - | نام کاربری پنل 3X-UI |
+| `XUI_PASSWORD` | 🔴 | - | رمز عبور پنل 3X-UI |
+| `XUI_TOKEN` | ⭕ | - | توکن احراز هویت 3X-UI |
+| `XUI_SUBSCRIPTION_PORT` | ⭕ | `2096` | پورت Subscription |
+| `XUI_SUBSCRIPTION_PATH` | ⭕ | `/user/` | مسیر Subscription |
+| `CRYPTOMUS_API_KEY` | ⭕ | - | کلید API Cryptomus |
+| `CRYPTOMUS_MERCHANT_ID` | ⭕ | - | شناسه پذیرنده Cryptomus |
+| `HELEKET_API_KEY` | ⭕ | - | کلید API Heleket |
+| `HELEKET_MERCHANT_ID` | ⭕ | - | شناسه پذیرنده Heleket |
+| `YOOKASSA_TOKEN` | ⭕ | - | کلید محرمانه YooKassa |
+| `YOOKASSA_SHOP_ID` | ⭕ | - | شناسه فروشگاه YooKassa |
+| `YOOMONEY_WALLET_ID` | ⭕ | - | شناسه کیف پول YooMoney |
+| `YOOMONEY_NOTIFICATION_SECRET` | ⭕ | - | کلید محرمانه اعلان YooMoney |
+| `LOG_LEVEL` | ⭕ | `DEBUG` | سطح لاگ |
+| `LOG_FORMAT` | ⭕ | - | قالب لاگ |
+| `LOG_ARCHIVE_FORMAT` | ⭕ | `zip` | فرمت آرشیو لاگ |
+
+🔴 = الزامی  
+⭕ = اختیاری
+
+# تنظیم پلن‌های اشتراک
+
+فایل `plans.json` پلن‌ها، مدت‌ها، تعداد دستگاه و قیمت‌ها را مشخص می‌کند.
+
+نمونه:
 
 ```json
 {
-    "durations": [30, 60, 180, 365],  // Available subscription durations in days
-
-    "plans": 
-    [
-        {
-            "devices": 1,  // Number of devices supported by the plan
-            "prices": {
-                "RUB": {  // Prices for Russian rubles (RUB)
-                    "30": 70,   // Price for 30 days
-                    "60": 120,  // Price for 60 days
-                    "180": 300, // Price for 180 days
-                    "365": 600  // Price for 365 days
-                },
-                "USD": {  // Prices for US dollars (USD)
-                    "30": 0.7,  // Price for 30 days
-                    "60": 1.2,  // Price for 60 days
-                    "180": 3,   // Price for 180 days
-                    "365": 6    // Price for 365 days
-                },
-                "XTR": {  // Prices for Telegram stars (XTR)
-                    "30": 60,   // Price for 30 days
-                    "60": 100,  // Price for 60 days
-                    "180": 250, // Price for 180 days
-                    "365": 500  // Price for 365 days
-                }
-            }
+  "durations": [30, 60, 180, 365],
+  "plans": [
+    {
+      "devices": 1,
+      "prices": {
+        "RUB": {
+          "30": 70,
+          "60": 120,
+          "180": 300,
+          "365": 600
         },
-        {
-            // Next plan
+        "USD": {
+          "30": 0.7,
+          "60": 1.2,
+          "180": 3,
+          "365": 6
+        },
+        "XTR": {
+          "30": 60,
+          "60": 100,
+          "180": 250,
+          "365": 500
         }
-    ]
+      }
+    }
+  ]
 }
 ```
 
-### YooKassa Configuration
+# تنظیم YooKassa
 
-1. **Webhook Setup:**
-    - Visit the [HTTP Notifications](https://yookassa.ru/my/merchant/integration/http-notifications) page.
-    - Enter the bot’s domain in the notification URL, ending with `/yookassa` (e.g., `https://3xui-shop.com/yookassa`).
-    - Select the following events:
-        - `payment.succeeded`
-        - `payment.waiting_for_capture`
-        - `payment.canceled`
+## Webhook
 
-2. **Environment Variables Setup:**
-    - Set the following environment variables:
-        - `YOOKASSA_TOKEN`: Your secret key
-        - `YOOKASSA_SHOP_ID`: Your shop ID
+آدرس اعلان را با مسیر `/yookassa` تنظیم کنید:
 
-### YooMoney Configuration
+```
+https://DOMAIN/yookassa
+```
 
-1. **Webhook Setup:**
-    - Visit the [HTTP Notifications](https://yoomoney.ru/transfer/myservices/http-notification) page.
-    - Enter the bot’s domain in the notification URL, ending with `/yoomoney` (e.g., `https://3xui-shop.com/yoomoney`).
-    - Copy the notification secret key.
-    - Check the box for `sending HTTP-notifications`.
-    - Save the changes.
+رویدادهای موردنیاز:
 
-2. **Environment Variables Setup:**
-    - Set the following environment variables:
-        - `YOOMONEY_WALLET_ID`: Your wallet ID
-        - `YOOMONEY_NOTIFICATION_SECRET`: Your notification secret key
+- `payment.succeeded`
+- `payment.waiting_for_capture`
+- `payment.canceled`
 
-### 3X-UI Configuration
+متغیرهای موردنیاز:
 
-To ensure the bot functions correctly, you must configure the 3X-UI panel:
+- `YOOKASSA_TOKEN`
+- `YOOKASSA_SHOP_ID`
 
-- [Set up SSL certificate.](https://github.com/MHSanaei/3x-ui?tab=readme-ov-file#ssl-certificate)
-- Set up an Inbound **(the first one will be used)** for adding clients.
-- Enable the subscription service with port `2096` and path `/user/`.
-    > **Don’t forget to specify certificate for the subscription.**
-- Disabling configuration encryption is recommended.
+# تنظیم YooMoney
 
-<a id="bugs-and-feature-requests"></a>
+آدرس اعلان را با مسیر `/yoomoney` تنظیم کنید:
 
-### Referral and Trial Rewards Configuration
+```
+https://DOMAIN/yoomoney
+```
 
-Bot now supports **trial subscriptions** and a **two-level referral reward system**. Here’s how it works:
-All configuration is available via `.env` [(see it above)](#environment-variables-configuration).
+سپس کلید محرمانه اعلان را دریافت کنید و ارسال اعلان‌های HTTP را فعال کنید.
 
-| Type of reward | How it works |
-| - | - |
-| Trial period | A trial subscription is available by 'TRY FOR FREE' button at start menu to any user who opens the bot and does not have an active subscription. |
-| Extended Trial period | This option is just like previous 'trial period', but allows to configure **extended trial period** for an invited user. |
-| Two-Level Referral Payment Rewards | When a referred user pays for a subscription, the referrer and the second-level referrer (the user who invited the referrer) receive fixed count of days at the moment fore each level. |
+متغیرهای موردنیاز:
+
+- `YOOMONEY_WALLET_ID`
+- `YOOMONEY_NOTIFICATION_SECRET`
+
+# تنظیم 3X-UI
+
+برای عملکرد صحیح ربات، پنل **3X-UI** باید پیکربندی شود:
+
+1. برای پنل گواهی SSL تنظیم کنید.
+2. حداقل یک **Inbound** ایجاد کنید؛ اولین Inbound برای افزودن کاربران استفاده می‌شود.
+3. سرویس Subscription را فعال کنید.
+4. پورت Subscription را روی `2096` قرار دهید.
+5. مسیر Subscription را روی `/user/` قرار دهید.
+6. برای Subscription گواهی مناسب تعریف کنید.
+7. تنظیمات رمزگذاری را مطابق نیاز پروژه تنظیم کنید.
+
+مستندات 3X-UI:  
+https://github.com/MHSanaei/3x-ui
+
+# تنظیم سیستم دعوت و دوره آزمایشی
+
+ربات از **دوره آزمایشی** و **سیستم پاداش دعوت دو سطحی** پشتیبانی می‌کند. تنظیمات این بخش از طریق `.env` انجام می‌شود.
+
+| نوع | نحوه عملکرد |
+|---|---|
+| دوره آزمایشی | کاربری که اشتراک فعال ندارد می‌تواند دوره آزمایشی دریافت کند. |
+| دوره آزمایشی کاربران دعوت‌شده | می‌توان برای کاربری که از طریق دعوت وارد شده، دوره متفاوتی تعریف کرد. |
+| پاداش دعوت دو سطحی | در صورت خرید کاربر دعوت‌شده، برای دعوت‌کننده و سطح دوم مطابق تنظیمات، پاداش زمانی در نظر گرفته می‌شود. |
+
+## دستورات کاربردی
+
+بررسی وضعیت کانتینرها:
+
+```bash
+docker compose ps
+```
+
+مشاهده آخرین لاگ‌های ربات:
+
+```bash
+docker compose logs --tail=100 bot
+```
+
+مشاهده زنده لاگ:
+
+```bash
+docker compose logs -f bot
+```
+
+> **هشدار امنیتی:** فایل `.env` شامل اطلاعات محرمانه است. آن را در مخزن عمومی، Issue، Pull Request یا اختیار افراد غیرمجاز قرار ندهید.
+
+</div>
