@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# ToonelVPN Production Installer
+# 3X-UI-SHOP-Robot Production Installer
 # Installs the current repository on a fresh Ubuntu VPS, configures Docker,
 # Nginx, Let's Encrypt, .env and optional payment gateways, then health-checks it.
 set -Eeuo pipefail
 
-REPO="aminahmadloo/ToonelVpn"
-REF="${TOONELVPN_REF:-main}"
-PROJECT_DIR="/opt/toonelvpn"
-ARCHIVE="/tmp/toonelvpn-install-$$.tar.gz"
-EXTRACT_DIR="/tmp/toonelvpn-install-$$"
+REPO="aminahmadloo/3X-UI-SHOP-Robot"
+REF="${3X-UI-SHOP-ROBOT_REF:-main}"
+PROJECT_DIR="/opt/3x-ui-shop-robot"
+ARCHIVE="/tmp/3x-ui-shop-robot-install-$$.tar.gz"
+EXTRACT_DIR="/tmp/3x-ui-shop-robot-install-$$"
 ENV_FILE="$PROJECT_DIR/.env"
-NGINX_SITE="/etc/nginx/sites-available/toonelvpn"
-NGINX_ENABLED="/etc/nginx/sites-enabled/toonelvpn"
-ACME_ROOT="/var/www/toonelvpn-acme"
+NGINX_SITE="/etc/nginx/sites-available/3x-ui-shop-robot"
+NGINX_ENABLED="/etc/nginx/sites-enabled/3x-ui-shop-robot"
+ACME_ROOT="/var/www/3x-ui-shop-robot-acme"
 
 cleanup() {
   rm -rf "$EXTRACT_DIR" "$ARCHIVE" 2>/dev/null || true
@@ -177,7 +177,7 @@ download_repo() {
   rm -rf "$PROJECT_DIR"
   mkdir -p "$PROJECT_DIR"
   cp -a "$root/." "$PROJECT_DIR/"
-  ok "کد ToonelVPN دریافت شد."
+  ok "کد 3X-UI-SHOP-Robot دریافت شد."
 }
 
 collect_configuration() {
@@ -358,7 +358,7 @@ install_ssl() {
 }
 
 start_bot() {
-  step "Build و اجرای ToonelVPN"
+  step "Build و اجرای 3X-UI-SHOP-Robot"
   cd "$PROJECT_DIR"
   docker compose config >/dev/null
   docker compose build
@@ -402,7 +402,7 @@ health_check() {
 print_summary() {
   echo
   echo "════════════════════════════════════════════════════════════"
-  echo "🎉 ToonelVPN installation completed"
+  echo "🎉 3X-UI-SHOP-Robot installation completed"
   echo "════════════════════════════════════════════════════════════"
   echo "Project : $PROJECT_DIR"
   echo "Domain  : https://$BOT_DOMAIN"

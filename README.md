@@ -115,7 +115,7 @@ Because this repository is private, the server must first have GitHub CLI instal
 Run the installer with:
 
 ```bash
-GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/ToonelVpn/contents/install.sh?ref=main" | bash'
+GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/3X-UI-SHOP-Robot/contents/install.sh?ref=main" | bash'
 ```
 
 The installer:
@@ -128,7 +128,7 @@ The installer:
 - asks for essential configuration first and optional payment/storage settings later;
 - leaves optional gateways disabled when their credentials are skipped;
 - creates `plans.json` from `plans.example.json` on a clean install;
-- builds and starts the current ToonelVPN containers;
+- builds and starts the current 3X-UI-SHOP-Robot containers;
 - performs a final container and HTTPS health check.
 
 > **Important:** HTTP-01 validation requires inbound TCP port 80 to be reachable from the Internet. If the DNS record is not pointing to the new VPS yet, the installer stops before installation. 
@@ -136,7 +136,7 @@ The installer:
 For an installation from a specific Git ref:
 
 ```bash
-TOONELVPN_REF=main GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/ToonelVpn/contents/install.sh?ref=main" | bash'
+3X-UI-SHOP-ROBOT_REF=main GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/3X-UI-SHOP-Robot/contents/install.sh?ref=main" | bash'
 ```
 
 
