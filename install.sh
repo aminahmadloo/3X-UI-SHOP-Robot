@@ -99,13 +99,20 @@ validate_domain() {
 }
 
 check_github_auth() {
-  [[ -n "${GH_TOKEN:-}" ]] || fail "این Repository خصوصی است. GH_TOKEN با دسترسی Contents: Read لازم است."
-  curl -fsSL -o /dev/null \
-    -H "Accept: application/vnd.github+json" \
-    -H "Authorization: Bearer $GH_TOKEN" \
-    -H "X-GitHub-Api-Version: 2026-03-10" \
-    "https://api.github.com/repos/$REPO" || fail "دسترسی GH_TOKEN به Repository تایید نشد."
-  ok "دسترسی GitHub تایید شد."
+  if [[ -n "${GH_TOKEN:-}" ]]; then
+    curl -fsSL -o /dev/null \
+      -H "Accept: application/vnd.github+json" \
+      -H "Authorization: Bearer $GH_TOKEN" \
+      -H "X-GitHub-Api-Version: 2026-03-10" \
+      "https://api.github.com/repos/$REPO" || fail "دسترسی GH_TOKEN به Repository تایید نشد."
+    ok "دسترسی GitHub با GH_TOKEN تایید شد."
+  else
+    curl -fsSL -o /dev/null \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2026-03-10" \
+      "https://api.github.com/repos/$REPO" || fail "Repository قابل دسترسی نیست. اگر Repository خصوصی است، GH_TOKEN با دسترسی Contents: Read تنظیم کنید."
+    ok "Repository عمومی و قابل دسترسی است؛ نصب بدون GH_TOKEN ادامه پیدا می‌کند."
+  fi
 }
 
 check_ports() {
@@ -165,10 +172,21 @@ EOF
 
 download_repo() {
   step "دریافت نسخه $REF از GitHub"
-  [[ -n "${GH_TOKEN:-}" ]] || fail "این Repository خصوصی است. GH_TOKEN با دسترسی Contents: Read لازم است."
   rm -rf "$EXTRACT_DIR" "$ARCHIVE"
   mkdir -p "$EXTRACT_DIR"
-  curl -fsSL -L     -H "Accept: application/vnd.github+json"     -H "Authorization: Bearer $GH_TOKEN"     -H "X-GitHub-Api-Version: 2026-03-10"     "https://api.github.com/repos/$REPO/tarball/$REF"     -o "$ARCHIVE"
+  if [[ -n "${GH_TOKEN:-}" ]]; then
+    curl -fsSL -L \
+      -H "Accept: application/vnd.github+json" \
+      -H "Authorization: Bearer $GH_TOKEN" \
+      -H "X-GitHub-Api-Version: 2026-03-10" \
+      "https://api.github.com/repos/$REPO/tarball/$REF" \
+      -o "$ARCHIVE"
+  else
+    curl -fsSL -L \
+      -H "Accept: application/vnd.github+json" \
+      "https://api.github.com/repos/$REPO/tarball/$REF" \
+      -o "$ARCHIVE"
+  fi
   tar -xzf "$ARCHIVE" -C "$EXTRACT_DIR"
   local root
   root="$(find "$EXTRACT_DIR" -mindepth 1 -maxdepth 1 -type d | head -n1)"
