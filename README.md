@@ -104,7 +104,7 @@
 - Ubuntu 22.04، 24.04 یا 26.04
 - معماری amd64 یا arm64
 - دامنه‌ای که به IP سرور جدید اشاره کند
-- دسترسی به مخزن خصوصی GitHub پروژه
+- دسترسی اینترنت به GitHub؛ در حالت Public نیازی به GitHub Token نیست.
 
 نصب‌کننده به‌صورت خودکار موارد اصلی زیر را انجام می‌دهد:
 
@@ -121,11 +121,16 @@
 
 ### اجرای Installer
 
-مخزن پروژه خصوصی است؛ بنابراین دسترسی GitHub باید روی سیستمی که Installer را اجرا می‌کند فراهم باشد:
+Repository پروژه Public است و برای نصب نیازی به GitHub Token یا GitHub CLI ندارید:
 
 ```bash
-GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN,XUI_SHOP_ROBOT_REF bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/3X-UI-SHOP-Robot/contents/install.sh?ref=main" | bash'
+curl -fsSL \
+  -H "Accept: application/vnd.github.raw+json" \
+  "https://api.github.com/repos/aminahmadloo/3X-UI-SHOP-Robot/contents/install.sh?ref=main" \
+  | bash
 ```
+
+> اگر Repository در آینده Private شد، Installer همچنان امکان استفاده از `GH_TOKEN` را دارد؛ در آن حالت باید Token با دسترسی `Contents: Read` قبل از اجرای Installer تنظیم شود.
 
 
 
