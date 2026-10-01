@@ -104,6 +104,41 @@ Administrators do not have access to server management.
 <a id="installation-guide"></a>
 
 ## 🛠️ Installation guide
+<a id="production-installer"></a>
+
+### 🚀 Fresh VPS Production Installer
+
+For a fresh Ubuntu 22.04/24.04/26.04 VPS, the repository includes a production bootstrap installer at `/install.sh`.
+
+Because this repository is private, the server must first have GitHub CLI installed and authenticated to an account that can read this repository. GitHub recommends `gh auth login` for CLI authentication and fine-grained tokens can be limited to repository Contents: Read. 
+
+Run the installer with:
+
+```bash
+GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/ToonelVpn/contents/install.sh?ref=main" | bash'
+```
+
+The installer:
+
+- validates Ubuntu version, architecture, ports, DNS and GitHub access before making changes;
+- installs Docker Engine + Compose Plugin from Docker's official APT repository;
+- installs and configures Nginx;
+- obtains and installs Let's Encrypt TLS and runs a renewal dry-run;
+- creates `.env` with mode `600`;
+- asks for essential configuration first and optional payment/storage settings later;
+- leaves optional gateways disabled when their credentials are skipped;
+- creates `plans.json` from `plans.example.json` on a clean install;
+- builds and starts the current ToonelVPN containers;
+- performs a final container and HTTPS health check.
+
+> **Important:** HTTP-01 validation requires inbound TCP port 80 to be reachable from the Internet. If the DNS record is not pointing to the new VPS yet, the installer stops before installation. 
+
+For an installation from a specific Git ref:
+
+```bash
+TOONELVPN_REF=main GH_TOKEN="$(gh auth token)" sudo --preserve-env=GH_TOKEN bash -c 'curl -fsSL -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/aminahmadloo/ToonelVpn/contents/install.sh?ref=main" | bash'
+```
+
 
 ### Dependencies
 
