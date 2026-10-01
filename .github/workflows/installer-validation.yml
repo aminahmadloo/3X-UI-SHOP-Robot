@@ -1,0 +1,24 @@
+name: Installer Validation
+
+on:
+  pull_request:
+    paths:
+      - "install.sh"
+      - ".github/workflows/installer-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash syntax
+        run: bash -n install.sh
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: "."
+          additional_files: "install.sh"
